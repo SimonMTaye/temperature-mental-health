@@ -16,7 +16,6 @@ Outputs:
 """
 from __future__ import annotations
 
-import sys
 import warnings
 from pathlib import Path
 import numpy as np
@@ -28,21 +27,11 @@ OUT = PROJECT / "data" / "generated"
 TAB = PROJECT / "output" / "tables"
 TAB.mkdir(parents=True, exist_ok=True)
 
-sys.path.insert(0, str(PROJECT / "code" / "analysis"))
-from importlib import import_module
-mod14 = import_module("14_unified_refined")
-PALM_3MO_DECLINE = mod14.PALM_3MO_DECLINE
+from _table_input import load_table_input
 
 
 def load_data() -> pd.DataFrame:
-    df = pd.read_parquet(OUT / "analysis_dataset.parquet")
-    fin  = pd.read_parquet(OUT / "financial_shocks.parquet")
-    fin2 = pd.read_parquet(OUT / "financial_shocks_v2.parquet")
-    df = df.merge(fin[["pidlink", "wave", "job_loss_within_yr"]],
-                  on=["pidlink", "wave"], how="left")
-    df = df.merge(fin2[["pidlink", "wave", "palm_farmer_hh", "transport_share"]],
-                  on=["pidlink", "wave"], how="left")
-    df["female"] = (df.sex == "F").astype(int)
+    df = load_table_input()
     df = df.dropna(subset=[
         "cesd_raw", "tmean_c", "tmax_c", "tmin_c",
         "kabupaten_code", "month", "year", "wave",
@@ -54,14 +43,6 @@ def load_data() -> pd.DataFrame:
     counts = df.kabupaten_code.value_counts()
     df = df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
 
-    # CES-D z-score within wave (constructed for analysis)
-    df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(lambda s: (s - s.mean()) / s.std())
-
-    df["intvw_ym"] = list(zip(df.interview_date.dt.year, df.interview_date.dt.month))
-    df["palm_3mo_decline"] = df.intvw_ym.map(PALM_3MO_DECLINE).fillna(0.0)
-    df["palm_shock"] = df.palm_farmer_hh * df.palm_3mo_decline
-    df["post_subsidy"] = (df.interview_date >= pd.Timestamp("2014-11-18")).astype(int)
-    df["fuel_shock"] = df.post_subsidy * df.transport_share
     return df
 
 

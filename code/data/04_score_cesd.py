@@ -35,9 +35,10 @@ IFLS4 b3b_kp.dta — same 10-item layout, with a SCREENER design:
     kp02 = how often (only asked if kp01=1; otherwise NaN, treated as freq=0)
 
 Outputs: data/generated/cesd_scores.parquet
-  cols: pidlink, wave, n_items, cesd_raw (0-30 frequency score),
+  cols: pidlink, wave, cesd_raw (0-30 frequency score),
         cesd10_count (IFLS4 only — count of kp01=yes items),
-        depressed (1 if cesd_raw>=10 — standard CES-D 10 cutoff)
+        depressed (1 if cesd_raw>=10 — standard CES-D 10 cutoff),
+        n_items, CES-D factor scores, and within-wave factor z-scores
 """
 from __future__ import annotations
 
@@ -46,47 +47,118 @@ import pandas as pd
 from config import OUT, RAW
 from _schemas import CESD_SCORES_SCHEMA
 
-REVERSE_ITEMS = {"E", "H"}  # hopeful, happy — applied to BOTH waves (see header docstring)
+REVERSE_ITEMS = {"E", "H"}
+FACTOR_MAP = {
+    "somatic": {"A", "B", "D", "G", "J"},
+    "depraffect": {"C", "F", "I"},
+    "posaffect": {"E", "H"},
+}
 
 
-def score_ifls5() -> pd.DataFrame:
-    df = pd.read_stata(RAW / "IFLS5/hh14/b3b_kp.dta", convert_categoricals=False)
-    df = df[df.kp02.between(1, 4)]
-    df = df.assign(score=df.kp02 - 1)
-    df.loc[df.kptype.isin(REVERSE_ITEMS), "score"] = 3 - df.loc[df.kptype.isin(REVERSE_ITEMS), "score"]
+def score_item_frame(df: pd.DataFrame, wave: str) -> pd.DataFrame:
+    """Return long item scores with the IFLS4 screener and IFLS5 frequency rules."""
+    if wave == "IFLS5":
+        df = df[df.kp02.between(1, 4)].copy()
+        df["score"] = df.kp02 - 1
+    else:
+        df = df[df.kp01.isin([1, 3])].copy()
+        df["score"] = 0.0
+        has_freq = df.kp01.eq(1) & df.kp02.between(1, 4)
+        df.loc[has_freq, "score"] = df.loc[has_freq, "kp02"] - 1
+        df.loc[df.kp01.eq(1) & df.kp02.isna(), "score"] = 1.5
+
+    rev = df.kptype.isin(REVERSE_ITEMS)
+    df.loc[rev, "score"] = 3 - df.loc[rev, "score"]
+    return df[["pidlink", "kptype", "score"]]
+
+
+def build_factor_scores(items: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate scored CES-D items to factor scores and within-wave z-scores."""
+    factors = []
+    for factor_name, item_set in FACTOR_MAP.items():
+        scores = (
+            items[items.kptype.isin(item_set)]
+            .groupby(["pidlink", "wave"])["score"]
+            .sum()
+            .rename(factor_name)
+            .reset_index()
+        )
+        factors.append(scores)
+
+    out = factors[0]
+    for factor in factors[1:]:
+        out = out.merge(factor, on=["pidlink", "wave"], how="outer")
+
+    for factor_name in FACTOR_MAP:
+        out[f"{factor_name}_z"] = out.groupby("wave")[factor_name].transform(
+            lambda s: (s - s.mean()) / s.std()
+        )
+    return out
+
+
+def score_ifls5() -> tuple[pd.DataFrame, pd.DataFrame]:
+    raw = pd.read_stata(RAW / "IFLS5/hh14/b3b_kp.dta", convert_categoricals=False)
+    df = raw.copy()
+    df = score_item_frame(df, "IFLS5")
     agg = df.groupby("pidlink").agg(n_items=("score", "size"), cesd_raw=("score", "sum")).reset_index()
     agg["wave"] = "IFLS5"
     agg["cesd10_count"] = float("nan")
-    return agg
+    df["wave"] = "IFLS5"
+    return agg, df
 
 
-def score_ifls4() -> pd.DataFrame:
-    df = pd.read_stata(RAW / "IFLS4/hh07/b3b_kp.dta", convert_categoricals=False)
-    df = df[df.kp01.isin([1, 3])]  # 1=yes, 3=no
-    df["yes"] = (df.kp01 == 1).astype(int)
-    df.loc[df.kptype.isin(REVERSE_ITEMS), "yes"] = 1 - df.loc[df.kptype.isin(REVERSE_ITEMS), "yes"]
+def score_ifls4() -> tuple[pd.DataFrame, pd.DataFrame]:
+    raw = pd.read_stata(RAW / "IFLS4/hh07/b3b_kp.dta", convert_categoricals=False)
+    df = raw.copy()
+    yes = df[df.kp01.isin([1, 3])].copy()
+    yes["yes"] = (yes.kp01 == 1).astype(int)
+    yes.loc[yes.kptype.isin(REVERSE_ITEMS), "yes"] = 1 - yes.loc[
+        yes.kptype.isin(REVERSE_ITEMS), "yes"
+    ]
 
-    df["freq"] = 0.0
-    has_freq = df.kp01.eq(1) & df.kp02.between(1, 4)
-    df.loc[has_freq, "freq"] = df.loc[has_freq, "kp02"] - 1
-    df.loc[df.kp01.eq(1) & df.kp02.isna(), "freq"] = 1.5
-    df.loc[df.kptype.isin(REVERSE_ITEMS), "freq"] = 3 - df.loc[df.kptype.isin(REVERSE_ITEMS), "freq"]
-
-    agg = df.groupby("pidlink").agg(
+    scored = score_item_frame(df, "IFLS4")
+    agg = yes.groupby("pidlink").agg(
         n_items=("yes", "size"),
-        cesd10_count=("yes", "sum"),
-        cesd_raw=("freq", "sum"),
     ).reset_index()
+    agg = agg.merge(
+        yes.groupby("pidlink").agg(cesd10_count=("yes", "sum")).reset_index(),
+        on="pidlink",
+        how="left",
+    ).merge(
+        scored.groupby("pidlink").agg(cesd_raw=("score", "sum")).reset_index(),
+        on="pidlink",
+        how="left",
+    )
     agg["wave"] = "IFLS4"
-    return agg
+    scored["wave"] = "IFLS4"
+    return agg, scored
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    parts = [score_ifls4(), score_ifls5()]
+    scored4, items4 = score_ifls4()
+    scored5, items5 = score_ifls5()
+    parts = [scored4, scored5]
     out = pd.concat(parts, ignore_index=True)
+    factors = build_factor_scores(pd.concat([items4, items5], ignore_index=True))
+    out = out.merge(factors, on=["pidlink", "wave"], how="left")
     out["depressed"] = (out.cesd_raw >= 10).astype(int)
-    out = out[["pidlink", "n_items", "cesd_raw", "wave", "cesd10_count", "depressed"]]
+    out = out[
+        [
+            "pidlink",
+            "wave",
+            "cesd_raw",
+            "cesd10_count",
+            "depressed",
+            "n_items",
+            "somatic",
+            "depraffect",
+            "posaffect",
+            "somatic_z",
+            "depraffect_z",
+            "posaffect_z",
+        ]
+    ]
     out = CESD_SCORES_SCHEMA.validate(out)
     out.to_parquet(OUT / "cesd_scores.parquet", index=False)
     print(f"wrote {len(out):,} rows to {OUT/'cesd_scores.parquet'}")

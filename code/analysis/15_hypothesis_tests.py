@@ -34,102 +34,22 @@ import pandas as pd
 import pyfixest as pf
 from scipy import stats
 
+from _table_input import load_table_input
+
 warnings.filterwarnings("ignore")
 PROJECT = Path(__file__).resolve().parents[2]
-RAW = Path("E:/IFLS/extracted")
 OUT = PROJECT / "data" / "generated"
 RES = OUT / "results"
 RES.mkdir(parents=True, exist_ok=True)
 
-REVERSE_ITEMS = {"E", "H"}
-FACTOR_MAP = {
-    "somatic":    {"A", "B", "D", "G", "J"},
-    "depraffect": {"C", "F", "I"},
-    "posaffect":  {"E", "H"},
-}
-
-
-def _score_item(df: pd.DataFrame, wave: str) -> pd.DataFrame:
-    """Return long df: pidlink, kptype, score (0..3 with E,H reverse coded)."""
-    if wave == "IFLS5":
-        df = df[df.kp02.between(1, 4)].copy()
-        df["score"] = df.kp02 - 1
-    else:  # IFLS4 screener
-        df = df[df.kp01.isin([1, 3])].copy()
-        df["score"] = 0.0
-        has_freq = df.kp01.eq(1) & df.kp02.between(1, 4)
-        df.loc[has_freq, "score"] = df.loc[has_freq, "kp02"] - 1
-        df.loc[df.kp01.eq(1) & df.kp02.isna(), "score"] = 1.5
-    rev = df.kptype.isin(REVERSE_ITEMS)
-    df.loc[rev, "score"] = 3 - df.loc[rev, "score"]
-    return df[["pidlink", "kptype", "score"]]
-
-
-def build_factor_scores() -> pd.DataFrame:
-    items5 = _score_item(pd.read_stata(RAW / "IFLS5/hh14/b3b_kp.dta", convert_categoricals=False), "IFLS5")
-    items4 = _score_item(pd.read_stata(RAW / "IFLS4/hh07/b3b_kp.dta", convert_categoricals=False), "IFLS4")
-    items5["wave"] = "IFLS5"; items4["wave"] = "IFLS4"
-    items = pd.concat([items4, items5], ignore_index=True)
-
-    out_rows = []
-    for factor_name, items_set in FACTOR_MAP.items():
-        sub = items[items.kptype.isin(items_set)]
-        s = sub.groupby(["pidlink", "wave"])["score"].sum().rename(factor_name).reset_index()
-        out_rows.append(s)
-    out = out_rows[0]
-    for piece in out_rows[1:]:
-        out = out.merge(piece, on=["pidlink", "wave"], how="outer")
-
-    for f in FACTOR_MAP:
-        out[f"{f}_z"] = out.groupby("wave")[f].transform(lambda x: (x - x.mean()) / x.std())
-    return out
-
-
-# ---------------- Pull the analysis dataset & build stressors (mirrors 14_unified_refined) -----
-
-PALM_PRICE_FULL = {
-    (2007, 1):780, (2007, 2):780, (2007, 3):770, (2007, 4):770, (2007, 5):810,
-    (2007, 6):850, (2007, 7):879, (2007, 8):829, (2007, 9):866, (2007,10):861,
-    (2007,11):950, (2007,12):1030,
-    (2008, 1):1075,(2008, 2):1188,(2008, 3):1306,(2008, 4):1180,(2008, 5):1234,
-    (2008, 6):1199,(2008, 7):1119,(2008, 8): 856,(2008, 9): 706,
-    (2014, 5): 870,(2014, 6): 860,(2014, 7): 810,(2014, 8): 745,(2014, 9): 695,
-    (2014,10): 696,(2014,11): 712,(2014,12): 715,
-    (2015, 1): 678,(2015, 2): 651,(2015, 3): 657,(2015, 4): 660,(2015, 5): 656,
-    (2015, 6): 658,(2015, 7): 627,(2015, 8): 528,(2015, 9): 511,(2015,10): 528,
-    (2015,11): 529,(2015,12): 549,
-}
-
-
-def _palm_decline_lookup() -> dict:
-    rows = sorted(PALM_PRICE_FULL.items())
-    keys = [k for k, _ in rows]; vals = [v for _, v in rows]
-    out = {}
-    for i, (yr, mo) in enumerate(keys):
-        if i < 3:
-            continue
-        py, pm = keys[i - 3]
-        gap = (yr - py) * 12 + (mo - pm)
-        if gap != 3:
-            continue
-        chg = (vals[i] - vals[i - 3]) / vals[i - 3]
-        out[(yr, mo)] = max(-chg, 0.0)
-    return out
-
-
-PALM_3MO_DECLINE = _palm_decline_lookup()
-
 
 def load_data() -> pd.DataFrame:
-    df = pd.read_parquet(OUT / "analysis_dataset.parquet")
-    fin = pd.read_parquet(OUT / "financial_shocks.parquet")
-    finv2 = pd.read_parquet(OUT / "financial_shocks_v2.parquet")
-    df = df.merge(fin, on=["pidlink", "wave"], how="left")
-    df = df.merge(finv2, on=["pidlink", "wave"], how="left")
-    df["female"] = (df.sex == "F").astype(int)
-
-    factor = build_factor_scores()
-    df = df.merge(factor, on=["pidlink", "wave"], how="left")
+    df = load_table_input()
+    if df[["somatic_z", "depraffect_z", "posaffect_z"]].isna().all().all():
+        raise RuntimeError(
+            "analysis_table_input.parquet does not contain CES-D factor scores. "
+            "Mount RAW IFLS item files and rerun code/data/13_build_analysis_table_input.py."
+        )
 
     keep = ["tmean_c", "tmax_c", "tmin_c", "kabupaten_code", "month", "year", "wave",
             "age", "edu_yrs", "married", "widowed", "female", "interview_date",
@@ -137,23 +57,10 @@ def load_data() -> pd.DataFrame:
             "somatic_z", "depraffect_z", "posaffect_z"]
     df = df.dropna(subset=keep)
 
-    # CES-D total z (wave-z) for completeness
-    df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(lambda x: (x - x.mean()) / x.std())
-
     # Mean-center each heat measure on the SAMPLE mean (after dropna) so interactions
     # interpret cleanly.
     for h in ["tmean_c", "tmax_c", "tmin_c"]:
         df[f"{h}_dev"] = df[h] - df[h].mean()
-
-    df["intvw_yr_mo"] = list(zip(df.interview_date.dt.year, df.interview_date.dt.month))
-    df["palm_3mo_decline"] = df.intvw_yr_mo.map(PALM_3MO_DECLINE).fillna(0.0)
-    df["palm_shock"] = df.palm_farmer_individual * df.palm_3mo_decline
-
-    # Fuel-subsidy shock: post-Nov-2014 cut × transport-spending share.
-    # IFLS4 has post_subsidy=0 throughout so fuel_shock is uniformly 0 in IFLS4;
-    # the spec is identified within IFLS5 only and we run it that way below.
-    df["post_subsidy"] = (df.interview_date >= pd.Timestamp("2014-11-18")).astype(int)
-    df["fuel_shock"] = df.post_subsidy * df.transport_share
     return df
 
 

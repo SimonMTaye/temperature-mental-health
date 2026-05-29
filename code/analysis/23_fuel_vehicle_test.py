@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import sys
 import warnings
-from importlib import import_module
 from pathlib import Path
 
 import numpy as np
@@ -37,9 +36,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 OUT = PROJECT / "data" / "generated"
 RAW = PROJECT.parent / "hao" / "IFLS"
 
-sys.path.insert(0, str(PROJECT / "code" / "analysis"))
-mod14 = import_module("14_unified_refined")
-PALM_3MO_DECLINE = mod14.PALM_3MO_DECLINE
+from _table_input import load_table_input
 
 CONTROLS = "age + female + edu_yrs + married + widowed"
 FE_IFLS5 = "month + year + kabupaten_code"
@@ -69,30 +66,16 @@ def load_vehicle_ownership() -> pd.DataFrame:
 
 
 def load_data() -> pd.DataFrame:
-    df = pd.read_parquet(OUT / "analysis_dataset.parquet")
-    fin  = pd.read_parquet(OUT / "financial_shocks.parquet")
-    fin2 = pd.read_parquet(OUT / "financial_shocks_v2.parquet")
-    df = df.merge(fin[["pidlink", "wave", "job_loss_within_yr"]],
-                  on=["pidlink", "wave"], how="left")
-    df = df.merge(fin2[["pidlink", "wave", "palm_farmer_hh", "transport_share"]],
-                  on=["pidlink", "wave"], how="left")
+    df = load_table_input()
+    df["owns_vehicle"] = df["vehicle_owner"]
+    print("Vehicle ownership loaded from analysis_table_input.parquet")
 
-    veh = load_vehicle_ownership()
-    df = df.merge(veh, on=["hhid", "wave"], how="left")
-    print(f"Vehicle-ownership merge: {df.owns_vehicle.notna().sum():,} / {len(df):,} "
-          f"({100*df.owns_vehicle.notna().mean():.1f}%) matched")
-
-    df["female"] = (df.sex == "F").astype(int)
     df = df.dropna(subset=[
         "cesd_raw", "tmean_c", "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date", "owns_vehicle",
     ])
-    df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(lambda s: (s - s.mean()) / s.std())
-    df["heat_c_dev"] = df.tmean_c - df.tmean_c.mean()
-    df["post_subsidy"] = (df.interview_date >= CUT_DATE).astype(int)
-    df["fuel_shock"]         = df.post_subsidy * df.transport_share
     df["fuel_shock_vehicle"] = df.post_subsidy * df.owns_vehicle
 
     counts = df.kabupaten_code.value_counts()

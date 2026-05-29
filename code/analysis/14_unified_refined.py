@@ -30,6 +30,8 @@ import numpy as np
 import pandas as pd
 import pyfixest as pf
 
+from _table_input import load_table_input
+
 warnings.filterwarnings("ignore")
 PROJECT = Path(__file__).resolve().parents[2]
 OUT = PROJECT / "data" / "generated"
@@ -37,86 +39,10 @@ RES = OUT / "results"
 RES.mkdir(parents=True, exist_ok=True)
 
 
-# Extended palm price series (USD/MT, World Bank Pink Sheet) covering enough months
-# either side of each fielding window so we can compute 3-month lagged price changes.
-PALM_PRICE_FULL = {
-    (2007, 1):780, (2007, 2):780, (2007, 3):770, (2007, 4):770, (2007, 5):810,
-    (2007, 6):850, (2007, 7):879, (2007, 8):829, (2007, 9):866, (2007,10):861,
-    (2007,11):950, (2007,12):1030,
-    (2008, 1):1075,(2008, 2):1188,(2008, 3):1306,(2008, 4):1180,(2008, 5):1234,
-    (2008, 6):1199,(2008, 7):1119,(2008, 8): 856,(2008, 9): 706,
-    (2014, 5): 870,(2014, 6): 860,(2014, 7): 810,(2014, 8): 745,(2014, 9): 695,
-    (2014,10): 696,(2014,11): 712,(2014,12): 715,
-    (2015, 1): 678,(2015, 2): 651,(2015, 3): 657,(2015, 4): 660,(2015, 5): 656,
-    (2015, 6): 658,(2015, 7): 627,(2015, 8): 528,(2015, 9): 511,(2015,10): 528,
-    (2015,11): 529,(2015,12): 549,
-}
-
-
-def _palm_price_lookup() -> dict:
-    """Build (year, month) -> %-decline-over-prior-3-months lookup. Drops only (≥0)."""
-    rows = sorted(PALM_PRICE_FULL.items())  # (yr, mo) -> price
-    keys = [k for k,_ in rows]
-    vals = [v for _,v in rows]
-    decline = {}
-    for i, (yr, mo) in enumerate(keys):
-        if i < 3:
-            continue
-        # Check that the 3-prior month is sequential (not across the 2009-2014 gap)
-        prev_yr, prev_mo = keys[i-3]
-        gap_months = (yr - prev_yr) * 12 + (mo - prev_mo)
-        if gap_months != 3:
-            continue
-        chg = (vals[i] - vals[i-3]) / vals[i-3]
-        decline[(yr, mo)] = max(-chg, 0.0)
-    return decline
-
-
-PALM_3MO_DECLINE = _palm_price_lookup()
-
-
-# World Bank Pink Sheet monthly natural rubber price (RSS3 grade, USD/kg).
-RUBBER_PRICE = {
-    (2007, 6):2.32, (2007, 7):2.33, (2007, 8):2.13, (2007, 9):2.40, (2007,10):2.44,
-    (2007,11):2.52, (2007,12):2.47,
-    (2008, 1):2.68, (2008, 2):2.90, (2008, 3):3.09, (2008, 4):3.08, (2008, 5):3.15,
-    (2008, 6):3.43, (2008, 7):3.18, (2008, 8):2.82, (2008, 9):2.50,
-    (2014, 8):1.78, (2014, 9):1.67, (2014,10):1.53, (2014,11):1.52, (2014,12):1.54,
-    (2015, 1):1.58, (2015, 2):1.59, (2015, 3):1.52, (2015, 4):1.52, (2015, 5):1.62,
-    (2015, 6):1.61, (2015, 7):1.52, (2015, 8):1.38, (2015, 9):1.38, (2015,10):1.40,
-    (2015,11):1.32, (2015,12):1.30,
-}
-
-# World Bank Pink Sheet monthly coffee Robusta price (cents/lb).
-COFFEE_PRICE = {
-    (2007, 6): 88.4, (2007, 7): 92.8, (2007, 8): 91.9, (2007, 9): 95.6, (2007,10): 93.5,
-    (2007,11): 96.0, (2007,12): 99.4,
-    (2008, 1):109.1, (2008, 2):110.4, (2008, 3):113.0, (2008, 4):116.4, (2008, 5):119.2,
-    (2008, 6):116.0, (2008, 7):117.4, (2008, 8):112.0, (2008, 9):100.4,
-    (2014, 8):100.5, (2014, 9): 99.2, (2014,10):102.4, (2014,11): 92.6, (2014,12): 90.0,
-    (2015, 1): 88.4, (2015, 2): 86.9, (2015, 3): 80.0, (2015, 4): 78.1, (2015, 5): 80.5,
-    (2015, 6): 80.6, (2015, 7): 80.5, (2015, 8): 78.3, (2015, 9): 76.9, (2015,10): 73.6,
-    (2015,11): 70.3, (2015,12): 71.4,
-}
-
-
 def load_data(mode: str = "ifls5_only") -> pd.DataFrame:
     """mode: 'ifls5_only' or 'pooled_z'.
        'pooled_z' standardises cesd_raw within wave and adds wave FE in formulas."""
-    df = pd.read_parquet(OUT / "analysis_dataset.parquet")
-    fin = pd.read_parquet(OUT / "financial_shocks.parquet")
-    finv2 = pd.read_parquet(OUT / "financial_shocks_v2.parquet")
-    df["female"] = (df.sex == "F").astype(int)
-
-    df = df.merge(fin, on=["pidlink", "wave"], how="left")
-    df = df.merge(finv2, on=["pidlink", "wave"], how="left")
-    hb_path = OUT / "health_bereavement_shocks.parquet"
-    if hb_path.exists():
-        df = df.merge(pd.read_parquet(hb_path), on=["pidlink", "wave"], how="left")
-    fd_path = OUT / "finance_distress_shocks.parquet"
-    if fd_path.exists():
-        fd = pd.read_parquet(fd_path).drop(columns=["hhid"], errors="ignore")
-        df = df.merge(fd, on=["pidlink", "wave"], how="left")
+    df = load_table_input()
 
     if mode == "ifls5_only":
         df = df[df.wave == "IFLS5"].copy()
@@ -134,39 +60,17 @@ def load_data(mode: str = "ifls5_only") -> pd.DataFrame:
             "age", "sex", "edu_yrs", "married", "widowed",
             "job_loss_within_yr",
             "palm_farmer_individual", "rubber_farmer_individual", "coffee_farmer_individual",
-            "palm_price_z", "interview_date", "wave"]
+            "palm_shock", "rubber_shock", "coffee_shock", "interview_date", "wave"]
     df = df.dropna(subset=keep)
+    counts = df.kabupaten_code.value_counts()
+    df = df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
 
-    # z-score CES-D within wave (collapses to single-wave z if mode='ifls5_only')
-    df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(
-        lambda s: (s - s.mean()) / s.std()
-    )
     HEAT_MEAN = df.tmean_c.mean()
     HEAT_SD = df.tmean_c.std()
     df["heat_c"] = df.tmean_c - HEAT_MEAN
     df["_heat_mean"] = HEAT_MEAN
     df["_heat_sd"] = HEAT_SD
     df["_mode"] = mode
-
-    df["post_subsidy"] = (df.interview_date >= pd.Timestamp("2014-11-18")).astype(int)
-    df["intvw_yr_mo"] = list(zip(df.interview_date.dt.year, df.interview_date.dt.month))
-    # Primary palm shock (3-month price decline × palm farmer):
-    #   captures the "income just got hit" shock farmers actually experience, rather
-    #   than a long-run-mean comparison. Identified in both waves where prices moved.
-    df["palm_3mo_decline"] = df.intvw_yr_mo.map(PALM_3MO_DECLINE).fillna(0.0)
-    df["palm_shock"] = df.palm_farmer_individual * df.palm_3mo_decline
-
-    # Rubber: monthly RSS3 price → z-score → shock for rubber farmers when below mean
-    df["rubber_price_usd_kg"] = df.intvw_yr_mo.map(RUBBER_PRICE)
-    rp = pd.Series(list(RUBBER_PRICE.values()))
-    df["rubber_price_z"] = (df.rubber_price_usd_kg - rp.mean()) / rp.std()
-    df["rubber_shock"] = df.rubber_farmer_individual * (-df.rubber_price_z.fillna(0)).clip(lower=0)
-
-    # Coffee: monthly Robusta price (cents/lb)
-    df["coffee_price_clb"] = df.intvw_yr_mo.map(COFFEE_PRICE)
-    cp = pd.Series(list(COFFEE_PRICE.values()))
-    df["coffee_price_z"] = (df.coffee_price_clb - cp.mean()) / cp.std()
-    df["coffee_shock"] = df.coffee_farmer_individual * (-df.coffee_price_z.fillna(0)).clip(lower=0)
     return df
 
 
