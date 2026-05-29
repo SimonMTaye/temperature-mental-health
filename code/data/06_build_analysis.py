@@ -6,7 +6,7 @@ Combines:
   stressors.parquet             (pidlink, wave, age, sex, edu_yrs, married,
                                  widowed, hh_size, pce_log, pce_quintile,
                                  disaster_*, loan_rejected, agri_occupation)
-  daily_temperature_kab.parquet (kab_code, date, tmean_c, tmax_c, tmin_c, ...)
+  daily_temperature_kab.parquet (kabupaten_code, date, tmean_c, tmax_c, tmin_c, ...)
 
 Adds:
   Day-of-interview temperature: t_today_*, t_today_heat_idx
@@ -22,12 +22,11 @@ Output: data/generated/analysis_dataset.parquet  (one row per pidlink × wave; a
 """
 from __future__ import annotations
 
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-OUT = PROJECT / "data" / "generated"
+from config import OUT
+from _schemas import ANALYSIS_DATASET_SCHEMA
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
 HAZE_MONTHS = {(2015, 9), (2015, 10), (2015, 11)}
@@ -35,20 +34,20 @@ HAZE_MONTHS = {(2015, 9), (2015, 10), (2015, 11)}
 
 def add_temp_lags(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
     """For each individual, attach temperature on interview_date + lags / leads."""
-    temp = temp.sort_values(["kab_code", "date"]).copy()
+    temp = temp.sort_values(["kabupaten_code", "date"]).copy()
 
-    # Compute rolling means per kab_code (need indexed by date for asof-join lags)
-    temp["tmean_lag1"] = temp.groupby("kab_code")["tmean_c"].shift(1)
-    temp["tmean_lag3"] = temp.groupby("kab_code")["tmean_c"].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True).shift(1)
-    temp["tmean_lag7"] = temp.groupby("kab_code")["tmean_c"].rolling(7, min_periods=1).mean().reset_index(level=0, drop=True).shift(1)
-    temp["tmin_lag1"] = temp.groupby("kab_code")["tmin_c"].shift(1)
-    temp["tmax_lag1"] = temp.groupby("kab_code")["tmax_c"].shift(1)
-    temp["heat_idx_lag1"] = temp.groupby("kab_code")["heat_idx_c"].shift(1)
-    temp["tmean_base30"] = temp.groupby("kab_code")["tmean_c"].rolling(30, min_periods=15).mean().reset_index(level=0, drop=True).shift(1)
-    temp["tmean_lead7"] = temp.groupby("kab_code")["tmean_c"].shift(-7)
+    # Compute rolling means per kabupaten_code (need indexed by date for asof-join lags)
+    temp["tmean_lag1"] = temp.groupby("kabupaten_code")["tmean_c"].shift(1)
+    temp["tmean_lag3"] = temp.groupby("kabupaten_code")["tmean_c"].rolling(3, min_periods=1).mean().reset_index(level=0, drop=True).shift(1)
+    temp["tmean_lag7"] = temp.groupby("kabupaten_code")["tmean_c"].rolling(7, min_periods=1).mean().reset_index(level=0, drop=True).shift(1)
+    temp["tmin_lag1"] = temp.groupby("kabupaten_code")["tmin_c"].shift(1)
+    temp["tmax_lag1"] = temp.groupby("kabupaten_code")["tmax_c"].shift(1)
+    temp["heat_idx_lag1"] = temp.groupby("kabupaten_code")["heat_idx_c"].shift(1)
+    temp["tmean_base30"] = temp.groupby("kabupaten_code")["tmean_c"].rolling(30, min_periods=15).mean().reset_index(level=0, drop=True).shift(1)
+    temp["tmean_lead7"] = temp.groupby("kabupaten_code")["tmean_c"].shift(-7)
 
     keep = [
-        "kab_code", "date",
+        "kabupaten_code", "date",
         "tmean_c", "tmax_c", "tmin_c", "heat_idx_c", "rh_pct", "precip_mm",
         "tmean_lag1", "tmean_lag3", "tmean_lag7",
         "tmin_lag1", "tmax_lag1", "heat_idx_lag1",
@@ -56,7 +55,7 @@ def add_temp_lags(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
     ]
     out = ind.merge(
         temp[keep],
-        left_on=["kab_code", "interview_date"], right_on=["kab_code", "date"], how="left",
+        left_on=["kabupaten_code", "interview_date"], right_on=["kabupaten_code", "date"], how="left",
     ).drop(columns=["date"])
 
     # Heat-anomaly: today's temp minus 30-day baseline (within-kab deviation)
@@ -93,7 +92,7 @@ def main() -> None:
     df["haze_2015"] = df.interview_date.apply(
         lambda d: int((d.year, d.month) in HAZE_MONTHS)
     )
-    df["yogya_quake_catchment"] = (df.wave.eq("IFLS4") & df.prov_code.isin([33, 34])).astype(int)
+    df["yogya_quake_catchment"] = (df.wave.eq("IFLS4") & df.province_code.isin([33, 34])).astype(int)
 
     # Heat-stress derived: a few discrete heat bins for non-linear specs
     df["heat_bin"] = pd.cut(
@@ -105,6 +104,7 @@ def main() -> None:
     df["month"] = df.interview_date.dt.month
     df["year"] = df.interview_date.dt.year
 
+    df = ANALYSIS_DATASET_SCHEMA.validate(df)
     df.to_parquet(OUT / "analysis_dataset.parquet", index=False)
     print(f"\nwrote {len(df):,} rows to {OUT/'analysis_dataset.parquet'}")
     print("by wave:")

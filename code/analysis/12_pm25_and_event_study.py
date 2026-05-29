@@ -33,23 +33,23 @@ def load_data() -> pd.DataFrame:
 
     # Match daily PM2.5 to interview date
     df = df.merge(
-        pm[["kab_code", "date", "pm25_ugm3"]],
-        left_on=["kab_code", "interview_date"], right_on=["kab_code", "date"],
+        pm[["kabupaten_code", "date", "pm25_ugm3"]],
+        left_on=["kabupaten_code", "interview_date"], right_on=["kabupaten_code", "date"],
         how="left",
     ).drop(columns=["date"])
     print(f"PM2.5 coverage: {df.pm25_ugm3.notna().sum()} / {len(df)}")
 
     # 7-day rolling mean PM2.5 per kab (chronic exposure)
-    pm = pm.sort_values(["kab_code", "date"]).reset_index(drop=True)
-    pm["pm25_7d"] = pm.groupby("kab_code")["pm25_ugm3"].rolling(7, min_periods=3).mean().reset_index(level=0, drop=True)
-    pm["pm25_30d"] = pm.groupby("kab_code")["pm25_ugm3"].rolling(30, min_periods=15).mean().reset_index(level=0, drop=True)
+    pm = pm.sort_values(["kabupaten_code", "date"]).reset_index(drop=True)
+    pm["pm25_7d"] = pm.groupby("kabupaten_code")["pm25_ugm3"].rolling(7, min_periods=3).mean().reset_index(level=0, drop=True)
+    pm["pm25_30d"] = pm.groupby("kabupaten_code")["pm25_ugm3"].rolling(30, min_periods=15).mean().reset_index(level=0, drop=True)
     df = df.merge(
-        pm[["kab_code", "date", "pm25_7d", "pm25_30d"]],
-        left_on=["kab_code", "interview_date"], right_on=["kab_code", "date"],
+        pm[["kabupaten_code", "date", "pm25_7d", "pm25_30d"]],
+        left_on=["kabupaten_code", "interview_date"], right_on=["kabupaten_code", "date"],
         how="left",
     ).drop(columns=["date"])
 
-    keep = ["cesd_raw", "tmean_c", "tmax_c", "kab_code", "wave", "month", "year",
+    keep = ["cesd_raw", "tmean_c", "tmax_c", "kabupaten_code", "wave", "month", "year",
             "age", "sex", "edu_yrs", "married", "widowed",
             "disaster_severe_5yr", "loan_rejected", "agri_occupation", "pm25_ugm3"]
     df = df.dropna(subset=keep)
@@ -65,23 +65,23 @@ def table_e_pm25(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     specs = [
         ("PM2.5 main effect (today)",
-         "cesd_raw ~ pm25_ugm3 + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ pm25_ugm3 + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("PM2.5 7d main effect",
-         "cesd_raw ~ pm25_7d + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ pm25_7d + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("PM2.5 30d main effect",
-         "cesd_raw ~ pm25_30d + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ pm25_30d + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × PM2.5 today",
-         "cesd_raw ~ tmean_c * pm25_ugm3 + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * pm25_ugm3 + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × PM2.5 7d",
-         "cesd_raw ~ tmean_c * pm25_7d + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * pm25_7d + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmax × PM2.5 7d",
-         "cesd_raw ~ tmax_c * pm25_7d + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmax_c * pm25_7d + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × log(PM2.5 7d)",
-         "cesd_raw ~ tmean_c * I(np.log(pm25_7d)) + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * I(np.log(pm25_7d)) + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
     ]
     for label, formula in specs:
         try:
-            m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
             rec = {"spec": label, "n": int(m._N)}
             for t in m.coef().index:
                 if any(k in t for k in ["pm25", "tmean_c", "tmax_c"]):
@@ -107,7 +107,7 @@ def table_f_event_study(df: pd.DataFrame) -> pd.DataFrame:
     """
     HAZE_PROVS = list(range(11, 22)) + list(range(61, 65))
     sub = df[df.wave == "IFLS5"].copy()
-    sub["treated_region"] = sub.prov_code.isin(HAZE_PROVS).astype(int)
+    sub["treated_region"] = sub.province_code.isin(HAZE_PROVS).astype(int)
 
     sub["ym"] = sub.interview_date.dt.to_period("M").astype(str)
     sub_did = sub[sub.ym.isin(["2015-07", "2015-08", "2015-09"])].copy()
@@ -123,18 +123,18 @@ def table_f_event_study(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     specs = [
         ("Basic DiD: treated × post",
-         "cesd_raw ~ treated_region * post + age + female + edu_yrs + married + widowed | kab_code"),
+         "cesd_raw ~ treated_region * post + age + female + edu_yrs + married + widowed | kabupaten_code"),
         ("DiD + heat",
-         "cesd_raw ~ treated_region * post + tmean_c + age + female + edu_yrs + married + widowed | kab_code"),
+         "cesd_raw ~ treated_region * post + tmean_c + age + female + edu_yrs + married + widowed | kabupaten_code"),
         ("DiD with continuous PM2.5",
-         "cesd_raw ~ pm25_ugm3 + tmean_c + tmean_c:pm25_ugm3 + age + female + edu_yrs + married + widowed | kab_code"),
+         "cesd_raw ~ pm25_ugm3 + tmean_c + tmean_c:pm25_ugm3 + age + female + edu_yrs + married + widowed | kabupaten_code"),
     ]
     for label, formula in specs:
         try:
-            m = pf.feols(formula, data=sub_did, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=sub_did, vcov={"CRV1": "kabupaten_code"})
             rec = {"spec": label, "n": int(m._N)}
             for t in m.coef().index:
-                if any(k in t for k in ["treated_region", "post", "pm25", "tmean", "kab_code:"]):
+                if any(k in t for k in ["treated_region", "post", "pm25", "tmean", "kabupaten_code:"]):
                     rec[f"{t}_coef"] = m.coef()[t]
                     rec[f"{t}_p"] = m.pvalue()[t]
             rows.append(rec)
@@ -160,9 +160,9 @@ def table_g_three_way_pm25(df: pd.DataFrame) -> pd.DataFrame:
         ("loan_rejected", "Loan rejected"),
     ]
     for var, label in stressors:
-        formula = f"cesd_raw ~ tmean_c * pm25_7d * {var} + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"
+        formula = f"cesd_raw ~ tmean_c * pm25_7d * {var} + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"
         try:
-            m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
             three_way = f"tmean_c:pm25_7d:{var}"
             rows.append({
                 "stressor": label,

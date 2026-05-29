@@ -7,20 +7,19 @@ up as a 0.5+ AOD spike across Sumatra and Kalimantan in Sep-Nov 2015.
 Source: MODIS/061/MOD08_M3, band Aerosol_Optical_Depth_Land_Ocean_Mean_Mean.
 
 Output: data/generated/aod_monthly_kab.parquet
-  cols: kab_code, year, month, aod
+  cols: kabupaten_code, year, month, aod
 """
 from __future__ import annotations
 
 import os
 import time
-from pathlib import Path
 
 import ee
 import pandas as pd
 import shapely.wkt
 
-PROJECT = Path(__file__).resolve().parents[2]
-OUT = PROJECT / "data" / "generated"
+from config import GEE_ENV_PATH, OUT
+from _schemas import AOD_MONTHLY_SCHEMA
 
 # Monthly windows. Each <=12 months × 303 kab = <=3636 features per call (under 5000 limit).
 WINDOWS = [
@@ -32,8 +31,7 @@ WINDOWS = [
 
 
 def init_gee() -> None:
-    env_path = Path("C:/Users/jingy/Dropbox/solar panel/.env")
-    for line in env_path.read_text().splitlines():
+    for line in GEE_ENV_PATH.read_text().splitlines():
         if line.startswith("GEE_PROJECT_ID="):
             os.environ["GEE_PROJECT_ID"] = line.split("=", 1)[1].strip()
     ee.Initialize(project=os.environ["GEE_PROJECT_ID"])
@@ -54,7 +52,7 @@ def main() -> None:
     feats = []
     for r in kab.itertuples(index=False):
         g = shapely.wkt.loads(r.geometry_wkt)
-        feats.append(ee.Feature(shapely_to_ee(g), {"kab_code": int(r.kab_code)}))
+        feats.append(ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(r.kabupaten_code)}))
     fc = ee.FeatureCollection(feats)
 
     band = "Aerosol_Optical_Depth_Land_Ocean_Mean_Mean"
@@ -83,7 +81,7 @@ def main() -> None:
         for f in info["features"]:
             p = f["properties"]
             rows_all.append({
-                "kab_code": int(p["kab_code"]),
+                "kabupaten_code": int(p["kabupaten_code"]),
                 "year": int(p["year"]),
                 "month": int(p["month"]),
                 "aod": p.get("mean"),  # default reducer output property name
@@ -92,13 +90,14 @@ def main() -> None:
     df = pd.DataFrame(rows_all)
     # MODIS AOD is stored scaled by 1000; convert to physical units
     df["aod"] = df.aod / 1000.0
+    df = AOD_MONTHLY_SCHEMA.validate(df)
     df.to_parquet(OUT / "aod_monthly_kab.parquet", index=False)
     print(f"\nwrote {len(df):,} rows to {OUT/'aod_monthly_kab.parquet'}")
     print(df.aod.describe().round(3))
     print("\n2015 haze months (Sep-Nov) on Sumatra/Kalimantan:")
     haze = df[(df.year == 2015) & (df.month.isin([9, 10, 11]))]
-    haze_kab = haze.merge(kab[["kab_code", "prov_code"]], on="kab_code", how="left")
-    haze_kab["region"] = haze_kab.prov_code.apply(
+    haze_kab = haze.merge(kab[["kabupaten_code", "province_code"]], on="kabupaten_code", how="left")
+    haze_kab["region"] = haze_kab.province_code.apply(
         lambda p: "Sumatra" if 11 <= p <= 21 else ("Kalimantan" if 61 <= p <= 64 else "Other")
     )
     summ = haze_kab.groupby("region").aod.describe().round(3)

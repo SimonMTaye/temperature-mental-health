@@ -42,7 +42,7 @@ mod14 = import_module("14_unified_refined")
 PALM_3MO_DECLINE = mod14.PALM_3MO_DECLINE
 
 CONTROLS = "age + female + edu_yrs + married + widowed"
-FE_IFLS5 = "month + year + kab_code"
+FE_IFLS5 = "month + year + kabupaten_code"
 CUT_DATE = pd.Timestamp("2014-11-18")
 
 
@@ -84,7 +84,7 @@ def load_data() -> pd.DataFrame:
 
     df["female"] = (df.sex == "F").astype(int)
     df = df.dropna(subset=[
-        "cesd_raw", "tmean_c", "kab_code", "month", "year", "wave",
+        "cesd_raw", "tmean_c", "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date", "owns_vehicle",
@@ -95,8 +95,8 @@ def load_data() -> pd.DataFrame:
     df["fuel_shock"]         = df.post_subsidy * df.transport_share
     df["fuel_shock_vehicle"] = df.post_subsidy * df.owns_vehicle
 
-    counts = df.kab_code.value_counts()
-    df = df[df.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = df.kabupaten_code.value_counts()
+    df = df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
     return df
 
 
@@ -111,7 +111,7 @@ def stars(p):
 def fit_one_inter(df, stressor, extra_main, exposed_value):
     """Return interaction coef + delta-method heat slope at exposed_value."""
     formula = f"cesd_z ~ heat_c_dev * {stressor}{extra_main} + {CONTROLS} | {FE_IFLS5}"
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     inter = f"heat_c_dev:{stressor}"
     coefs = m.coef()
     V = pd.DataFrame(m._vcov, index=coefs.index, columns=coefs.index)
@@ -145,7 +145,7 @@ def fit_both(df):
     formula = (f"cesd_z ~ heat_c_dev * fuel_shock + heat_c_dev * fuel_shock_vehicle "
                f"+ post_subsidy + transport_share + owns_vehicle "
                f"+ {CONTROLS} | {FE_IFLS5}")
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     coefs = m.coef()
     return {
         "n":  int(m._N),
@@ -161,8 +161,8 @@ def fit_both(df):
 def main():
     df = load_data()
     sub5 = df[df.wave == "IFLS5"].copy()
-    counts = sub5.kab_code.value_counts()
-    sub5 = sub5[sub5.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = sub5.kabupaten_code.value_counts()
+    sub5 = sub5[sub5.kabupaten_code.isin(counts[counts > 1].index)].copy()
     print(f"IFLS5 sample (after singleton-kab restriction): n={len(sub5):,}")
     print(f"  owns_vehicle share: {sub5.owns_vehicle.mean()*100:.1f}%")
     print(f"  post_subsidy share: {sub5.post_subsidy.mean()*100:.1f}%")

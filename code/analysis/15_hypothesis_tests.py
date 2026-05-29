@@ -4,9 +4,9 @@ For each outcome (CES-D total z; Somatic z; Depressed-Affect z; Positive-Affect 
 and each heat measure (tmean_c, tmax_c, tmin_c) and each stressor
 (job_loss_within_yr; palm_shock), we run
 
-    factor_z ~ heat_c * stressor + controls + month + year + wave + kab_code FE
+    factor_z ~ heat_c * stressor + controls + month + year + wave + kabupaten_code FE
 
-clustered by kab_code. We report the heat * stressor interaction with significance,
+clustered by kabupaten_code. We report the heat * stressor interaction with significance,
 plus the placebo combinations expected to be null.
 
 Radloff factor mapping for the 10-item CES-D used in IFLS:
@@ -131,7 +131,7 @@ def load_data() -> pd.DataFrame:
     factor = build_factor_scores()
     df = df.merge(factor, on=["pidlink", "wave"], how="left")
 
-    keep = ["tmean_c", "tmax_c", "tmin_c", "kab_code", "month", "year", "wave",
+    keep = ["tmean_c", "tmax_c", "tmin_c", "kabupaten_code", "month", "year", "wave",
             "age", "edu_yrs", "married", "widowed", "female", "interview_date",
             "job_loss_within_yr", "palm_farmer_individual", "transport_share",
             "somatic_z", "depraffect_z", "posaffect_z"]
@@ -161,7 +161,7 @@ def load_data() -> pd.DataFrame:
 
 def run_inter(df: pd.DataFrame, outcome: str, heat: str, stressor: str,
               extra_controls: list[str] | None = None) -> dict:
-    fe = "wave + month + year + kab_code"
+    fe = "wave + month + year + kabupaten_code"
     extra = ""
     if extra_controls:
         extra = " + " + " + ".join(extra_controls)
@@ -169,7 +169,7 @@ def run_inter(df: pd.DataFrame, outcome: str, heat: str, stressor: str,
         f"{outcome} ~ {heat} * {stressor} + age + female + edu_yrs + married + widowed{extra} "
         f"| {fe}"
     )
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     inter = f"{heat}:{stressor}"
     coef = m.coef().get(inter, np.nan)
     se = m.se().get(inter, np.nan)
@@ -243,8 +243,8 @@ def main() -> None:
     for outcome in outcomes:
         for heat in ["tmean_c_dev", "tmax_c_dev", "tmin_c_dev"]:
             f = (f"{outcome} ~ {heat} + age + female + edu_yrs + married + widowed "
-                 f"| wave + month + year + kab_code")
-            m = pf.feols(f, data=df, vcov={"CRV1": "kab_code"})
+                 f"| wave + month + year + kabupaten_code")
+            m = pf.feols(f, data=df, vcov={"CRV1": "kabupaten_code"})
             direct.append(dict(outcome=outcome, heat=heat,
                                coef=m.coef().get(heat, np.nan),
                                se=m.se().get(heat, np.nan),
@@ -277,8 +277,8 @@ def main() -> None:
                 #   - heat * fuel_shock is the 3-way DiD (heat × post × transport-share)
                 f = (f"{outcome} ~ {heat} * fuel_shock + transport_share + "
                      f"age + female + edu_yrs + married + widowed "
-                     f"| month + year + kab_code")
-                m = pf.feols(f, data=sub, vcov={"CRV1": "kab_code"})
+                     f"| month + year + kabupaten_code")
+                m = pf.feols(f, data=sub, vcov={"CRV1": "kabupaten_code"})
                 inter = f"{heat}:fuel_shock"
                 fuel_rows.append(dict(
                     outcome=outcome, heat=heat,
@@ -343,10 +343,10 @@ def main() -> None:
                 if extra:
                     extra_str = " + " + " + ".join(extra)
                 # FE: pidlink absorbs all time-invariant person attributes.
-                # Keep month/year/kab_code FE for general trend + local-shock absorption.
+                # Keep month/year/kabupaten_code FE for general trend + local-shock absorption.
                 f = (f"{outcome} ~ {heat} * {stressor} + age + edu_yrs + married + widowed{extra_str} "
-                     f"| pidlink + month + year + kab_code")
-                m = pf.feols(f, data=panel, vcov={"CRV1": "kab_code"})
+                     f"| pidlink + month + year + kabupaten_code")
+                m = pf.feols(f, data=panel, vcov={"CRV1": "kabupaten_code"})
                 inter = f"{heat}:{stressor}"
                 panel_rows.append(dict(
                     outcome=outcome, heat=heat, stressor=stressor,

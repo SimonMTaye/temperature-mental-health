@@ -54,7 +54,7 @@ def load_data() -> pd.DataFrame:
     df["female"] = (df.sex == "F").astype(int)
     df = df.dropna(subset=[
         "cesd_raw", "tmean_c", "tmax_c", "tmin_c",
-        "kab_code", "month", "year", "wave",
+        "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date",
@@ -74,13 +74,13 @@ def load_data() -> pd.DataFrame:
 
 
 def _restrict_singleton_kab(df: pd.DataFrame) -> pd.DataFrame:
-    counts = df.kab_code.value_counts()
-    return df[df.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = df.kabupaten_code.value_counts()
+    return df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
 
 
 def fit_cdd(df: pd.DataFrame, heat: str, stressor: str, extra_control: str, fe: str) -> dict:
     formula = f"cesd_z ~ {heat} * {stressor}{extra_control} + {CONTROLS} | {fe}"
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     inter = f"{heat}:{stressor}"
     return {
         "n":         int(m._N),
@@ -112,8 +112,8 @@ def main() -> None:
     df = _restrict_singleton_kab(df)
     sub_ifls5 = _restrict_singleton_kab(df[df.wave == "IFLS5"].copy())
 
-    FE_POOLED = "month + year + wave + kab_code"
-    FE_IFLS5  = "month + year + kab_code"
+    FE_POOLED = "month + year + wave + kabupaten_code"
+    FE_IFLS5  = "month + year + kabupaten_code"
 
     stressors = [
         {"col": "(1)", "name": "job_loss_within_yr", "extra": "",

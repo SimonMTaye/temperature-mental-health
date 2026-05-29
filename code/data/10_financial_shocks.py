@@ -12,7 +12,7 @@ Adds these per (pidlink, wave):
   cash_transfer_recipient  HH receives PKH/BLT/cash transfer (b1_ksr1.ksr17==1 OR b2_kr.kr27b==1)
   health_card              HH has Jamkesmas/BPJS/health card (b2_kr.kr26==1)
 
-  palm_region              prov_code in (Sumatra+Kalimantan palm-oil heartland)
+  palm_region              province_code in (Sumatra+Kalimantan palm-oil heartland)
   palm_price_usd_mt        World Bank monthly palm oil price for interview month
   palm_price_z             z-scored palm price (within 2007-2016 history)
 
@@ -25,12 +25,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-RAW = Path("E:/IFLS/extracted")
-
 sys.path.insert(0, str(Path(__file__).parent))
+from config import OUT, RAW  # noqa: E402
 from _sentinels import clean_count, clean_month, clean_year  # noqa: E402
-OUT = PROJECT / "data" / "generated"
+from _ifls_wave import hhid_col, wave_folder  # noqa: E402
+from _schemas import FINANCIAL_SHOCKS_SCHEMA  # noqa: E402
 
 # Provinces with significant palm oil cultivation (Indonesian Palm Oil Producers Association)
 PALM_PROVS = {
@@ -52,9 +51,7 @@ PALM_PRICE = {
 }
 
 
-def _job_loss(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    df = pd.read_stata(folder / "b3a_tk4.dta", convert_categoricals=False)
+def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     out = pd.DataFrame({"pidlink": df.pidlink})
     # Clean sentinels in the job-loss recall fields before deriving anything
     tk46c_clean = clean_count(df.tk46c, max_real=50)        # masks 98/99/998/999
@@ -70,46 +67,53 @@ def _job_loss(wave: str) -> pd.DataFrame:
     return out.drop_duplicates("pidlink")
 
 
-def _vehicle_owner(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    hr = pd.read_stata(folder / "b2_hr1.dta", convert_categoricals=False)
+def _job_loss(wave: str) -> pd.DataFrame:
+    df = pd.read_stata(wave_folder(RAW, wave) / "b3a_tk4.dta", convert_categoricals=False)
+    return _job_loss_from_df(df, wave=wave)
+
+
+def _vehicle_owner_from_df(hr: pd.DataFrame, *, hhid_col_name: str, wave: str) -> pd.DataFrame:
     veh = hr[hr.hrtype == "E"].copy()
     veh["vehicle_owner"] = (veh.hr01 == 1).astype(int)
-    hhcol = "hhid14" if wave == "IFLS5" else "hhid07"
-    out = veh[[hhcol, "vehicle_owner"]].rename(columns={hhcol: "hhid"}).drop_duplicates("hhid")
+    out = veh[[hhid_col_name, "vehicle_owner"]].rename(columns={hhid_col_name: "hhid"}).drop_duplicates("hhid")
+    out["wave"] = wave
+    return out
+
+
+def _vehicle_owner(wave: str) -> pd.DataFrame:
+    hr = pd.read_stata(wave_folder(RAW, wave) / "b2_hr1.dta", convert_categoricals=False)
+    return _vehicle_owner_from_df(hr, hhid_col_name=hhid_col(wave), wave=wave)
+
+
+def _urban_from_df(screening: pd.DataFrame, *, hhid_col_name: str, wave: str) -> pd.DataFrame:
+    screening["urban"] = (screening.sc05 == 1).astype(int)  # 1=Urban, 2=Rural in IFLS convention
+    out = screening[[hhid_col_name, "urban"]].rename(columns={hhid_col_name: "hhid"}).drop_duplicates("hhid")
     out["wave"] = wave
     return out
 
 
 def _urban(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
     fname = "bk_sc1.dta" if wave == "IFLS5" else "bk_sc.dta"
-    sc = pd.read_stata(folder / fname, convert_categoricals=False)
-    hhcol = "hhid14" if wave == "IFLS5" else "hhid07"
-    sc["urban"] = (sc.sc05 == 1).astype(int)  # 1=Urban, 2=Rural in IFLS convention
-    out = sc[[hhcol, "urban"]].rename(columns={hhcol: "hhid"}).drop_duplicates("hhid")
-    out["wave"] = wave
-    return out
+    screening = pd.read_stata(wave_folder(RAW, wave) / fname, convert_categoricals=False)
+    return _urban_from_df(screening, hhid_col_name=hhid_col(wave), wave=wave)
 
 
-def _cash_transfer(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
+def _cash_transfer_from_frames(
+    *,
+    wave: str,
+    hhid_col_name: str,
+    ksr: pd.DataFrame | None,
+    kr: pd.DataFrame | None,
+) -> pd.DataFrame:
     rows = []
     # Source 1: ksr17 (any HH cash transfer received)
-    p = folder / "b1_ksr1.dta"
-    if p.exists():
-        ksr = pd.read_stata(p, convert_categoricals=False)
-        if "ksr17" in ksr.columns:
-            hhcol = "hhid14" if wave == "IFLS5" else "hhid07"
-            rec = ksr.groupby(hhcol)["ksr17"].apply(lambda x: int((x == 1).any())).reset_index()
-            rec.columns = ["hhid", "any_cash_transfer_ksr"]
-            rows.append(rec)
+    if ksr is not None and "ksr17" in ksr.columns:
+        rec = ksr.groupby(hhid_col_name)["ksr17"].apply(lambda x: int((x == 1).any())).reset_index()
+        rec.columns = ["hhid", "any_cash_transfer_ksr"]
+        rows.append(rec)
     # Source 2: kr27b BLT card (IFLS5 only)
-    p = folder / "b2_kr.dta"
-    if p.exists():
-        kr = pd.read_stata(p, convert_categoricals=False)
-        hhcol = "hhid14" if wave == "IFLS5" else "hhid07"
-        cols = {"hhid": kr[hhcol]}
+    if kr is not None:
+        cols = {"hhid": kr[hhid_col_name]}
         if "kr27b" in kr.columns:
             cols["blt_card"] = (kr.kr27b == 1).astype(int)
         if "kr26" in kr.columns:
@@ -128,6 +132,18 @@ def _cash_transfer(wave: str) -> pd.DataFrame:
     ]).max(axis=1).fillna(0).astype(int)
     out["wave"] = wave
     return out
+
+
+def _cash_transfer(wave: str) -> pd.DataFrame:
+    folder = wave_folder(RAW, wave)
+    ksr_path = folder / "b1_ksr1.dta"
+    kr_path = folder / "b2_kr.dta"
+    return _cash_transfer_from_frames(
+        wave=wave,
+        hhid_col_name=hhid_col(wave),
+        ksr=pd.read_stata(ksr_path, convert_categoricals=False) if ksr_path.exists() else None,
+        kr=pd.read_stata(kr_path, convert_categoricals=False) if kr_path.exists() else None,
+    )
 
 
 def main() -> None:
@@ -152,7 +168,7 @@ def main() -> None:
     out = out.merge(cash, on=["hhid", "wave"], how="left")
 
     # Add days_since_last_loss (need interview date)
-    ind = pd.read_parquet(OUT / "individuals.parquet")[["pidlink", "wave", "interview_date", "prov_code"]]
+    ind = pd.read_parquet(OUT / "individuals.parquet")[["pidlink", "wave", "interview_date", "province_code"]]
     out = out.merge(ind, on=["pidlink", "wave"], how="left")
     has_date = out.last_loss_year.notna() & (out.last_loss_year > 0) & out.last_loss_month.notna() & (out.last_loss_month > 0)
     out["last_loss_date"] = pd.NaT
@@ -169,7 +185,7 @@ def main() -> None:
     out["job_loss_within_yr"] = ((out.days_since_last_loss >= 0) & (out.days_since_last_loss <= 365)).astype(int)
 
     # Palm region + monthly price
-    out["palm_region"] = out.prov_code.isin(PALM_PROVS).astype(int)
+    out["palm_region"] = out.province_code.isin(PALM_PROVS).astype(int)
     out["intvw_yr"] = out.interview_date.dt.year
     out["intvw_mo"] = out.interview_date.dt.month
     out["palm_price_usd_mt"] = out.apply(
@@ -189,6 +205,17 @@ def main() -> None:
             "palm_region", "palm_price_usd_mt", "palm_price_z", "palm_shock"]
     keep = [c for c in keep if c in out.columns]
     out_final = out[keep].copy()
+    for c in ["blt_card", "health_card"]:
+        if c not in out_final.columns:
+            out_final[c] = 0
+    out_final = out_final[
+        ["pidlink", "wave",
+         "recent_job_loss_5y", "involuntary_loss_5y", "days_since_last_loss",
+         "job_loss_within_yr",
+         "vehicle_owner", "urban",
+         "cash_transfer_recipient", "blt_card", "health_card",
+         "palm_region", "palm_price_usd_mt", "palm_price_z", "palm_shock"]
+    ]
     # Cast numeric flags
     for c in ["recent_job_loss_5y", "involuntary_loss_5y", "job_loss_within_yr",
               "vehicle_owner", "urban", "cash_transfer_recipient",
@@ -196,6 +223,7 @@ def main() -> None:
         if c in out_final.columns:
             out_final[c] = out_final[c].fillna(0).astype(int)
 
+    out_final = FINANCIAL_SHOCKS_SCHEMA.validate(out_final)
     out_final.to_parquet(OUT / "financial_shocks.parquet", index=False)
     print(f"\nwrote {len(out_final):,} rows to {OUT/'financial_shocks.parquet'}")
     print("\nshock prevalence by wave:")

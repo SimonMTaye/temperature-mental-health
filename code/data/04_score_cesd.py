@@ -41,12 +41,10 @@ Outputs: data/generated/cesd_scores.parquet
 """
 from __future__ import annotations
 
-from pathlib import Path
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-RAW = Path("E:/IFLS/extracted")
-OUT = PROJECT / "data" / "generated"
+from config import OUT, RAW
+from _schemas import CESD_SCORES_SCHEMA
 
 REVERSE_ITEMS = {"E", "H"}  # hopeful, happy — applied to BOTH waves (see header docstring)
 
@@ -58,7 +56,7 @@ def score_ifls5() -> pd.DataFrame:
     df.loc[df.kptype.isin(REVERSE_ITEMS), "score"] = 3 - df.loc[df.kptype.isin(REVERSE_ITEMS), "score"]
     agg = df.groupby("pidlink").agg(n_items=("score", "size"), cesd_raw=("score", "sum")).reset_index()
     agg["wave"] = "IFLS5"
-    agg["cesd10_count"] = pd.NA
+    agg["cesd10_count"] = float("nan")
     return agg
 
 
@@ -88,6 +86,8 @@ def main() -> None:
     parts = [score_ifls4(), score_ifls5()]
     out = pd.concat(parts, ignore_index=True)
     out["depressed"] = (out.cesd_raw >= 10).astype(int)
+    out = out[["pidlink", "n_items", "cesd_raw", "wave", "cesd10_count", "depressed"]]
+    out = CESD_SCORES_SCHEMA.validate(out)
     out.to_parquet(OUT / "cesd_scores.parquet", index=False)
     print(f"wrote {len(out):,} rows to {OUT/'cesd_scores.parquet'}")
     print(out.groupby("wave").agg(

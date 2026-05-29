@@ -7,13 +7,13 @@ Uses stdlib zipfile only — no extra deps. Run from anywhere:
     # or
     python code/data/00_unpack_ifls.py
 """
+
 from __future__ import annotations
 
 import zipfile
 from pathlib import Path
 
-RAW_ROOT = Path("E:/IFLS")
-OUT_ROOT = Path("E:/IFLS/extracted")
+from config import OUT_ROOT, RAW_ROOT
 
 # Each entry: archive path (relative to RAW_ROOT) -> extraction dir (relative to OUT_ROOT).
 ARCHIVES: dict[str, str] = {
@@ -46,12 +46,8 @@ ARCHIVES: dict[str, str] = {
 }
 
 
-def is_already_extracted(target: Path) -> bool:
-    return target.exists() and any(target.iterdir())
-
-
 def unpack_one(archive: Path, target: Path) -> str:
-    if is_already_extracted(target):
+    if target.exists() and any(target.iterdir()):
         return "skip"
     target.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as zf:

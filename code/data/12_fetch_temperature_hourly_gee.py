@@ -10,7 +10,7 @@ and as a richer source for the daytime-only / nighttime-only Tmax/Tmin checks).
 Approach
 --------
 For each batch of 16 hours, do ONE GEE reduceRegions over all kabupaten polygons
--> hourly means written into a long parquet keyed (kab_code, datetime_utc).
+-> hourly means written into a long parquet keyed (kabupaten_code, datetime_utc).
 
   16 hours x 303 polygons = 4,848 features per call (under the 5,000 getInfo cap).
 
@@ -49,15 +49,13 @@ from __future__ import annotations
 import os
 import time
 from datetime import timedelta
-from pathlib import Path
 
 import ee
 import pandas as pd
 import shapely.wkt
 
-PROJECT = Path(__file__).resolve().parents[2]
-OUT = PROJECT / "data" / "generated"
-TMP = OUT / "_tmp_temperature_hourly"
+from config import GEE_ENV_PATH, OUT, TMP_TEMPERATURE_HOURLY as TMP
+from _schemas import HOURLY_TEMPERATURE_SCHEMA
 
 # Hours per server-side call. 16 * 303 polygons = 4,848 features (under 5000 cap).
 BATCH_HOURS = 16
@@ -72,8 +70,7 @@ def init_gee() -> None:
     """Read GEE_PROJECT_ID from the .env file and initialize Earth Engine.
     Reuses the same .env used by 03_fetch_temperature_gee.py.
     """
-    env_path = Path("C:/Users/jingy/Dropbox/solar panel/.env")
-    for line in env_path.read_text().splitlines():
+    for line in GEE_ENV_PATH.read_text().splitlines():
         if line.startswith("GEE_PROJECT_ID="):
             os.environ["GEE_PROJECT_ID"] = line.split("=", 1)[1].strip()
     ee.Initialize(project=os.environ["GEE_PROJECT_ID"])
@@ -90,7 +87,7 @@ def build_polygon_collection(kab: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
     for r in kab.itertuples(index=False):
         g = shapely.wkt.loads(r.geometry_wkt)
-        feats.append(ee.Feature(shapely_to_ee(g), {"kab_code": int(r.kab_code)}))
+        feats.append(ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(r.kabupaten_code)}))
     return ee.FeatureCollection(feats)
 
 
@@ -121,7 +118,7 @@ def pull_window(start: pd.Timestamp, end_excl: pd.Timestamp,
         if p.get("temperature_2m") is None:
             continue
         rows.append({
-            "kab_code":     int(p["kab_code"]),
+            "kabupaten_code":     int(p["kabupaten_code"]),
             "datetime_utc": p["datetime"],
             "tmean_c_hour": p["temperature_2m"] - 273.15,
             "dewp_c_hour":  (p["dewpoint_temperature_2m"] - 273.15
@@ -205,7 +202,8 @@ def main() -> None:
 
     combined = pd.concat(all_frames, ignore_index=True)
     combined["datetime_utc"] = pd.to_datetime(combined.datetime_utc, utc=True)
-    combined = combined.sort_values(["kab_code", "datetime_utc"]).reset_index(drop=True)
+    combined = combined.sort_values(["kabupaten_code", "datetime_utc"]).reset_index(drop=True)
+    combined = HOURLY_TEMPERATURE_SCHEMA.validate(combined)
     out_path = OUT / "hourly_temperature_kab.parquet"
     combined.to_parquet(out_path, index=False)
     print(f"\nwrote {len(combined):,} rows to {out_path}")

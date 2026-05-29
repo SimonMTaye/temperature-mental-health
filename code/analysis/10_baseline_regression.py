@@ -36,7 +36,7 @@ RES.mkdir(parents=True, exist_ok=True)
 def load_data() -> pd.DataFrame:
     df = pd.read_parquet(OUT / "analysis_dataset.parquet")
     # Drop rows with missing key covariates so all specs run on the same sample
-    keep = ["cesd_raw", "tmean_c", "kab_code", "wave", "month", "year",
+    keep = ["cesd_raw", "tmean_c", "kabupaten_code", "wave", "month", "year",
             "age", "sex", "edu_yrs", "married", "widowed",
             "disaster_5yr", "disaster_severe_5yr", "loan_rejected", "agri_occupation"]
     df = df.dropna(subset=keep)
@@ -54,24 +54,24 @@ def baseline_table(df: pd.DataFrame) -> pd.DataFrame:
         ("M2: + wave + month + year FE",
          "cesd_raw ~ tmean_c | wave + month + year"),
         ("M3: + kab FE",
-         "cesd_raw ~ tmean_c | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c | wave + month + year + kabupaten_code"),
         ("M4: + demographic controls",
-         "cesd_raw ~ tmean_c + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("M5: tmax instead of tmean",
-         "cesd_raw ~ tmax_c + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmax_c + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("M6: tmin (nighttime) instead",
-         "cesd_raw ~ tmin_c + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmin_c + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("M7: heat index",
-         "cesd_raw ~ heat_idx_c + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ heat_idx_c + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("M8: 30-day temperature anomaly",
-         "cesd_raw ~ t_anom_today + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ t_anom_today + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("M9: lead7 placebo",
-         "cesd_raw ~ tmean_lead7 + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_lead7 + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
     ]
     rows = []
     for name, formula in specs:
         try:
-            m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
             heat_term = formula.split("~")[1].split("+")[0].strip().split("|")[0].strip()
             row = {
                 "spec": name,
@@ -119,9 +119,9 @@ def heterogeneity_table(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     base_ctrl = "+ age + edu_yrs + married + widowed"
     for var, label in stressors:
-        formula = f"cesd_raw ~ tmean_c * {var} + female {base_ctrl} | wave + month + year + kab_code"
+        formula = f"cesd_raw ~ tmean_c * {var} + female {base_ctrl} | wave + month + year + kabupaten_code"
         try:
-            m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
             inter = f"tmean_c:{var}"
             rows.append({
                 "stressor": label,
@@ -154,13 +154,13 @@ def binary_robustness(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for label, formula in [
         ("Linear prob: depressed ~ tmean",
-         "depressed ~ tmean_c + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "depressed ~ tmean_c + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Linear prob: depressed ~ tmax",
-         "depressed ~ tmax_c + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "depressed ~ tmax_c + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Linear prob: depressed ~ heat_idx",
-         "depressed ~ heat_idx_c + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "depressed ~ heat_idx_c + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
     ]:
-        m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+        m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
         term = formula.split("~")[1].split("+")[0].strip()
         rows.append({"spec": label, "coef": m.coef()[term], "se": m.se()[term],
                       "p": m.pvalue()[term], "n": int(m._N)})

@@ -45,14 +45,14 @@ def load_data() -> pd.DataFrame:
     df["female"] = (df.sex == "F").astype(int)
     df = df.dropna(subset=[
         "cesd_raw", "tmean_c", "tmax_c", "tmin_c",
-        "kab_code", "month", "year", "wave",
+        "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date",
     ])
     # Match the analysis-sample restriction (drop singleton kabs)
-    counts = df.kab_code.value_counts()
-    df = df[df.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = df.kabupaten_code.value_counts()
+    df = df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
 
     # CES-D z-score within wave (constructed for analysis)
     df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(lambda s: (s - s.mean()) / s.std())
@@ -143,7 +143,7 @@ def main() -> None:
     lines.append(rf"Observations &  &  & {n_pooled:,} \\")
     lines.append(rf"\quad IFLS-4 (2007--2008) &  &  & {n_ifls4:,} \\")
     lines.append(rf"\quad IFLS-5 (2014--2015) &  &  & {n_ifls5:,} \\")
-    lines.append(r"\quad Kabupaten clusters &  &  & " + f"{df.kab_code.nunique():,}" + r" \\")
+    lines.append(r"\quad Kabupaten clusters &  &  & " + f"{df.kabupaten_code.nunique():,}" + r" \\")
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
 

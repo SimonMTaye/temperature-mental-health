@@ -1,6 +1,6 @@
 """Derive non-linear heat features from the existing daily temperature data.
 
-Adds, per (kab_code, date):
+Adds, per (kabupaten_code, date):
   hot28, hot30, hot32          1 if tmax_c crosses each threshold today
   hot28_7d, hot30_7d, hot32_7d count of crossings in past 7 days (incl today)
   hot28_30d, hot30_30d, hot32_30d                              past 30 days
@@ -13,18 +13,17 @@ Output appended to daily_temperature_kab.parquet (overwrites with extra columns)
 """
 from __future__ import annotations
 
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-OUT = PROJECT / "data" / "generated"
+from config import OUT
+from _schemas import DAILY_TEMPERATURE_HEAT_SCHEMA
 
 
 def main() -> None:
     df = pd.read_parquet(OUT / "daily_temperature_kab.parquet")
-    df = df.sort_values(["kab_code", "date"]).reset_index(drop=True)
-    g = df.groupby("kab_code", group_keys=False)
+    df = df.sort_values(["kabupaten_code", "date"]).reset_index(drop=True)
+    g = df.groupby("kabupaten_code", group_keys=False)
 
     # daily threshold flags (use tmax for "hot day" definition — standard)
     for thr in [28, 30, 32]:
@@ -54,6 +53,7 @@ def main() -> None:
     )
     df["is_extreme"] = (df.tmean_c >= p90).astype(int)
 
+    df = DAILY_TEMPERATURE_HEAT_SCHEMA.validate(df)
     df.to_parquet(OUT / "daily_temperature_kab.parquet", index=False)
     print(f"updated {OUT/'daily_temperature_kab.parquet'} with heat features")
     print(df[["hot28", "hot30", "hot32", "hot30_7d", "hot32_7d",

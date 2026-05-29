@@ -33,23 +33,23 @@ def load_data() -> pd.DataFrame:
     df["intvw_mo"] = df.interview_date.dt.month
     df = df.merge(
         aod.rename(columns={"year": "intvw_yr", "month": "intvw_mo"}),
-        on=["kab_code", "intvw_yr", "intvw_mo"], how="left",
+        on=["kabupaten_code", "intvw_yr", "intvw_mo"], how="left",
     )
 
     # Re-attach the heat-features that 06_build_analysis didn't carry forward
     temp = pd.read_parquet(OUT / "daily_temperature_kab.parquet")
     temp["date"] = pd.to_datetime(temp.date)
-    feat_cols = ["kab_code", "date", "hot28", "hot30", "hot32",
+    feat_cols = ["kabupaten_code", "date", "hot28", "hot30", "hot32",
                  "hot28_7d", "hot30_7d", "hot32_7d",
                  "hot28_30d", "hot30_30d", "hot32_30d",
                  "cdd", "cdd_7d", "is_extreme", "tmean_p90_30d"]
     df = df.merge(
         temp[feat_cols],
-        left_on=["kab_code", "interview_date"], right_on=["kab_code", "date"],
+        left_on=["kabupaten_code", "interview_date"], right_on=["kabupaten_code", "date"],
         how="left",
     ).drop(columns=["date"])
 
-    keep = ["cesd_raw", "tmean_c", "tmax_c", "kab_code", "wave", "month", "year",
+    keep = ["cesd_raw", "tmean_c", "tmax_c", "kabupaten_code", "wave", "month", "year",
             "age", "sex", "edu_yrs", "married", "widowed",
             "disaster_severe_5yr", "loan_rejected", "agri_occupation",
             "hot30_7d", "hot32_7d", "hot30_30d", "cdd_7d", "is_extreme"]
@@ -71,9 +71,9 @@ def table_a_nonlinear(df: pd.DataFrame) -> pd.DataFrame:
         ("Tmean today (baseline)",            "tmean_c"),
     ]
     for label, term in specs:
-        formula = f"cesd_raw ~ {term} + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"
+        formula = f"cesd_raw ~ {term} + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"
         try:
-            m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
             rows.append({
                 "spec": label, "term": term,
                 "coef": m.coef()[term], "se": m.se()[term],
@@ -101,18 +101,18 @@ def table_b_aod(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     specs = [
         ("AOD main effect",
-         "cesd_raw ~ aod + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ aod + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × AOD",
-         "cesd_raw ~ tmean_c * aod + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * aod + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmax × AOD",
-         "cesd_raw ~ tmax_c * aod + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmax_c * aod + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Hot30_7d × AOD",
-         "cesd_raw ~ hot30_7d * aod + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ hot30_7d * aod + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
     ]
     df_a = df.dropna(subset=["aod"])
     for label, formula in specs:
         try:
-            m = pf.feols(formula, data=df_a, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df_a, vcov={"CRV1": "kabupaten_code"})
             terms = list(m.coef().index)
             interaction_terms = [t for t in terms if ":" in t]
             rec = {"spec": label, "n": int(m._N)}
@@ -134,25 +134,25 @@ def table_b_aod(df: pd.DataFrame) -> pd.DataFrame:
 def table_c_haze_subsample(df: pd.DataFrame) -> pd.DataFrame:
     """Restrict to 2015 haze-affected regions (Sumatra + Kalimantan + Java) and IFLS5 only."""
     HAZE_PROVS = list(range(11, 22)) + list(range(31, 37)) + list(range(61, 65))
-    sub = df[(df.wave == "IFLS5") & (df.prov_code.isin(HAZE_PROVS))].copy()
+    sub = df[(df.wave == "IFLS5") & (df.province_code.isin(HAZE_PROVS))].copy()
     print(f"\n--- Haze subsample (IFLS5, Sumatra+Java+Kalimantan): n={len(sub)} ---")
     print(f"  AOD coverage: {sub.aod.notna().sum()} / {len(sub)}")
 
     rows = []
     specs = [
         ("Tmean × AOD (haze subsample)",
-         "cesd_raw ~ tmean_c * aod + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ tmean_c * aod + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
         ("Hot30_7d × AOD (haze subsample)",
-         "cesd_raw ~ hot30_7d * aod + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ hot30_7d * aod + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
         ("Tmean × log(AOD)",
-         "cesd_raw ~ tmean_c * I(np.log(aod)) + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ tmean_c * I(np.log(aod)) + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
         ("Tmean × AOD × bottom-PCE (3-way)",
-         "cesd_raw ~ tmean_c * aod * pce_q1 + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ tmean_c * aod * pce_q1 + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
     ]
     sub_a = sub.dropna(subset=["aod"])
     for label, formula in specs:
         try:
-            m = pf.feols(formula, data=sub_a, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=sub_a, vcov={"CRV1": "kabupaten_code"})
             rec = {"spec": label, "n": int(m._N)}
             for t in m.coef().index:
                 if any(k in t for k in ["aod", "tmean", "hot30", "pce_q1"]):
@@ -182,9 +182,9 @@ def table_d_three_way(df: pd.DataFrame) -> pd.DataFrame:
         ("loan_rejected", "Loan rejected"),
     ]
     for var, label in stressors:
-        formula = f"cesd_raw ~ tmean_c * aod * {var} + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"
+        formula = f"cesd_raw ~ tmean_c * aod * {var} + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"
         try:
-            m = pf.feols(formula, data=df_a, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df_a, vcov={"CRV1": "kabupaten_code"})
             three_way = f"tmean_c:aod:{var}"
             rows.append({
                 "stressor": label,

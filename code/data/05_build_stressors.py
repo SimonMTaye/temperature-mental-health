@@ -23,52 +23,42 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-RAW = Path("E:/IFLS/extracted")
-OUT = PROJECT / "data" / "generated"
-
 # Make _sentinels.py importable when this script is run directly
 sys.path.insert(0, str(Path(__file__).parent))
+from config import OUT, RAW  # noqa: E402
 from _sentinels import clean_age, clean_categorical  # noqa: E402
+from _ifls_wave import hhid_col, wave_folder  # noqa: E402
+from _schemas import STRESSORS_SCHEMA  # noqa: E402
 
 
-def _ifls5_demographics() -> pd.DataFrame:
-    ar = pd.read_stata(RAW / "IFLS5/hh14/bk_ar1.dta", convert_categoricals=False)
-    ar = ar[["pidlink", "hhid14", "ar07", "ar09", "ar13", "ar16", "ar17"]].rename(columns={
-        "ar07": "sex_raw", "ar09": "age", "ar13": "marital_raw",
-        "ar16": "edu_lvl", "ar17": "edu_grade", "hhid14": "hhid",
-    })
-    ar = ar.dropna(subset=["pidlink"]).drop_duplicates("pidlink")
-    ar["age"] = clean_age(ar.age)
-    ar["marital_raw"] = clean_categorical(ar.marital_raw, digits=1)
-    ar["sex"] = (ar.sex_raw == 3).map({True: "F", False: "M"})  # 1=M,3=F per IFLS docs
-    ar["married"] = (ar.marital_raw == 2).astype(int)
-    ar["widowed"] = (ar.marital_raw.isin([4, 5])).astype(int)  # 4=separated,5=widowed
-    # crude years of education from level + grade
-    lvl_map = {1: 0, 2: 6, 3: 9, 4: 9, 5: 12, 6: 12, 60: 12, 61: 12, 62: 12,
-               63: 12, 11: 0, 14: 12, 15: 14, 17: 16, 13: 0, 95: 0, 98: 0}
-    ar["edu_yrs"] = ar.edu_lvl.map(lvl_map).fillna(0).astype(int)
-    return ar[["pidlink", "hhid", "age", "sex", "married", "widowed", "edu_yrs"]]
-
-
-def _ifls4_demographics() -> pd.DataFrame:
-    ar = pd.read_stata(RAW / "IFLS4/hh07/bk_ar1.dta", convert_categoricals=False)
-    cols_keep = [c for c in ["pidlink", "hhid07", "ar07", "ar09", "ar13", "ar16", "ar17"] if c in ar.columns]
+def _demographics_from_roster(ar: pd.DataFrame, *, hhid_col_name: str) -> pd.DataFrame:
+    """Normalize IFLS roster demographics to person-wave covariates."""
+    cols_keep = [c for c in ["pidlink", hhid_col_name, "ar07", "ar09", "ar13", "ar16", "ar17"] if c in ar.columns]
     ar = ar[cols_keep].rename(columns={
         "ar07": "sex_raw", "ar09": "age", "ar13": "marital_raw",
-        "ar16": "edu_lvl", "ar17": "edu_grade", "hhid07": "hhid",
+        "ar16": "edu_lvl", "ar17": "edu_grade", hhid_col_name: "hhid",
     })
     ar = ar.dropna(subset=["pidlink"]).drop_duplicates("pidlink")
     ar["age"] = clean_age(ar.age)
     if "marital_raw" in ar.columns:
         ar["marital_raw"] = clean_categorical(ar.marital_raw, digits=1)
-    ar["sex"] = (ar.sex_raw == 3).map({True: "F", False: "M"})
+    ar["sex"] = (ar.sex_raw == 3).map({True: "F", False: "M"})  # 1=M,3=F per IFLS docs
     ar["married"] = (ar.get("marital_raw").eq(2)).astype(int) if "marital_raw" in ar.columns else 0
     ar["widowed"] = (ar.get("marital_raw").isin([4, 5])).astype(int) if "marital_raw" in ar.columns else 0
     lvl_map = {1: 0, 2: 6, 3: 9, 4: 9, 5: 12, 6: 12, 60: 12, 61: 12, 62: 12,
                63: 12, 11: 0, 14: 12, 15: 14, 17: 16, 13: 0, 95: 0, 98: 0}
     ar["edu_yrs"] = ar.edu_lvl.map(lvl_map).fillna(0).astype(int) if "edu_lvl" in ar.columns else 0
     return ar[["pidlink", "hhid", "age", "sex", "married", "widowed", "edu_yrs"]]
+
+
+def _ifls5_demographics() -> pd.DataFrame:
+    ar = pd.read_stata(wave_folder(RAW, "IFLS5") / "bk_ar1.dta", convert_categoricals=False)
+    return _demographics_from_roster(ar, hhid_col_name=hhid_col("IFLS5"))
+
+
+def _ifls4_demographics() -> pd.DataFrame:
+    ar = pd.read_stata(wave_folder(RAW, "IFLS4") / "bk_ar1.dta", convert_categoricals=False)
+    return _demographics_from_roster(ar, hhid_col_name=hhid_col("IFLS4"))
 
 
 def _ifls5_pce() -> pd.DataFrame:
@@ -105,36 +95,34 @@ def _ifls4_pce() -> pd.DataFrame:
     return df
 
 
-def _disaster(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    nd = pd.read_stata(folder / "b2_nd1.dta", convert_categoricals=False)
-    hhcol = "hhid14" if wave == "IFLS5" else "hhid07"
+def _disaster_from_df(nd: pd.DataFrame, *, hhid_col_name: str, wave: str) -> pd.DataFrame:
     nd["disaster_5yr"] = (nd.nd01 == 1).astype(int)
     nd["disaster_severe_5yr"] = (nd.nd02 == 1).astype(int)
-    nd = nd[[hhcol, "disaster_5yr", "disaster_severe_5yr"]].rename(columns={hhcol: "hhid"})
+    nd = nd[[hhid_col_name, "disaster_5yr", "disaster_severe_5yr"]].rename(columns={hhid_col_name: "hhid"})
     nd = nd.drop_duplicates("hhid")
     nd["wave"] = wave
     return nd
 
 
-def _loan_rejected(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    bh = pd.read_stata(folder / "b2_bh.dta", convert_categoricals=False)
-    hhcol = "hhid14" if wave == "IFLS5" else "hhid07"
+def _disaster(wave: str) -> pd.DataFrame:
+    nd = pd.read_stata(wave_folder(RAW, wave) / "b2_nd1.dta", convert_categoricals=False)
+    return _disaster_from_df(nd, hhid_col_name=hhid_col(wave), wave=wave)
+
+
+def _loan_rejected_from_df(bh: pd.DataFrame, *, hhid_col_name: str, wave: str) -> pd.DataFrame:
     bh["loan_rejected"] = (bh.bh04 == 1).astype(int)
-    bh = bh[[hhcol, "loan_rejected"]].rename(columns={hhcol: "hhid"}).drop_duplicates("hhid")
+    bh = bh[[hhid_col_name, "loan_rejected"]].rename(columns={hhid_col_name: "hhid"}).drop_duplicates("hhid")
     bh["wave"] = wave
     return bh
 
 
-def _agri_occupation(wave: str) -> pd.DataFrame:
+def _loan_rejected(wave: str) -> pd.DataFrame:
+    bh = pd.read_stata(wave_folder(RAW, wave) / "b2_bh.dta", convert_categoricals=False)
+    return _loan_rejected_from_df(bh, hhid_col_name=hhid_col(wave), wave=wave)
+
+
+def _agri_occupation_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     """Identify adults whose primary job is agriculture/forestry/fishery (sector 1)."""
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    # tk2 has sector codes; tk24 series is the industry of primary job
-    p = folder / "b3a_tk2.dta"
-    if not p.exists():
-        return pd.DataFrame(columns=["pidlink", "wave", "agri_occupation"])
-    tk = pd.read_stata(p, convert_categoricals=False)
     sector_cols = [c for c in tk.columns if c.lower().startswith("tk19a") or c.lower().startswith("tk24")]
     # Heuristic: look for column whose values cluster around 1-9 (1-digit sector)
     # IFLS sector codes: 1 = agriculture/forestry/fishing
@@ -150,6 +138,15 @@ def _agri_occupation(wave: str) -> pd.DataFrame:
     out = tk[["pidlink", "agri_occupation"]].drop_duplicates("pidlink")
     out["wave"] = wave
     return out
+
+
+def _agri_occupation(wave: str) -> pd.DataFrame:
+    # tk2 has sector codes; tk24 series is the industry of primary job
+    p = wave_folder(RAW, wave) / "b3a_tk2.dta"
+    if not p.exists():
+        return pd.DataFrame(columns=["pidlink", "wave", "agri_occupation"])
+    tk = pd.read_stata(p, convert_categoricals=False)
+    return _agri_occupation_from_df(tk, wave=wave)
 
 
 def main() -> None:
@@ -192,6 +189,7 @@ def main() -> None:
         out[c] = out[c].fillna(0).astype(int)
 
     # Macro shock flags will be computed in the analysis script using interview_date
+    out = STRESSORS_SCHEMA.validate(out)
     out.to_parquet(OUT / "stressors.parquet", index=False)
     print(f"\nwrote {len(out):,} stressor rows to {OUT/'stressors.parquet'}")
     print("\nstressor prevalence by wave:")

@@ -12,23 +12,17 @@ Output: data/generated/health_bereavement_shocks.parquet
 """
 from __future__ import annotations
 
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-RAW = Path("E:/IFLS/extracted")
-OUT = PROJECT / "data" / "generated"
+from config import OUT, RAW
+from _ifls_wave import wave_folder
+from _schemas import HEALTH_BEREAVEMENT_SHOCKS_SCHEMA
 
 
-def _acute_symptom(wave: str) -> pd.DataFrame:
+def _acute_symptom_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     """Count of distinct symptoms reported in the past 4 weeks. Most adults have ≥1
     so we use the COUNT (mean ≈ 3) and a 'many symptoms' (top quartile, ≥ 5) flag."""
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    p = folder / "b3b_ma2.dta"
-    if not p.exists():
-        return pd.DataFrame(columns=["pidlink", "wave", "n_symptoms", "many_symptoms"])
-    df = pd.read_stata(p, convert_categoricals=False)
     df["had_symptom"] = (df.ma01 == 1).astype(int)
     counts = df.groupby("pidlink")["had_symptom"].sum().rename("n_symptoms").reset_index()
     counts["many_symptoms"] = (counts.n_symptoms >= 5).astype(int)
@@ -36,12 +30,14 @@ def _acute_symptom(wave: str) -> pd.DataFrame:
     return counts
 
 
-def _hospitalised(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    p = folder / "b3b_rn2.dta"
+def _acute_symptom(wave: str) -> pd.DataFrame:
+    p = wave_folder(RAW, wave) / "b3b_ma2.dta"
     if not p.exists():
-        return pd.DataFrame(columns=["pidlink", "wave", "recent_hospitalised"])
-    df = pd.read_stata(p, convert_categoricals=False)
+        return pd.DataFrame(columns=["pidlink", "wave", "n_symptoms", "many_symptoms"])
+    return _acute_symptom_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave)
+
+
+def _hospitalised_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     df["was_hosp"] = (df.rn01 == 1).astype(int)
     # The dataset has one row per inpatient-care type; collapse to person.
     out = df.groupby("pidlink")["was_hosp"].max().rename("recent_hospitalised").reset_index()
@@ -49,12 +45,14 @@ def _hospitalised(wave: str) -> pd.DataFrame:
     return out
 
 
-def _accident_2y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    p = folder / "b3b_ma1.dta"
+def _hospitalised(wave: str) -> pd.DataFrame:
+    p = wave_folder(RAW, wave) / "b3b_rn2.dta"
     if not p.exists():
-        return pd.DataFrame(columns=["pidlink", "wave", "recent_accident_2y"])
-    df = pd.read_stata(p, convert_categoricals=False)
+        return pd.DataFrame(columns=["pidlink", "wave", "recent_hospitalised"])
+    return _hospitalised_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave)
+
+
+def _accident_2y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
     if "ma15" not in df.columns:
         return pd.DataFrame(columns=["pidlink", "wave", "recent_accident_2y"])
     df = df[["pidlink", "ma15", "ma16mth", "ma16yr"]].copy()
@@ -76,12 +74,14 @@ def _accident_2y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _widowed_5y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    p = folder / "b3a_kw3.dta"
+def _accident_2y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
+    p = wave_folder(RAW, wave) / "b3b_ma1.dta"
     if not p.exists():
-        return pd.DataFrame(columns=["pidlink", "wave", "recently_widowed_5y"])
-    df = pd.read_stata(p, convert_categoricals=False)
+        return pd.DataFrame(columns=["pidlink", "wave", "recent_accident_2y"])
+    return _accident_2y_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
+
+
+def _widowed_5y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
     if "kw11b" not in df.columns:
         return pd.DataFrame(columns=["pidlink", "wave", "recently_widowed_5y"])
     df = df[["pidlink", "kw11b", "kw18mth", "kw18yr"]].copy()
@@ -102,6 +102,13 @@ def _widowed_5y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
     out = df.groupby("pidlink")["widow_5y"].max().rename("recently_widowed_5y").reset_index()
     out["wave"] = wave
     return out
+
+
+def _widowed_5y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
+    p = wave_folder(RAW, wave) / "b3a_kw3.dta"
+    if not p.exists():
+        return pd.DataFrame(columns=["pidlink", "wave", "recently_widowed_5y"])
+    return _widowed_5y_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
 
 
 def main() -> None:
@@ -125,6 +132,7 @@ def main() -> None:
               "recent_accident_2y", "recently_widowed_5y"]:
         if c in out.columns:
             out[c] = out[c].fillna(0).astype(int)
+    out = HEALTH_BEREAVEMENT_SHOCKS_SCHEMA.validate(out)
     out.to_parquet(OUT / "health_bereavement_shocks.parquet", index=False)
 
     print(f"wrote {len(out):,} rows to {OUT/'health_bereavement_shocks.parquet'}")

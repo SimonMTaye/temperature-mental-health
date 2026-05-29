@@ -4,7 +4,7 @@ IFLS4 + IFLS5 fielding windows.
 Approach
 --------
 For each day in the union of field windows, do ONE GEE reduceRegions over all 303
-kabupaten polygons -> daily means written into a long parquet keyed (kab_code, date).
+kabupaten polygons -> daily means written into a long parquet keyed (kabupaten_code, date).
 
 Window: 30 days BEFORE earliest interview to 7 days AFTER latest. Gives us lead/lag
 room for placebo and lag-effect specifications without re-pulling later.
@@ -26,20 +26,17 @@ import math
 import os
 import time
 from datetime import timedelta
-from pathlib import Path
 
 import ee
 import pandas as pd
 import shapely.wkt
 
-PROJECT = Path(__file__).resolve().parents[2]
-OUT = PROJECT / "data" / "generated"
-TMP = OUT / "_tmp_temperature"
+from config import GEE_ENV_PATH, OUT, TMP_TEMPERATURE as TMP
+from _schemas import DAILY_TEMPERATURE_SCHEMA
 
 
 def init_gee() -> None:
-    env_path = Path("C:/Users/jingy/Dropbox/solar panel/.env")
-    for line in env_path.read_text().splitlines():
+    for line in GEE_ENV_PATH.read_text().splitlines():
         if line.startswith("GEE_PROJECT_ID="):
             os.environ["GEE_PROJECT_ID"] = line.split("=", 1)[1].strip()
     ee.Initialize(project=os.environ["GEE_PROJECT_ID"])
@@ -56,7 +53,7 @@ def build_polygon_collection(kab: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
     for r in kab.itertuples(index=False):
         g = shapely.wkt.loads(r.geometry_wkt)
-        feats.append(ee.Feature(shapely_to_ee(g), {"kab_code": int(r.kab_code)}))
+        feats.append(ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(r.kabupaten_code)}))
     return ee.FeatureCollection(feats)
 
 
@@ -91,7 +88,7 @@ def pull_window(start: pd.Timestamp, end_excl: pd.Timestamp, fc: ee.FeatureColle
         if "temperature_2m" not in p:
             continue
         rows.append({
-            "kab_code": int(p["kab_code"]),
+            "kabupaten_code": int(p["kabupaten_code"]),
             "date": p["date"],
             "tmean_c": p["temperature_2m"] - 273.15,
             "tmax_c": p["temperature_2m_max"] - 273.15,
@@ -183,7 +180,8 @@ def main() -> None:
     combined = pd.concat(all_frames, ignore_index=True)
     combined = derive_humidity_and_heat_index(combined)
     combined["date"] = pd.to_datetime(combined.date)
-    combined = combined.sort_values(["kab_code", "date"]).reset_index(drop=True)
+    combined = combined.sort_values(["kabupaten_code", "date"]).reset_index(drop=True)
+    combined = DAILY_TEMPERATURE_SCHEMA.validate(combined)
     out_path = OUT / "daily_temperature_kab.parquet"
     combined.to_parquet(out_path, index=False)
     print(f"\nwrote {len(combined):,} rows to {out_path}")

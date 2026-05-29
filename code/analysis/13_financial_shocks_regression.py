@@ -35,9 +35,9 @@ def load_data() -> pd.DataFrame:
     df["intvw_yr"] = df.interview_date.dt.year
     df["intvw_mo"] = df.interview_date.dt.month
     df = df.merge(aod.rename(columns={"year": "intvw_yr", "month": "intvw_mo"}),
-                  on=["kab_code", "intvw_yr", "intvw_mo"], how="left")
+                  on=["kabupaten_code", "intvw_yr", "intvw_mo"], how="left")
 
-    keep = ["cesd_raw", "tmean_c", "tmax_c", "kab_code", "wave", "month", "year",
+    keep = ["cesd_raw", "tmean_c", "tmax_c", "kabupaten_code", "wave", "month", "year",
             "age", "sex", "edu_yrs", "married", "widowed",
             "recent_job_loss_5y", "involuntary_loss_5y", "job_loss_within_yr",
             "vehicle_owner", "urban", "cash_transfer_recipient",
@@ -50,19 +50,19 @@ def table_h_job_loss(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     specs = [
         ("Recent job loss 5y main",
-         "cesd_raw ~ recent_job_loss_5y + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ recent_job_loss_5y + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × recent job loss 5y",
-         "cesd_raw ~ tmean_c * recent_job_loss_5y + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * recent_job_loss_5y + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × involuntary loss",
-         "cesd_raw ~ tmean_c * involuntary_loss_5y + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * involuntary_loss_5y + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × job loss within 12mo",
-         "cesd_raw ~ tmean_c * job_loss_within_yr + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * job_loss_within_yr + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmax × job loss within 12mo",
-         "cesd_raw ~ tmax_c * job_loss_within_yr + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmax_c * job_loss_within_yr + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
     ]
     for label, formula in specs:
         try:
-            m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
             rec = {"spec": label, "n": int(m._N)}
             for t in m.coef().index:
                 if any(k in t for k in ["job_loss", "involuntary", "tmean", "tmax"]):
@@ -92,17 +92,17 @@ def table_i_fuel_subsidy(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     specs = [
         ("Subsidy: post × vehicle (DiD)",
-         "cesd_raw ~ post_subsidy * vehicle_owner + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ post_subsidy * vehicle_owner + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
         ("Subsidy: post × urban (DiD)",
-         "cesd_raw ~ post_subsidy * urban + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ post_subsidy * urban + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
         ("Subsidy + heat (3-way: post × vehicle × tmean)",
-         "cesd_raw ~ tmean_c * post_subsidy * vehicle_owner + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ tmean_c * post_subsidy * vehicle_owner + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
         ("Subsidy + heat (3-way: post × urban × tmean)",
-         "cesd_raw ~ tmean_c * post_subsidy * urban + age + female + edu_yrs + married + widowed | month + year + kab_code"),
+         "cesd_raw ~ tmean_c * post_subsidy * urban + age + female + edu_yrs + married + widowed | month + year + kabupaten_code"),
     ]
     for label, formula in specs:
         try:
-            m = pf.feols(formula, data=sub, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=sub, vcov={"CRV1": "kabupaten_code"})
             rec = {"spec": label, "n": int(m._N)}
             for t in m.coef().index:
                 if any(k in t for k in ["post_subsidy", "vehicle", "urban", "tmean"]):
@@ -129,15 +129,15 @@ def table_j_palm_shock(df: pd.DataFrame) -> pd.DataFrame:
 
     specs = [
         ("Palm shock main (no heat)",
-         "cesd_raw ~ palm_shock + palm_region + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ palm_shock + palm_region + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × palm shock",
-         "cesd_raw ~ tmean_c * palm_shock + palm_region + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * palm_shock + palm_region + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Tmean × palm region × palm price (3-way)",
-         "cesd_raw ~ tmean_c * palm_region * palm_price_z + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * palm_region * palm_price_z + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
     ]
     for label, formula in specs:
         try:
-            m = pf.feols(formula, data=df_p, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df_p, vcov={"CRV1": "kabupaten_code"})
             rec = {"spec": label, "n": int(m._N)}
             for t in m.coef().index:
                 if any(k in t for k in ["palm", "tmean"]):
@@ -160,17 +160,17 @@ def table_k_cushion(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     specs = [
         ("Cash transfer × tmean",
-         "cesd_raw ~ tmean_c * cash_transfer_recipient + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * cash_transfer_recipient + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Health card × tmean (broader safety net)",
-         "cesd_raw ~ tmean_c * health_card + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * health_card + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
         ("Cash transfer + AOD × tmean (3-way)",
-         "cesd_raw ~ tmean_c * cash_transfer_recipient * aod + age + female + edu_yrs + married + widowed | wave + month + year + kab_code"),
+         "cesd_raw ~ tmean_c * cash_transfer_recipient * aod + age + female + edu_yrs + married + widowed | wave + month + year + kabupaten_code"),
     ]
     df["health_card"] = df.get("health_card", 0)
     for label, formula in specs:
         try:
             data = df if "aod" not in formula else df.dropna(subset=["aod"])
-            m = pf.feols(formula, data=data, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=data, vcov={"CRV1": "kabupaten_code"})
             rec = {"spec": label, "n": int(m._N)}
             for t in m.coef().index:
                 if any(k in t for k in ["cash_transfer", "health_card", "tmean", "aod"]):
@@ -212,9 +212,9 @@ def table_l_horse_race(df: pd.DataFrame) -> pd.DataFrame:
         if var not in df.columns:
             continue
         formula = (f"cesd_raw ~ tmean_c * {var} + age + female + edu_yrs + married + widowed "
-                   f"| wave + month + year + kab_code")
+                   f"| wave + month + year + kabupaten_code")
         try:
-            m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+            m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
             inter = f"tmean_c:{var}"
             rows.append({
                 "stressor": label,

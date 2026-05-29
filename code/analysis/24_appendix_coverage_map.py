@@ -49,10 +49,10 @@ def normalize(s: str) -> str:
 def main() -> None:
     # 1. Sample counts per kab from the actual analysis dataset
     df = pd.read_parquet(PROJECT / "data" / "generated" / "analysis_dataset.parquet")
-    n_per_kab = df.groupby("kab_code").size().rename("n_ifls").reset_index()
+    n_per_kab = df.groupby("kabupaten_code").size().rename("n_ifls").reset_index()
 
     kab_lookup = pd.read_parquet(PROJECT / "data" / "generated" / "kabupaten_polygons.parquet")
-    kab_lookup = kab_lookup.merge(n_per_kab, on="kab_code", how="left").fillna({"n_ifls": 0})
+    kab_lookup = kab_lookup.merge(n_per_kab, on="kabupaten_code", how="left").fillna({"n_ifls": 0})
 
     # 2. GADM polygons
     g1 = gpd.read_file(GADM_PATH, layer="ADM_ADM_1").to_crs(4326)
@@ -69,8 +69,8 @@ def main() -> None:
         lambda r: sample_lookup.get((r.prov_norm, r.kab_norm), 0), axis=1
     )
 
-    # 4. Identify fallback kab (couldn't be matched at the kab level, only province)
-    fb_kab = kab_lookup[kab_lookup.match_level == "prov"]
+    # 4. Identify fallback kabupaten (couldn't be matched at the kabupaten level, only province)
+    fb_kab = kab_lookup[kab_lookup.match_level == "province"]
     fb_set = set(zip(fb_kab.prov_norm, fb_kab.kab_norm))
     g2["is_fallback"] = g2.apply(
         lambda r: (r.prov_norm, r.kab_norm) in fb_set, axis=1
@@ -160,7 +160,7 @@ def main() -> None:
     print()
     print("Sample distribution by province (top 30):")
     by_prov = df.merge(
-        kab_lookup[["kab_code", "nama_prov"]], on="kab_code", how="left"
+        kab_lookup[["kabupaten_code", "nama_prov"]], on="kabupaten_code", how="left"
     ).groupby("nama_prov").size().sort_values(ascending=False)
     print(by_prov.head(30))
 

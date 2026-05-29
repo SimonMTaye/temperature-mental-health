@@ -18,12 +18,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-RAW = Path("E:/IFLS/extracted")
-OUT = PROJECT / "data" / "generated"
-
 sys.path.insert(0, str(Path(__file__).parent))
+from config import OUT, RAW  # noqa: E402
 from _sentinels import clean_money  # noqa: E402
+from _ifls_wave import hhid_col, wave_folder  # noqa: E402
+from _schemas import FINANCIAL_SHOCKS_V2_SCHEMA  # noqa: E402
 
 PALM_PROVS = {11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 61, 62, 63, 64}
 
@@ -47,9 +46,7 @@ RUBBER_PROVS = {12, 14, 15, 16, 61}
 COFFEE_PROVS = {11, 12, 16, 18, 51, 73}
 
 
-def _palm_farmer(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    tk = pd.read_stata(folder / "b3a_tk2.dta", convert_categoricals=False)
+def _palm_farmer_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     if "tk19ab" not in tk.columns:
         return pd.DataFrame(columns=["pidlink", "wave", "agricultural"])
     # IFLS4 stores tk19ab as " 1", " 6", etc. — strip + parse
@@ -60,33 +57,38 @@ def _palm_farmer(wave: str) -> pd.DataFrame:
     return out
 
 
-def _transport_share(wave: str) -> pd.DataFrame:
-    folder = RAW / ("IFLS5/hh14" if wave == "IFLS5" else "IFLS4/hh07")
-    hhcol = "hhid14" if wave == "IFLS5" else "hhid07"
+def _palm_farmer(wave: str) -> pd.DataFrame:
+    tk = pd.read_stata(wave_folder(RAW, wave) / "b3a_tk2.dta", convert_categoricals=False)
+    return _palm_farmer_from_df(tk, wave=wave)
 
-    # Monthly non-food spending by category (clean sentinels first)
-    ks2 = pd.read_stata(folder / "b1_ks2.dta", convert_categoricals=False)
+
+def _transport_share_from_frames(
+    ks2: pd.DataFrame,
+    ks3: pd.DataFrame,
+    ks0: pd.DataFrame,
+    *,
+    hhid_col_name: str,
+    wave: str,
+) -> pd.DataFrame:
     ks2["ks06"] = clean_money(ks2.ks06)
-    transport = ks2[ks2.ks2type == "E"][[hhcol, "ks06"]].rename(
+    transport = ks2[ks2.ks2type == "E"][[hhid_col_name, "ks06"]].rename(
         columns={"ks06": "transport_spending_mo"}
     )
 
     # Total monthly HH spending — sum of all ks2 + all ks3 categories
-    total_ks2 = ks2.groupby(hhcol)["ks06"].sum(min_count=1).rename("total_ks2_mo").reset_index()
-    ks3 = pd.read_stata(folder / "b1_ks3.dta", convert_categoricals=False)
+    total_ks2 = ks2.groupby(hhid_col_name)["ks06"].sum(min_count=1).rename("total_ks2_mo").reset_index()
     ks3["ks08"] = clean_money(ks3.ks08)
-    total_ks3 = ks3.groupby(hhcol)["ks08"].sum(min_count=1).rename("total_ks3_mo").reset_index()
+    total_ks3 = ks3.groupby(hhid_col_name)["ks08"].sum(min_count=1).rename("total_ks3_mo").reset_index()
 
     # Monthly food: weekly ks02a × 4.33
-    ks0 = pd.read_stata(folder / "b1_ks0.dta", convert_categoricals=False)
     if "ks02a" in ks0.columns:
         ks0["food_mo"] = clean_money(ks0["ks02a"]) * 4.33
     else:
         ks0["food_mo"] = np.nan
-    food = ks0[[hhcol, "food_mo"]]
+    food = ks0[[hhid_col_name, "food_mo"]]
 
-    out = transport.drop_duplicates(hhcol).merge(total_ks2, on=hhcol)
-    out = out.merge(total_ks3, on=hhcol).merge(food, on=hhcol, how="left")
+    out = transport.drop_duplicates(hhid_col_name).merge(total_ks2, on=hhid_col_name)
+    out = out.merge(total_ks3, on=hhid_col_name).merge(food, on=hhid_col_name, how="left")
     # Fill NaN components with 0 only AFTER sentinel masking — so a sentinel becomes 0
     # contribution (the household didn't report that category), not an inflated value.
     for c in ["transport_spending_mo", "total_ks2_mo", "total_ks3_mo", "food_mo"]:
@@ -94,11 +96,22 @@ def _transport_share(wave: str) -> pd.DataFrame:
     out["total_mo"] = out.total_ks2_mo + out.total_ks3_mo + out.food_mo
     out["transport_share"] = out.transport_spending_mo / out.total_mo.replace(0, np.nan)
     out = out[(out.transport_share >= 0) & (out.transport_share <= 1)]
-    out = out.rename(columns={hhcol: "hhid"})[
+    out = out.rename(columns={hhid_col_name: "hhid"})[
         ["hhid", "transport_spending_mo", "total_mo", "transport_share"]
     ]
     out["wave"] = wave
     return out
+
+
+def _transport_share(wave: str) -> pd.DataFrame:
+    folder = wave_folder(RAW, wave)
+    return _transport_share_from_frames(
+        pd.read_stata(folder / "b1_ks2.dta", convert_categoricals=False),
+        pd.read_stata(folder / "b1_ks3.dta", convert_categoricals=False),
+        pd.read_stata(folder / "b1_ks0.dta", convert_categoricals=False),
+        hhid_col_name=hhid_col(wave),
+        wave=wave,
+    )
 
 
 def main() -> None:
@@ -112,7 +125,7 @@ def main() -> None:
 
     stressors = pd.read_parquet(OUT / "stressors.parquet")
     base = stressors[["pidlink", "wave", "hhid"]].drop_duplicates(["pidlink", "wave"])
-    ind = pd.read_parquet(OUT / "individuals.parquet")[["pidlink", "wave", "prov_code"]]
+    ind = pd.read_parquet(OUT / "individuals.parquet")[["pidlink", "wave", "province_code"]]
 
     out = base.merge(ind, on=["pidlink", "wave"], how="left")
     out = out.merge(pf, on=["pidlink", "wave"], how="left")
@@ -120,7 +133,7 @@ def main() -> None:
     ts_dedup = ts.drop_duplicates(subset=["hhid", "wave"])
     out = out.merge(ts_dedup, on=["hhid", "wave"], how="left")
 
-    out["palm_region"] = out.prov_code.isin(PALM_PROVS).astype(int)
+    out["palm_region"] = out.province_code.isin(PALM_PROVS).astype(int)
     out["palm_farmer_individual"] = (
         (out.agricultural.fillna(0) == 1) & (out.palm_region == 1)
     ).astype(int)
@@ -128,11 +141,11 @@ def main() -> None:
     # Captures within-household income spillovers (spouses, adult children,
     # parents share the income shock with the working palm farmer).
     out["palm_farmer_hh"] = out.groupby(["hhid", "wave"])["palm_farmer_individual"].transform("max")
-    out["rubber_region"] = out.prov_code.isin(RUBBER_PROVS).astype(int)
+    out["rubber_region"] = out.province_code.isin(RUBBER_PROVS).astype(int)
     out["rubber_farmer_individual"] = (
         (out.agricultural.fillna(0) == 1) & (out.rubber_region == 1)
     ).astype(int)
-    out["coffee_region"] = out.prov_code.isin(COFFEE_PROVS).astype(int)
+    out["coffee_region"] = out.province_code.isin(COFFEE_PROVS).astype(int)
     out["coffee_farmer_individual"] = (
         (out.agricultural.fillna(0) == 1) & (out.coffee_region == 1)
     ).astype(int)
@@ -150,6 +163,7 @@ def main() -> None:
             "transport_spending_mo", "total_mo", "transport_share",
             "transport_share_q5", "high_transport_share"]
     out_final = out[keep].copy()
+    out_final = FINANCIAL_SHOCKS_V2_SCHEMA.validate(out_final)
     out_final.to_parquet(OUT / "financial_shocks_v2.parquet", index=False)
 
     print(f"\nwrote {len(out_final):,} rows to {OUT/'financial_shocks_v2.parquet'}")

@@ -32,8 +32,8 @@ PALM_3MO_DECLINE = mod14.PALM_3MO_DECLINE
 
 
 CONTROLS = "age + female + edu_yrs + married + widowed"
-FE_POOLED = "month + year + wave + kab_code"
-FE_IFLS5  = "month + year + kab_code"
+FE_POOLED = "month + year + wave + kabupaten_code"
+FE_IFLS5  = "month + year + kabupaten_code"
 
 
 def load_data() -> pd.DataFrame:
@@ -45,18 +45,18 @@ def load_data() -> pd.DataFrame:
     df = df.merge(fin2[["pidlink", "wave", "palm_farmer_hh", "transport_share"]],
                   on=["pidlink", "wave"], how="left")
 
-    # Merge PM2.5 daily polygon-mean on (kab_code, interview_date)
+    # Merge PM2.5 daily polygon-mean on (kabupaten_code, interview_date)
     pm = pd.read_parquet(OUT / "pm25_daily_kab.parquet")
     pm["date"] = pd.to_datetime(pm.date)
     df = df.merge(
-        pm[["kab_code", "date", "pm25_ugm3"]],
-        left_on=["kab_code", "interview_date"], right_on=["kab_code", "date"],
+        pm[["kabupaten_code", "date", "pm25_ugm3"]],
+        left_on=["kabupaten_code", "interview_date"], right_on=["kabupaten_code", "date"],
         how="left",
     ).drop(columns=["date"])
 
     df["female"] = (df.sex == "F").astype(int)
     df = df.dropna(subset=[
-        "cesd_raw", "tmean_c", "kab_code", "month", "year", "wave",
+        "cesd_raw", "tmean_c", "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date", "precip_mm",
@@ -69,8 +69,8 @@ def load_data() -> pd.DataFrame:
     df["post_subsidy"] = (df.interview_date >= pd.Timestamp("2014-11-18")).astype(int)
     df["fuel_shock"] = df.post_subsidy * df.transport_share
 
-    counts = df.kab_code.value_counts()
-    df = df[df.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = df.kabupaten_code.value_counts()
+    df = df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
     return df
 
 
@@ -89,7 +89,7 @@ def fit(df: pd.DataFrame, stressor: str, extra_main_control: str, fe: str,
     formula = (
         f"cesd_z ~ heat_c_dev * {stressor}{extra_main_control} + {CONTROLS}{extras} | {fe}"
     )
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     inter = f"heat_c_dev:{stressor}"
     coefs = m.coef()
     return {

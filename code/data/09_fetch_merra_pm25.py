@@ -9,22 +9,20 @@ standard van Donkelaar formula:
 Source: NASA/GSFC/MERRA/aer/2 (hourly, ~50 km native). We aggregate the 24 hourly
 images per day to a daily mean before reduceRegions over kab polygons.
 
-Output: data/generated/pm25_daily_kab.parquet (kab_code, date, pm25_ugm3, +components)
+Output: data/generated/pm25_daily_kab.parquet (kabupaten_code, date, pm25_ugm3, +components)
 """
 from __future__ import annotations
 
 import os
 import time
 from datetime import timedelta
-from pathlib import Path
 
 import ee
 import pandas as pd
 import shapely.wkt
 
-PROJECT = Path(__file__).resolve().parents[2]
-OUT = PROJECT / "data" / "generated"
-TMP = OUT / "_tmp_pm25"
+from config import GEE_ENV_PATH, OUT, TMP_PM25 as TMP
+from _schemas import PM25_DAILY_SCHEMA
 
 WINDOWS = [
     ("2007-06-06", "2008-08-25"),  # IFLS4 (~445 days)
@@ -35,8 +33,7 @@ PM25_BANDS = ["BCSMASS", "OCSMASS", "SO4SMASS", "DUSMASS25", "SSSMASS25"]
 
 
 def init_gee() -> None:
-    env_path = Path("C:/Users/jingy/Dropbox/solar panel/.env")
-    for line in env_path.read_text().splitlines():
+    for line in GEE_ENV_PATH.read_text().splitlines():
         if line.startswith("GEE_PROJECT_ID="):
             os.environ["GEE_PROJECT_ID"] = line.split("=", 1)[1].strip()
     ee.Initialize(project=os.environ["GEE_PROJECT_ID"])
@@ -51,7 +48,7 @@ def build_fc(kab: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
     for r in kab.itertuples(index=False):
         g = shapely.wkt.loads(r.geometry_wkt)
-        feats.append(ee.Feature(shapely_to_ee(g), {"kab_code": int(r.kab_code)}))
+        feats.append(ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(r.kabupaten_code)}))
     return ee.FeatureCollection(feats)
 
 
@@ -99,7 +96,7 @@ def pull_window(start: pd.Timestamp, end_excl: pd.Timestamp, fc: ee.FeatureColle
     for f in info["features"]:
         p = f["properties"]
         rows.append({
-            "kab_code": int(p["kab_code"]),
+            "kabupaten_code": int(p["kabupaten_code"]),
             "date": p["date"],
             "pm25_ugm3": p.get("pm25_ugm3"),
             "BCSMASS":  p.get("BCSMASS"),
@@ -154,7 +151,8 @@ def main() -> None:
 
     combined = pd.concat(all_frames, ignore_index=True)
     combined["date"] = pd.to_datetime(combined.date)
-    combined = combined.sort_values(["kab_code", "date"]).reset_index(drop=True)
+    combined = combined.sort_values(["kabupaten_code", "date"]).reset_index(drop=True)
+    combined = PM25_DAILY_SCHEMA.validate(combined)
     combined.to_parquet(OUT / "pm25_daily_kab.parquet", index=False)
     print(f"\nwrote {len(combined):,} rows to {OUT/'pm25_daily_kab.parquet'}")
     print(combined.pm25_ugm3.describe().round(2))
@@ -162,8 +160,8 @@ def main() -> None:
     print("\n2015 haze months Sumatra+Kalimantan PM2.5:")
     haze = combined[
         (combined.date >= "2015-09-01") & (combined.date <= "2015-11-30")
-    ].merge(kab[["kab_code", "prov_code"]], on="kab_code", how="left")
-    haze["region"] = haze.prov_code.apply(
+    ].merge(kab[["kabupaten_code", "province_code"]], on="kabupaten_code", how="left")
+    haze["region"] = haze.province_code.apply(
         lambda p: "Sumatra" if 11 <= p <= 21 else ("Kalimantan" if 61 <= p <= 64 else "Other")
     )
     print(haze.groupby("region").pm25_ugm3.describe().round(2)[

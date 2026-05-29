@@ -130,7 +130,7 @@ def load_data(mode: str = "ifls5_only") -> pd.DataFrame:
         if c in df.columns:
             df[c] = df[c].fillna(0).astype(int)
 
-    keep = ["cesd_raw", "tmean_c", "kab_code", "month", "year",
+    keep = ["cesd_raw", "tmean_c", "kabupaten_code", "month", "year",
             "age", "sex", "edu_yrs", "married", "widowed",
             "job_loss_within_yr",
             "palm_farmer_individual", "rubber_farmer_individual", "coffee_farmer_individual",
@@ -202,7 +202,7 @@ def run_one_model(df: pd.DataFrame, stressor: str, label: str,
       extra_controls    additional terms to include linearly without interaction.
                         Used to clean palm_shock by separating palm_farmer baseline.
     """
-    fe = "month + year + kab_code"
+    fe = "month + year + kabupaten_code"
     if df["_mode"].iloc[0] == "pooled_z":
         fe = "wave + " + fe
     extra = ""
@@ -212,7 +212,7 @@ def run_one_model(df: pd.DataFrame, stressor: str, label: str,
         f"cesd_z ~ heat_c * {stressor} + age + female + edu_yrs + married + widowed{extra} "
         f"| {fe}"
     )
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
 
     # Headline coefficients
     main_heat = m.coef().get("heat_c", np.nan)

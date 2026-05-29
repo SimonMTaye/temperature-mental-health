@@ -78,7 +78,7 @@ def load_data() -> pd.DataFrame:
                   on=["pidlink", "wave"], how="left")
     df["female"] = (df.sex == "F").astype(int)
     df = df.dropna(subset=[
-        "cesd_raw", "tmean_c", "kab_code", "month", "year", "wave",
+        "cesd_raw", "tmean_c", "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date",
@@ -92,8 +92,8 @@ def load_data() -> pd.DataFrame:
 
 
 def _restrict_singleton_kab(df: pd.DataFrame) -> pd.DataFrame:
-    counts = df.kab_code.value_counts()
-    return df[df.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = df.kabupaten_code.value_counts()
+    return df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
 
 
 def residualize(df: pd.DataFrame, var: str, fe: str) -> np.ndarray:
@@ -183,7 +183,7 @@ def fit_full_interaction(df: pd.DataFrame, stressor: str, extra: str, fe: str):
     df_work = df.copy()
     df_work["heat_c_dev"] = df_work.tmean_c - df_work.tmean_c.mean()
     formula = f"cesd_z ~ heat_c_dev * {stressor}{extra} + {CONTROLS} | {fe}"
-    m = pf.feols(formula, data=df_work, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df_work, vcov={"CRV1": "kabupaten_code"})
     inter = f"heat_c_dev:{stressor}"
     return m.coef()[inter], m.pvalue()[inter]
 
@@ -201,8 +201,8 @@ def main() -> None:
     df = _restrict_singleton_kab(df)
     sub_ifls5 = _restrict_singleton_kab(df[df.wave == "IFLS5"].copy())
 
-    FE_POOLED = "month + year + wave + kab_code"
-    FE_IFLS5  = "month + year + kab_code"
+    FE_POOLED = "month + year + wave + kabupaten_code"
+    FE_IFLS5  = "month + year + kabupaten_code"
 
     panels = [
         {"label": "Job loss × Heat",
@@ -266,10 +266,10 @@ def main() -> None:
 
         # CI bands
         un_fit, un_lo, un_hi = linear_fit_with_ci(
-            r["un_df"], "cesd_resid", "heat_resid", "kab_code", x_line
+            r["un_df"], "cesd_resid", "heat_resid", "kabupaten_code", x_line
         )
         ex_fit, ex_lo, ex_hi = linear_fit_with_ci(
-            r["ex_df"], "cesd_resid", "heat_resid", "kab_code", x_line
+            r["ex_df"], "cesd_resid", "heat_resid", "kabupaten_code", x_line
         )
         ax.fill_between(x_line, un_lo, un_hi, color=COLOR_UNEXPOSED, alpha=0.15, lw=0,
                         zorder=1)
@@ -315,8 +315,8 @@ def main() -> None:
     print("\n=== Numerical summary ===")
     for r in results:
         p = r["panel"]
-        m_un = pf.feols("cesd_resid ~ heat_resid", data=r["un_df"], vcov={"CRV1":"kab_code"})
-        m_ex = pf.feols("cesd_resid ~ heat_resid", data=r["ex_df"], vcov={"CRV1":"kab_code"})
+        m_un = pf.feols("cesd_resid ~ heat_resid", data=r["un_df"], vcov={"CRV1":"kabupaten_code"})
+        m_ex = pf.feols("cesd_resid ~ heat_resid", data=r["ex_df"], vcov={"CRV1":"kabupaten_code"})
         b_un = m_un.coef().get("heat_resid", 0); se_un = m_un.se().get("heat_resid", 0)
         b_ex = m_ex.coef().get("heat_resid", 0); se_ex = m_ex.se().get("heat_resid", 0)
         print(f"\n{p['label']}  (n_un = {r['n_un']:,}, n_ex = {r['n_ex']:,})")

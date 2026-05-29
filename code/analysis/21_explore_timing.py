@@ -34,8 +34,8 @@ PALM_PRICE_FULL = mod14.PALM_PRICE_FULL
 
 
 CONTROLS = "age + female + edu_yrs + married + widowed"
-FE_POOLED = "month + year + wave + kab_code"
-FE_IFLS5  = "month + year + kab_code"
+FE_POOLED = "month + year + wave + kabupaten_code"
+FE_IFLS5  = "month + year + kabupaten_code"
 CUT_DATE  = pd.Timestamp("2014-11-18")
 
 
@@ -67,7 +67,7 @@ def load_data() -> pd.DataFrame:
                   on=["pidlink", "wave"], how="left")
     df["female"] = (df.sex == "F").astype(int)
     df = df.dropna(subset=[
-        "cesd_raw", "tmean_c", "kab_code", "month", "year", "wave",
+        "cesd_raw", "tmean_c", "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date",
@@ -75,8 +75,8 @@ def load_data() -> pd.DataFrame:
     df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(lambda s: (s - s.mean()) / s.std())
     df["heat_c_dev"] = df.tmean_c - df.tmean_c.mean()
     df["intvw_ym"] = list(zip(df.interview_date.dt.year, df.interview_date.dt.month))
-    counts = df.kab_code.value_counts()
-    df = df[df.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = df.kabupaten_code.value_counts()
+    df = df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
     return df
 
 
@@ -92,7 +92,7 @@ def fit_interaction(df: pd.DataFrame, stressor_var: str, extra_control: str,
                     fe: str, exposed_value: float) -> dict:
     """Heat x Stressor interaction. Also returns heat slope at exposed_value."""
     formula = f"cesd_z ~ heat_c_dev * {stressor_var}{extra_control} + {CONTROLS} | {fe}"
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     inter = f"heat_c_dev:{stressor_var}"
     coefs = m.coef()
     V = pd.DataFrame(m._vcov, index=coefs.index, columns=coefs.index)
@@ -157,8 +157,8 @@ def main() -> None:
     print("=" * 100)
     fuel_windows = [1, 3, 6, 12]
     sub5 = df[df.wave == "IFLS5"].copy()
-    counts5 = sub5.kab_code.value_counts()
-    sub5 = sub5[sub5.kab_code.isin(counts5[counts5 > 1].index)].copy()
+    counts5 = sub5.kabupaten_code.value_counts()
+    sub5 = sub5[sub5.kabupaten_code.isin(counts5[counts5 > 1].index)].copy()
     print(f"IFLS5 sample (after singleton-kab restriction): n={len(sub5):,}")
     print(f"{'X (mo)':>6}  {'expos%':>7}  {'Heat x Fuel':>16}  {'p':>8}  "
           f"{'slope|p75':>14}  {'p':>8}  {'n':>8}")

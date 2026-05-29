@@ -44,7 +44,7 @@ def load_data() -> pd.DataFrame:
     df["female"] = (df.sex == "F").astype(int)
 
     df = df.dropna(subset=[
-        "cesd_raw", "tmean_c", "kab_code", "month", "year", "wave",
+        "cesd_raw", "tmean_c", "kabupaten_code", "month", "year", "wave",
         "age", "female", "edu_yrs", "married", "widowed",
         "job_loss_within_yr", "palm_farmer_hh", "transport_share",
         "interview_date",
@@ -76,7 +76,7 @@ def fit_pooled_heat(df: pd.DataFrame, fe: str) -> dict:
     Heat x Stressor interactions in the other columns are positive and large.
     """
     formula = f"cesd_z ~ heat_c_dev + {CONTROLS} | {fe}"
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     return {
         "n":       int(m._N),
         "heat_b":  float(m.coef()["heat_c_dev"]),
@@ -95,7 +95,7 @@ def fit_full_spec(df: pd.DataFrame, stressor: str, extra_control: str, fe: str,
     formula = (
         f"cesd_z ~ heat_c_dev * {stressor}{extra_control} + {CONTROLS} | {fe}"
     )
-    m = pf.feols(formula, data=df, vcov={"CRV1": "kab_code"})
+    m = pf.feols(formula, data=df, vcov={"CRV1": "kabupaten_code"})
     inter = f"heat_c_dev:{stressor}"
 
     # lincom: heat slope at stressor=v  ==> β_heat + v · β_interaction
@@ -155,8 +155,8 @@ def cell(b: float, se: float, p: float) -> tuple[str, str]:
 
 def _restrict_singleton_kab(df: pd.DataFrame) -> pd.DataFrame:
     """Drop singleton kabupatens so the FE spec doesn't lose observations."""
-    counts = df.kab_code.value_counts()
-    return df[df.kab_code.isin(counts[counts > 1].index)].copy()
+    counts = df.kabupaten_code.value_counts()
+    return df[df.kabupaten_code.isin(counts[counts > 1].index)].copy()
 
 
 def main() -> None:
@@ -169,8 +169,8 @@ def main() -> None:
     print(f"IFLS5-only sub-sample: {len(sub_ifls5):,}")
 
     # Full spec for each stressor: kab + month + year + wave FE + demographic controls
-    FE_POOLED = "month + year + wave + kab_code"
-    FE_IFLS5  = "month + year + kab_code"          # wave is constant in IFLS5
+    FE_POOLED = "month + year + wave + kabupaten_code"
+    FE_IFLS5  = "month + year + kabupaten_code"          # wave is constant in IFLS5
 
     # Column (1): pooled regression of CES-D z on heat, no stressor, no interaction.
     pooled = fit_pooled_heat(df, FE_POOLED)

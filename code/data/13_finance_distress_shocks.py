@@ -19,32 +19,39 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT = Path(__file__).resolve().parents[2]
-RAW = Path("E:/IFLS/extracted")
-OUT = PROJECT / "data" / "generated"
-
 sys.path.insert(0, str(Path(__file__).parent))
+from config import OUT, RAW  # noqa: E402
 from _sentinels import clean_money as _clean_money  # noqa: E402
+from _ifls_wave import hhid_col, wave_folder  # noqa: E402
+from _schemas import FINANCE_DISTRESS_SHOCKS_SCHEMA  # noqa: E402
+
+
+def _debt_from_bh(bh: pd.DataFrame, *, hhid_col_name: str, debt_col: str, wave: str) -> pd.DataFrame:
+    """Normalize one wave's debt proxy to HH-wave rows."""
+    bh["debt"] = _clean_money(bh[debt_col])
+    out = bh[[hhid_col_name, "debt"]].rename(columns={hhid_col_name: "hhid"})
+    out["wave"] = wave
+    return out
 
 
 def _high_debt() -> pd.DataFrame:
     """Top-quartile (within wave) of HH debt."""
-    out_rows = []
-
-    # IFLS5: bh28 = total outstanding loan stock
-    bh5 = pd.read_stata(RAW / "IFLS5/hh14/b2_bh.dta", convert_categoricals=False)
-    bh5["debt"] = _clean_money(bh5.bh28)
-    bh5 = bh5[["hhid14", "debt"]].rename(columns={"hhid14": "hhid"})
-    bh5["wave"] = "IFLS5"
-    out_rows.append(bh5)
-
-    # IFLS4: bh10 = loan amount in past 12 months (flow). Closest available proxy.
-    bh4 = pd.read_stata(RAW / "IFLS4/hh07/b2_bh.dta", convert_categoricals=False)
-    bh4["debt"] = _clean_money(bh4.bh10)
-    bh4 = bh4[["hhid07", "debt"]].rename(columns={"hhid07": "hhid"})
-    bh4["wave"] = "IFLS4"
-    out_rows.append(bh4)
-
+    out_rows = [
+        # IFLS5: bh28 = total outstanding loan stock
+        _debt_from_bh(
+            pd.read_stata(wave_folder(RAW, "IFLS5") / "b2_bh.dta", convert_categoricals=False),
+            hhid_col_name=hhid_col("IFLS5"),
+            debt_col="bh28",
+            wave="IFLS5",
+        ),
+        # IFLS4: bh10 = loan amount in past 12 months (flow). Closest available proxy.
+        _debt_from_bh(
+            pd.read_stata(wave_folder(RAW, "IFLS4") / "b2_bh.dta", convert_categoricals=False),
+            hhid_col_name=hhid_col("IFLS4"),
+            debt_col="bh10",
+            wave="IFLS4",
+        ),
+    ]
     out = pd.concat(out_rows, ignore_index=True)
     out["debt"] = out.debt.fillna(0)
     # "high_debt" = top quartile AMONG HH with positive debt (the within-wave 75th
@@ -60,21 +67,26 @@ def _high_debt() -> pd.DataFrame:
     return out
 
 
+def _medical_oop_from_rn1(rn: pd.DataFrame, *, wave: str) -> pd.DataFrame:
+    """Aggregate one wave's inpatient OOP costs to person-wave rows."""
+    rn["oop"] = _clean_money(rn.rn19)
+    # One row per inpatient-care episode; sum to person.
+    rn = rn.groupby("pidlink")["oop"].sum().reset_index()
+    rn["wave"] = wave
+    return rn
+
+
 def _high_medical_oop() -> pd.DataFrame:
     """Top-quartile of hospitalisation out-of-pocket cost, among hospitalised adults."""
     out_rows = []
-    for wave, folder in [("IFLS4", "IFLS4/hh07"), ("IFLS5", "IFLS5/hh14")]:
-        p = RAW / folder / "b3b_rn1.dta"
+    for wave in ["IFLS4", "IFLS5"]:
+        p = wave_folder(RAW, wave) / "b3b_rn1.dta"
         if not p.exists():
             continue
         rn = pd.read_stata(p, convert_categoricals=False)
         if "rn19" not in rn.columns:
             continue
-        rn["oop"] = _clean_money(rn.rn19)
-        # One row per inpatient-care episode; sum to person.
-        rn = rn.groupby("pidlink")["oop"].sum().reset_index()
-        rn["wave"] = wave
-        out_rows.append(rn)
+        out_rows.append(_medical_oop_from_rn1(rn, wave=wave))
     if not out_rows:
         return pd.DataFrame(columns=["pidlink", "wave", "med_oop", "high_med_oop"])
     out = pd.concat(out_rows, ignore_index=True)
@@ -141,6 +153,7 @@ def main() -> None:
     for c in ["debt", "med_oop"]:
         out[c] = out[c].fillna(0)
 
+    out = FINANCE_DISTRESS_SHOCKS_SCHEMA.validate(out)
     out.to_parquet(OUT / "finance_distress_shocks.parquet", index=False)
     print(f"\nwrote {len(out):,} rows to {OUT/'finance_distress_shocks.parquet'}")
     print("\nFinal stressor prevalence by wave:")
