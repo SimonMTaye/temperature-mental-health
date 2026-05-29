@@ -1,6 +1,4 @@
 """Commodity-price helpers used by data builds and analysis scripts."""
-from __future__ import annotations
-
 PALM_PRICE_FULL = {
     (2007, 1): 780, (2007, 2): 780, (2007, 3): 770, (2007, 4): 770, (2007, 5): 810,
     (2007, 6): 850, (2007, 7): 879, (2007, 8): 829, (2007, 9): 866, (2007, 10): 861,

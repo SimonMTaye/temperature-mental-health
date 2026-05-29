@@ -29,8 +29,6 @@ Every helper:
   - Returns NaN for any value matching a sentinel for the declared field width
   - Leaves all other values unchanged
 """
-from __future__ import annotations
-
 import pandas as pd
 
 

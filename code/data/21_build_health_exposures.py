@@ -8,16 +8,15 @@ Adds, per (pidlink, wave):
   recently_widowed_5y     1 if any past marriage ended in widowhood (kw11b==2)
                           AND ended within 5 years of interview (kw18y, kw18m)
 
-Output: data/generated/health_bereavement_shocks.parquet
+Output: data/generated/21_health_bereavement_shocks.parquet
 """
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 
-from config import OUT, RAW
+from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from _ifls_wave import wave_folder
 from _schemas import HEALTH_BEREAVEMENT_SHOCKS_SCHEMA
+from _stata import read_stata_df
 
 
 def _acute_symptom_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
@@ -31,10 +30,10 @@ def _acute_symptom_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
 
 
 def _acute_symptom(wave: str) -> pd.DataFrame:
-    p = wave_folder(RAW, wave) / "b3b_ma2.dta"
+    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3b_ma2.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "n_symptoms", "many_symptoms"])
-    return _acute_symptom_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave)
+    return _acute_symptom_from_df(read_stata_df(p, convert_categoricals=False), wave=wave)
 
 
 def _hospitalised_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
@@ -46,10 +45,10 @@ def _hospitalised_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
 
 
 def _hospitalised(wave: str) -> pd.DataFrame:
-    p = wave_folder(RAW, wave) / "b3b_rn2.dta"
+    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3b_rn2.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "recent_hospitalised"])
-    return _hospitalised_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave)
+    return _hospitalised_from_df(read_stata_df(p, convert_categoricals=False), wave=wave)
 
 
 def _accident_2y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
@@ -75,10 +74,10 @@ def _accident_2y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.Dat
 
 
 def _accident_2y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
-    p = wave_folder(RAW, wave) / "b3b_ma1.dta"
+    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3b_ma1.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "recent_accident_2y"])
-    return _accident_2y_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
+    return _accident_2y_from_df(read_stata_df(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
 
 
 def _widowed_5y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
@@ -105,16 +104,16 @@ def _widowed_5y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.Data
 
 
 def _widowed_5y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
-    p = wave_folder(RAW, wave) / "b3a_kw3.dta"
+    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3a_kw3.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "recently_widowed_5y"])
-    return _widowed_5y_from_df(pd.read_stata(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
+    return _widowed_5y_from_df(read_stata_df(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
 
 
 def main() -> None:
-    OUT.mkdir(parents=True, exist_ok=True)
+    GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
-    ind = pd.read_parquet(OUT / "individuals.parquet")[["pidlink", "wave", "interview_date"]]
+    ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")[["pidlink", "wave", "interview_date"]]
     out_frames = []
     for wave in ["IFLS4", "IFLS5"]:
         ints = ind[ind.wave == wave][["pidlink", "interview_date"]].drop_duplicates("pidlink")
@@ -133,9 +132,10 @@ def main() -> None:
         if c in out.columns:
             out[c] = out[c].fillna(0).astype(int)
     out = HEALTH_BEREAVEMENT_SHOCKS_SCHEMA.validate(out)
-    out.to_parquet(OUT / "health_bereavement_shocks.parquet", index=False)
+    out_path = GENERATED_DATA / "21_health_bereavement_shocks.parquet"
+    out.to_parquet(out_path, index=False)
 
-    print(f"wrote {len(out):,} rows to {OUT/'health_bereavement_shocks.parquet'}")
+    print(f"wrote {len(out):,} rows to {out_path}")
     print("\nshock prevalence by wave (% of adults):")
     print(out.groupby("wave").agg(
         n=("pidlink", "size"),

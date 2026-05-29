@@ -11,9 +11,7 @@ images per day to a daily mean before reduceRegions over kab polygons.
 
 Output: data/generated/pm25_daily_kab.parquet (kabupaten_code, date, pm25_ugm3, +components)
 """
-from __future__ import annotations
 
-import os
 import time
 from datetime import timedelta
 
@@ -21,7 +19,7 @@ import ee
 import pandas as pd
 import shapely.wkt
 
-from config import GEE_ENV_PATH, OUT, TMP_PM25 as TMP
+from config import GEE_PROEJCT_ID, TMP_PM25 as TMP, GENERATED_DATA
 from _schemas import PM25_DAILY_SCHEMA
 
 WINDOWS = [
@@ -33,10 +31,7 @@ PM25_BANDS = ["BCSMASS", "OCSMASS", "SO4SMASS", "DUSMASS25", "SSSMASS25"]
 
 
 def init_gee() -> None:
-    for line in GEE_ENV_PATH.read_text().splitlines():
-        if line.startswith("GEE_PROJECT_ID="):
-            os.environ["GEE_PROJECT_ID"] = line.split("=", 1)[1].strip()
-    ee.Initialize(project=os.environ["GEE_PROJECT_ID"])
+    ee.Initialize(project=GEE_PROEJCT_ID)
 
 
 def shapely_to_ee(g) -> ee.Geometry:
@@ -46,9 +41,13 @@ def shapely_to_ee(g) -> ee.Geometry:
 
 def build_fc(kab: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
-    for r in kab.itertuples(index=False):
-        g = shapely.wkt.loads(r.geometry_wkt)
-        feats.append(ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(r.kabupaten_code)}))
+    for geometry_wkt, kabupaten_code in kab[
+        ["geometry_wkt", "kabupaten_code"]
+    ].itertuples(index=False, name=None):
+        g = shapely.wkt.loads(geometry_wkt)
+        feats.append(
+            ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(kabupaten_code)})
+        )
     return ee.FeatureCollection(feats)
 
 
@@ -66,19 +65,22 @@ def daily_pm25_image(date_str: str) -> ee.Image:
         daily.expression(
             "(BC + 1.4 * OC + 1.375 * SO4 + DU + SS) * 1e9",
             {
-                "BC":  daily.select("BCSMASS"),
-                "OC":  daily.select("OCSMASS"),
+                "BC": daily.select("BCSMASS"),
+                "OC": daily.select("OCSMASS"),
                 "SO4": daily.select("SO4SMASS"),
-                "DU":  daily.select("DUSMASS25"),
-                "SS":  daily.select("SSSMASS25"),
+                "DU": daily.select("DUSMASS25"),
+                "SS": daily.select("SSSMASS25"),
             },
-        ).rename("pm25_ugm3")
+        )
+        .rename("pm25_ugm3")
         .set("system:time_start", start.millis())
     )
     return pm25.addBands(daily)
 
 
-def pull_window(start: pd.Timestamp, end_excl: pd.Timestamp, fc: ee.FeatureCollection) -> pd.DataFrame:
+def pull_window(
+    start: pd.Timestamp, end_excl: pd.Timestamp, fc: ee.FeatureCollection
+) -> pd.DataFrame:
     """Server-side reduceRegions across N days × all polygons."""
     dates = pd.date_range(start, end_excl - timedelta(days=1), freq="D")
     images = [daily_pm25_image(d.strftime("%Y-%m-%d")) for d in dates]
@@ -95,25 +97,28 @@ def pull_window(start: pd.Timestamp, end_excl: pd.Timestamp, fc: ee.FeatureColle
     rows = []
     for f in info["features"]:
         p = f["properties"]
-        rows.append({
-            "kabupaten_code": int(p["kabupaten_code"]),
-            "date": p["date"],
-            "pm25_ugm3": p.get("pm25_ugm3"),
-            "BCSMASS":  p.get("BCSMASS"),
-            "OCSMASS":  p.get("OCSMASS"),
-            "SO4SMASS": p.get("SO4SMASS"),
-            "DUSMASS25": p.get("DUSMASS25"),
-            "SSSMASS25": p.get("SSSMASS25"),
-        })
+        rows.append(
+            {
+                "kabupaten_code": int(p["kabupaten_code"]),
+                "date": p["date"],
+                "pm25_ugm3": p.get("pm25_ugm3"),
+                "BCSMASS": p.get("BCSMASS"),
+                "OCSMASS": p.get("OCSMASS"),
+                "SO4SMASS": p.get("SO4SMASS"),
+                "DUSMASS25": p.get("DUSMASS25"),
+                "SSSMASS25": p.get("SSSMASS25"),
+            }
+        )
     return pd.DataFrame(rows)
 
 
 def main() -> None:
     init_gee()
-    OUT.mkdir(parents=True, exist_ok=True)
     TMP.mkdir(parents=True, exist_ok=True)
 
-    kab = pd.read_parquet(OUT / "kabupaten_polygons.parquet").dropna(subset=["geometry_wkt"])
+    kab = pd.read_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet").dropna(
+        subset=["geometry_wkt"]
+    )
     fc = build_fc(kab)
     print(f"polygons: {len(kab)}")
 
@@ -130,21 +135,34 @@ def main() -> None:
             continue
         start = pd.Timestamp(start_s)
         end = pd.Timestamp(end_s)
+        end_excl_total = end + timedelta(days=1)
+        if not isinstance(end_excl_total, pd.Timestamp):
+            raise ValueError(f"{tag}: invalid end timestamp {end_excl_total}")
         starts = pd.date_range(start, end, freq=f"{BATCH_DAYS}D")
         wave_frames = []
         t0 = time.time()
         for i, s in enumerate(starts, 1):
-            e_excl = min(s + timedelta(days=BATCH_DAYS), end + timedelta(days=1))
+            batch_start = pd.Timestamp(s)
+            if not isinstance(batch_start, pd.Timestamp):
+                raise ValueError(f"{tag}: invalid batch timestamp {s}")
+            candidate_end = batch_start + timedelta(days=BATCH_DAYS)
+            e_excl = (
+                candidate_end if candidate_end <= end_excl_total else end_excl_total
+            )
             try:
-                df = pull_window(s, e_excl, fc)
+                df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
             except Exception as e:
-                print(f"  ERROR at {s.date()}: {e}; sleeping 30s and retrying")
+                print(
+                    f"  ERROR at {batch_start.date()}: {e}; sleeping 30s and retrying"
+                )
                 time.sleep(30)
-                df = pull_window(s, e_excl, fc)
+                df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
-            print(f"  {tag} batch {i}/{len(starts)} ({s.date()} -> {e_excl.date()})  "
-                  f"rows={len(df)}  elapsed={time.time()-t0:.0f}s")
+            print(
+                f"  {tag} batch {i}/{len(starts)} ({batch_start.date()} -> {e_excl.date()})  "
+                f"rows={len(df)}  elapsed={time.time() - t0:.0f}s"
+            )
         wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(cache, index=False)
         all_frames.append(wave_df)
@@ -152,9 +170,10 @@ def main() -> None:
     combined = pd.concat(all_frames, ignore_index=True)
     combined["date"] = pd.to_datetime(combined.date)
     combined = combined.sort_values(["kabupaten_code", "date"]).reset_index(drop=True)
-    combined = PM25_DAILY_SCHEMA.validate(combined)
-    combined.to_parquet(OUT / "pm25_daily_kab.parquet", index=False)
-    print(f"\nwrote {len(combined):,} rows to {OUT/'pm25_daily_kab.parquet'}")
+    combined.to_parquet(GENERATED_DATA / "12_pm25_daily_kab.parquet", index=False)
+    print(
+        f"\nwrote {len(combined):,} rows to {GENERATED_DATA / '12_pm25_daily_kab.parquet'}"
+    )
     print(combined.pm25_ugm3.describe().round(2))
 
     print("\n2015 haze months Sumatra+Kalimantan PM2.5:")
@@ -162,11 +181,16 @@ def main() -> None:
         (combined.date >= "2015-09-01") & (combined.date <= "2015-11-30")
     ].merge(kab[["kabupaten_code", "province_code"]], on="kabupaten_code", how="left")
     haze["region"] = haze.province_code.apply(
-        lambda p: "Sumatra" if 11 <= p <= 21 else ("Kalimantan" if 61 <= p <= 64 else "Other")
+        lambda p: (
+            "Sumatra" if 11 <= p <= 21 else ("Kalimantan" if 61 <= p <= 64 else "Other")
+        )
     )
-    print(haze.groupby("region").pm25_ugm3.describe().round(2)[
-        ["count", "mean", "50%", "max"]
-    ])
+    print(
+        haze.groupby("region")
+        .pm25_ugm3.describe()
+        .round(2)[["count", "mean", "50%", "max"]]
+    )
+    PM25_DAILY_SCHEMA.validate(combined)
 
 
 if __name__ == "__main__":

@@ -26,14 +26,17 @@ data/generated/kabupaten_polygons.parquet
         centroid_lat, centroid_lon, area_km2, match_level (kabupaten / province)
 """
 
+import importlib
 import re
 
 import geopandas as gpd
 import pandas as pd
 
-from config import GADM_PATH, OUT
+from _ifls_wave import wave_config, wave_folder
+from config import GADM_PATH, GENERATED_DATA, RAW_IFLS_EXTRACTED, RAW_ROOT
+from _stata import read_stata_df
 
-BPS_CACHE = OUT / "bps_wilayah_2025.csv"
+BPS_CACHE = RAW_ROOT / "bps_wilayah_2025.csv"
 
 
 def normalize(s: str) -> str:
@@ -46,10 +49,7 @@ def normalize(s: str) -> str:
 
 
 def main() -> None:
-    OUT.mkdir(parents=True, exist_ok=True)
-    assert BPS_CACHE.exists(), (
-        "Run 02_kecamatan_centroids first to cache the BPS lookup, or rebuild it."
-    )
+    assert BPS_CACHE.exists(), f"BPS cache not found at {BPS_CACHE}"
     assert GADM_PATH.exists(), f"GADM file missing at {GADM_PATH}"
 
     # --- BPS kab reference
@@ -74,10 +74,27 @@ def main() -> None:
     bps_kab["is_kota"] = bps_kab.kabupaten_in_province >= 71
     print(f"BPS kab reference: {len(bps_kab)}")
 
-    # --- IFLS kab codes
-    ind = pd.read_parquet(OUT / "individuals.parquet")
+    # --- IFLS kab codes (from screening data, both waves)
+    _extract = importlib.import_module("01_extract_individuals")
+    admin_codes_from_screening = _extract.admin_codes_from_screening
+
+    screening_parts = []
+    for wave in ("IFLS4", "IFLS5"):
+        cfg = wave_config(wave)
+        folder = wave_folder(RAW_IFLS_EXTRACTED, wave)
+        screening = read_stata_df(
+            folder / cfg.screening_file, convert_categoricals=False
+        )
+        admin = admin_codes_from_screening(
+            screening,
+            hhid_col=cfg.hhid_col,
+            admin_cols=cfg.screening_cols,
+        )
+        screening_parts.append(admin)
+
+    ifls_admin = pd.concat(screening_parts, ignore_index=True)
     ifls = (
-        ind[["province_code", "kabupaten_code"]]
+        ifls_admin[["province_code", "kabupaten_code"]]
         .drop_duplicates()
         .reset_index(drop=True)
         .merge(
@@ -137,6 +154,9 @@ def main() -> None:
         right_on=["nm", "nm_prov", "is_kota_gadm"],
         how="left",
     )
+    n_pass1 = matched.geom_kab.notna().sum()
+    print(f"pass 1 (exact nm + prov + kab/kota type): {n_pass1}")
+
     # Second pass for unmatched: ignore kab/kota distinction, match on (nm, nm_prov) only
     need = matched.geom_kab.isna()
     if need.any():
@@ -147,6 +167,9 @@ def main() -> None:
         )
         for col in ["geom_kab", "centroid_lat", "centroid_lon", "area_km2"]:
             matched.loc[need.values, col] = retry[col].values
+    n_pass2 = matched.geom_kab.notna().sum() - n_pass1
+    print(f"pass 2 (nm + prov, ignoring kota/regency): {n_pass2}")
+
     # Third pass: drop province constraint (last-ditch)
     need = matched.geom_kab.isna()
     if need.any():
@@ -157,6 +180,8 @@ def main() -> None:
         )
         for col in ["geom_kab", "centroid_lat", "centroid_lon", "area_km2"]:
             matched.loc[need.values, col] = retry[col].values
+    n_pass3 = matched.geom_kab.notna().sum() - n_pass1 - n_pass2
+    print(f"pass 3 (nm only, last-ditch): {n_pass3}")
     # Deduplicate: keep one row per kabupaten_code (smallest area when multiple)
     matched = matched.sort_values(["kabupaten_code", "area_km2"]).drop_duplicates(
         "kabupaten_code", keep="first"
@@ -204,10 +229,10 @@ def main() -> None:
     ].copy()
     out["geometry_wkt"] = out.geom_kab.apply(lambda g: g.wkt if g is not None else None)
     out = out.drop(columns=["geom_kab"])
-    out.to_parquet(OUT / "kabupaten_polygons.parquet", index=False)
+    out.to_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet", index=False)
 
     print(
-        f"\nwrote {len(out)} kabupaten polygons to {OUT / 'kabupaten_polygons.parquet'}"
+        f"\nwrote {len(out)} kabupaten polygons to {GENERATED_DATA / '02_kabupaten_polygons.parquet'}"
     )
     print("match level:")
     print(out.match_level.value_counts(dropna=False))

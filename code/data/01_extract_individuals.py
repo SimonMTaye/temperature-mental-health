@@ -12,12 +12,13 @@ Output: data/generated/individuals.parquet
 
 import pandas as pd
 
-from config import OUT, RAW
+from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from _ifls_wave import ScreeningColumns, WaveConfig, wave_config, wave_folder
 from _schemas import INDIVIDUALS_SCHEMA
+from _stata import read_stata_df
 
 
-def _admin_codes_from_screening(
+def admin_codes_from_screening(
     screening: pd.DataFrame, *, hhid_col: str, admin_cols: ScreeningColumns
 ) -> pd.DataFrame:
     """Extract household geography from a wave's screening file.
@@ -95,7 +96,7 @@ def _individuals_from_frames(
         columns={wave_config.hhid_col: "hhid"}
     )
 
-    admin = _admin_codes_from_screening(
+    admin = admin_codes_from_screening(
         screening,
         hhid_col=wave_config.hhid_col,
         admin_cols=wave_config.screening_cols,
@@ -120,11 +121,9 @@ def _individuals_from_frames(
 def _ifls5_individuals() -> pd.DataFrame:
     # Interview date sits in b3a_time (one row per book-3A interview attempt)
     cfg = wave_config("IFLS5")
-    folder = wave_folder(RAW, "IFLS5")
-    dates = pd.read_stata(folder / cfg.dates_file, convert_categoricals=False)
-    assert isinstance(dates, pd.DataFrame)
-    screening = pd.read_stata(folder / cfg.screening_file, convert_categoricals=False)
-    assert isinstance(screening, pd.DataFrame)
+    folder = wave_folder(RAW_IFLS_EXTRACTED, "IFLS5")
+    dates = read_stata_df(folder / cfg.dates_file, convert_categoricals=False)
+    screening = read_stata_df(folder / cfg.screening_file, convert_categoricals=False)
     return _individuals_from_frames(
         dates,
         screening,
@@ -135,11 +134,9 @@ def _ifls5_individuals() -> pd.DataFrame:
 def _ifls4_individuals() -> pd.DataFrame:
     # b3a_cov has ivwday1/ivwmth1/ivwyr1 (year is 2-digit: 7=2007, 8=2008)
     cfg = wave_config("IFLS4")
-    folder = wave_folder(RAW, "IFLS4")
-    dates = pd.read_stata(folder / cfg.dates_file, convert_categoricals=False)
-    assert isinstance(dates, pd.DataFrame)
-    screening = pd.read_stata(folder / cfg.screening_file, convert_categoricals=False)
-    assert isinstance(screening, pd.DataFrame)
+    folder = wave_folder(RAW_IFLS_EXTRACTED, "IFLS4")
+    dates = read_stata_df(folder / cfg.dates_file, convert_categoricals=False)
+    screening = read_stata_df(folder / cfg.screening_file, convert_categoricals=False)
     return _individuals_from_frames(
         dates,
         screening,
@@ -150,9 +147,11 @@ def _ifls4_individuals() -> pd.DataFrame:
 def main() -> None:
     parts = [_ifls4_individuals(), _ifls5_individuals()]
     out = pd.concat(parts, ignore_index=True)
-    OUT.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(OUT / "individuals.parquet", index=False)
-    print(f"wrote {len(out):,} individual-wave rows to {OUT / 'individuals.parquet'}")
+    GENERATED_DATA.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(GENERATED_DATA / "01_individuals.parquet", index=False)
+    print(
+        f"wrote {len(out):,} individual-wave rows to {GENERATED_DATA / 'individuals.parquet'}"
+    )
     print(
         out.groupby("wave").agg(
             n=("pidlink", "size"),

@@ -40,12 +40,12 @@ Outputs: data/generated/cesd_scores.parquet
         depressed (1 if cesd_raw>=10 — standard CES-D 10 cutoff),
         n_items, CES-D factor scores, and within-wave factor z-scores
 """
-from __future__ import annotations
 
 import pandas as pd
 
-from config import OUT, RAW
+from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from _schemas import CESD_SCORES_SCHEMA
+from _stata import read_stata_df
 
 REVERSE_ITEMS = {"E", "H"}
 FACTOR_MAP = {
@@ -97,10 +97,16 @@ def build_factor_scores(items: pd.DataFrame) -> pd.DataFrame:
 
 
 def score_ifls5() -> tuple[pd.DataFrame, pd.DataFrame]:
-    raw = pd.read_stata(RAW / "IFLS5/hh14/b3b_kp.dta", convert_categoricals=False)
+    raw = read_stata_df(
+        RAW_IFLS_EXTRACTED / "IFLS5/hh14/b3b_kp.dta", convert_categoricals=False
+    )
     df = raw.copy()
     df = score_item_frame(df, "IFLS5")
-    agg = df.groupby("pidlink").agg(n_items=("score", "size"), cesd_raw=("score", "sum")).reset_index()
+    agg = (
+        df.groupby("pidlink")
+        .agg(n_items=("score", "size"), cesd_raw=("score", "sum"))
+        .reset_index()
+    )
     agg["wave"] = "IFLS5"
     agg["cesd10_count"] = float("nan")
     df["wave"] = "IFLS5"
@@ -108,18 +114,24 @@ def score_ifls5() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def score_ifls4() -> tuple[pd.DataFrame, pd.DataFrame]:
-    raw = pd.read_stata(RAW / "IFLS4/hh07/b3b_kp.dta", convert_categoricals=False)
+    raw = read_stata_df(
+        RAW_IFLS_EXTRACTED / "IFLS4/hh07/b3b_kp.dta", convert_categoricals=False
+    )
     df = raw.copy()
     yes = df[df.kp01.isin([1, 3])].copy()
     yes["yes"] = (yes.kp01 == 1).astype(int)
-    yes.loc[yes.kptype.isin(REVERSE_ITEMS), "yes"] = 1 - yes.loc[
-        yes.kptype.isin(REVERSE_ITEMS), "yes"
-    ]
+    yes.loc[yes.kptype.isin(REVERSE_ITEMS), "yes"] = (
+        1 - yes.loc[yes.kptype.isin(REVERSE_ITEMS), "yes"]
+    )
 
     scored = score_item_frame(df, "IFLS4")
-    agg = yes.groupby("pidlink").agg(
-        n_items=("yes", "size"),
-    ).reset_index()
+    agg = (
+        yes.groupby("pidlink")
+        .agg(
+            n_items=("yes", "size"),
+        )
+        .reset_index()
+    )
     agg = agg.merge(
         yes.groupby("pidlink").agg(cesd10_count=("yes", "sum")).reset_index(),
         on="pidlink",
@@ -135,7 +147,6 @@ def score_ifls4() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def main() -> None:
-    OUT.mkdir(parents=True, exist_ok=True)
     scored4, items4 = score_ifls4()
     scored5, items5 = score_ifls5()
     parts = [scored4, scored5]
@@ -160,15 +171,19 @@ def main() -> None:
         ]
     ]
     out = CESD_SCORES_SCHEMA.validate(out)
-    out.to_parquet(OUT / "cesd_scores.parquet", index=False)
-    print(f"wrote {len(out):,} rows to {OUT/'cesd_scores.parquet'}")
-    print(out.groupby("wave").agg(
-        n=("pidlink", "size"),
-        n_items_med=("n_items", "median"),
-        cesd_raw_mean=("cesd_raw", "mean"),
-        cesd_raw_p50=("cesd_raw", "median"),
-        depressed_pct=("depressed", lambda x: 100*x.mean()),
-    ).round(2))
+    out.to_parquet(GENERATED_DATA / "24_cesd_scores.parquet", index=False)
+    print(f"wrote {len(out):,} rows to {GENERATED_DATA / '24_cesd_scores.parquet'}")
+    print(
+        out.groupby("wave")
+        .agg(
+            n=("pidlink", "size"),
+            n_items_med=("n_items", "median"),
+            cesd_raw_mean=("cesd_raw", "mean"),
+            cesd_raw_p50=("cesd_raw", "median"),
+            depressed_pct=("depressed", lambda x: 100 * x.mean()),
+        )
+        .round(2)
+    )
 
 
 if __name__ == "__main__":
