@@ -17,3 +17,6 @@ output
 data
 !code/data/
 !code/data/_schemas.py
+preview.qmd
+code/analysis/exploratory/*
+code/analysis_began
