@@ -1,15 +1,17 @@
 [project]
-name = "frontier-jingyao"
+name = "temperature-stressors-and-mental-health"
 version = "0.1.0"
-description = "Add your description here"
+description = "TBD"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "earthengine-api>=1.7.28",
     "fastparquet>=2026.5.0",
     "geopandas>=1.1.3",
+    "maketables>=0.1.8",
     "pandas>=3.0.3",
     "pandera>=0.31.1",
+    "plotnine>=0.15.4",
     "pyarrow>=24.0.0",
     "pyfixest>=0.50.1",
 ]
@@ -17,6 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
+    "quarto>=0.1.0",
     "ruff>=0.15.14",
     "ty>=0.0.40",
 ]
