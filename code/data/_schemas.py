@@ -38,13 +38,37 @@ INDIVIDUALS_SCHEMA = pa.DataFrameSchema(
         # Wave-specific household identifier used for household-level merges.
         "hhid": _id_column(),
         # Individual interview date built from the wave-specific cover/date fields.
-        "interview_date": pa.Column(pa.DateTime, nullable=False, coerce=True),
+        "interview_datetime": pa.Column(pa.DateTime, nullable=False, coerce=True),
+        # Day value of interview date
+        "day": pa.Column(
+            int, checks=pa.Check.between(1, 31), nullable=False, coerce=True
+        ),
+        # Month value of interview date
+        "month": pa.Column(
+            int, checks=pa.Check.between(1, 12), nullable=False, coerce=True
+        ),
+        # Year value of interview date
+        "year": pa.Column(
+            int, checks=pa.Check.between(2007, 2015), nullable=False, coerce=True
+        ),
+        # Start hour
+        "hour_start": pa.Column(
+            int, checks=pa.Check.between(0, 23), nullable=False, coerce=True
+        ),
+        # End hour
+        "hour_end": pa.Column(
+            int, checks=pa.Check.between(0, 23), nullable=False, coerce=True
+        ),
         # BPS two-digit province code from the household screening file.
-        "province_code": pa.Column(int, nullable=False, coerce=True),
+        "province": pa.Column(int, nullable=False, coerce=True),
         # BPS four-digit kabupaten code, computed as province*100 plus within-province kabupaten.
-        "kabupaten_code": pa.Column(int, nullable=False, coerce=True),
+        "kabupaten": pa.Column(int, nullable=False, coerce=True),
         # BPS seven-digit kecamatan code, computed from kabupaten_code and within-kabupaten kecamatan.
-        "kecamatan_code": pa.Column(int, nullable=False, coerce=True),
+        "kecamatan": pa.Column(int, nullable=False, coerce=True),
+        # Combined geo code converted to 2014 BPS codes compatible with GADM boundaries; may have more than 1 code for IFLS4 due boundary changes
+        "gadm_fullcode": pa.Column(str, nullable=False, coerce=True),
+        # Flag indicating that boundaries were remapped to multiple new kecamatans and needed averaging over
+        "multiple_kec_remap": _binary_column(),
         # IFLS survey wave for the person record.
         "wave": _wave_column(),
     },
@@ -130,7 +154,9 @@ STRESSORS_SCHEMA = pa.DataFrameSchema(
         # Indicator for widowed marital status.
         "widowed": _binary_column(),
         # Approximate years of schooling mapped from IFLS education level.
-        "edu_yrs": pa.Column(int, checks=pa.Check.ge(0), nullable=False, coerce=True),
+        "edu_yrs": pa.Column(
+            "Int64", checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         # IFLS survey wave for the stressor/covariate record.
         "wave": _wave_column(),
         # Household size used in per-capita expenditure calculations.
@@ -607,9 +633,14 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         # Keep old CES-D score artifacts readable while 24 owns factor construction.
         "somatic": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
         "somatic_z": pa.Column(float, nullable=True, coerce=True),
-        # Optional exploratory sidecar variables, filled with zeros when sidecars are absent.
-        **HEALTH_BEREAVEMENT_SHOCKS_SCHEMA.columns,
-        **_schema_columns(FINANCE_DISTRESS_SHOCKS_SCHEMA, ["debt_q4", "high_med_oop"]),
+        # Exploratory sidecar variables retain missingness after left joins.
+        "n_symptoms": pa.Column(int, checks=pa.Check.ge(0), nullable=True, coerce=True),
+        "many_symptoms": _binary_column(nullable=True),
+        "recent_hospitalised": _binary_column(nullable=True),
+        "recent_accident_2y": _binary_column(nullable=True),
+        "recently_widowed_5y": _binary_column(nullable=True),
+        "debt_q4": _binary_column(nullable=True),
+        "high_med_oop": _binary_column(nullable=True),
         "pce_decline_q4": _binary_column(),
     },
     strict=True,

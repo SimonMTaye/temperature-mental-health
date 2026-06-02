@@ -1,166 +1,331 @@
-"""Extract individual-level IFLS4 + IFLS5 records with interview date + admin codes.
+"""
+Extract individual-level IFLS4 + IFLS5 panel data with geographic identifiers
 
-For each wave, returns one row per (pidlink, wave) with:
-  pidlink, hhid, wave, interview_date, province_code, kabupaten_code, kecamatan_code
+The data serves as a panel to which we will merge other variables and use to fetch
+temperature data
 
-province_code  = BPS 2-digit
-kabupaten_code = BPS 4-digit  (province*100 + within-province kabupaten)
-kecamatan_code = BPS 7-digit  (kabupaten*1000 + within-kabupaten kecamatan)
-
-Output: data/generated/individuals.parquet
+Output: data/generated/01_individuals.parquet
 """
 
 import pandas as pd
+import numpy as np
+from pathlib import Path
 
 from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
-from _ifls_wave import ScreeningColumns, WaveConfig, wave_config, wave_folder
-from _schemas import INDIVIDUALS_SCHEMA
 from _stata import read_stata_df
+from _schemas import INDIVIDUALS_SCHEMA
+
+# Below are dicitonaries that store variable names for easier / cleaner code below
+IFLS4 = {
+    "wave": "IFLS4",
+    "file": Path(RAW_IFLS_EXTRACTED) / "IFLS4" / "hh07" / "bk_sc.dta",
+    "geo_columns": {
+        "hhid": "hhid07",
+        "province": "sc010707",
+        "kabupaten": "sc020707",
+        "kecamatan": "sc030707",
+    },
+    "geo_columns_00": {
+        "province_00": "sc010700",
+        "kabupaten_00": "sc020700",
+        "kecamatan_00": "sc030700",
+    },
+}
+
+IFLS5 = {
+    "wave": "IFLS5",
+    "file": Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "bk_sc1.dta",
+    "geo_columns": {
+        "hhid": "hhid14",
+        "province": "sc01_14_14",
+        "kabupaten": "sc02_14_14",
+        "kecamatan": "sc03_14_14",
+    },
+}
+
+WAVE_GEO_CONFIGS: dict[str, dict] = {
+    "IFLS5": IFLS5,
+    "IFLS4": IFLS4,
+}
 
 
-def admin_codes_from_screening(
-    screening: pd.DataFrame, *, hhid_col: str, admin_cols: ScreeningColumns
-) -> pd.DataFrame:
-    """Extract household geography from a wave's screening file.
-
-    The IFLS screening books store province, within-province kabupaten, and
-    within-kabupaten kecamatan codes under wave-specific raw column names. This
-    normalizes those names and returns one row per household with stable BPS-style
-    `province_code`, `kabupaten_code`, and `kecamatan_code` columns.
+def parse_geo_codes_ifls5() -> pd.DataFrame:
     """
-    screening = screening[
+    Extract household geography from a wave's screening file.
+    Rename and standardize
+
+    """
+    cfg = WAVE_GEO_CONFIGS["IFLS5"]
+    screening_dataset = read_stata_df(
+        cfg["file"],
+        convert_categoricals=False,
+    )
+    # Reverse the dict so mapping works
+    rename_dict = {v: k for k, v in cfg["geo_columns"].items()}
+    screening_dataset = screening_dataset.rename(columns=rename_dict)
+    screening_dataset = screening_dataset[cfg["geo_columns"].keys()].copy()
+
+    # We want one per household, not per interviewee
+    screening_dataset["province"] = screening_dataset.province.astype(int)
+    screening_dataset["kabupaten"] = screening_dataset.kabupaten.astype(int)
+    screening_dataset["kecamatan"] = screening_dataset.kecamatan.astype(int)
+    # Generate combined code for easy matching with GAMD boundary data.
+    # The code is province (2 digits) + kabupaten (2 digits) + kecamatan (3 digits)
+    screening_dataset["gadm_fullcode"] = (
+        screening_dataset.province.astype(str).str.zfill(2)
+        + screening_dataset.kabupaten.astype(str).str.zfill(2)
+        + screening_dataset.kecamatan.astype(str).str.zfill(3)
+    ).astype(int)
+    screening_dataset["wave"] = "IFLS5"
+    # Below is an indicator column to flag remapping complication when converting IFLS4 Admin codes to 5
+    # Not relevant for IFLS5 so set to 0
+    screening_dataset["multiple_kec_remap"] = 0
+    return screening_dataset[
         [
-            hhid_col,
-            admin_cols.province,
-            admin_cols.kabupaten_in_province,
-            admin_cols.kecamatan_in_kabupaten,
+            "hhid",
+            "province",
+            "kabupaten",
+            "gadm_fullcode",
+            "kecamatan",
+            "wave",
+            "multiple_kec_remap",
         ]
-    ].rename(
-        columns={
-            hhid_col: "hhid",
-            admin_cols.province: "province",
-            admin_cols.kabupaten_in_province: "kabupaten_in_province",
-            admin_cols.kecamatan_in_kabupaten: "kecamatan_in_kabupaten",
-        }
-    )
-    screening = screening.dropna(
-        subset=["province", "kabupaten_in_province", "kecamatan_in_kabupaten"]
-    ).drop_duplicates("hhid")
-    screening["province"] = screening.province.astype(int)
-    screening["kabupaten_in_province"] = screening.kabupaten_in_province.astype(int)
-    screening["kecamatan_in_kabupaten"] = screening.kecamatan_in_kabupaten.astype(int)
-    screening["province_code"] = screening.province
-    screening["kabupaten_code"] = (
-        screening.province * 100 + screening.kabupaten_in_province
-    )
-    screening["kecamatan_code"] = (
-        screening.kabupaten_code * 1000 + screening.kecamatan_in_kabupaten
-    )
-    return screening[["hhid", "province_code", "kabupaten_code", "kecamatan_code"]]
+    ]
 
 
-def _individuals_from_frames(
-    dates: pd.DataFrame,
-    screening: pd.DataFrame,
-    wave_config: WaveConfig,
-) -> pd.DataFrame:
-    """Build one row per person-wave with interview date and household geography.
+def generate_mapping_data(original_col: str) -> pd.DataFrame:
+    mapping = read_stata_df(
+        Path(RAW_IFLS_EXTRACTED)
+        / "IFLS5"
+        / "IFLS5_all_doc"
+        / "IFLS5_BPS_2014_codes"
+        / "kec_9899000714.dta"
+    )
+    # Do the same for 2000 codes
+    mapping = mapping[[original_col, "kecid14"]].copy()
+    mapping = mapping.dropna(subset=[original_col, "kecid14"])
+    mapping = mapping.drop_duplicates(subset=[original_col, "kecid14"])
+    mapping[original_col] = mapping[original_col].astype(int)
+    mapping["kecid14"] = mapping.kecid14.astype(int)
+    mapping = (
+        mapping.groupby(original_col)
+        .agg(
+            gadm_fullcode_2014=("kecid14", lambda x: ",".join(x.astype(str))),
+        )
+        .reset_index()
+    )
+    return mapping
 
-    `dates` is the wave-specific interview-date frame and `screening` is the
-    household screening frame. `wave_config` supplies the raw file metadata:
-    household ID column, date columns, year transformation, and screening-code
-    columns. The result is keyed by `pidlink` and `wave`, with household ID,
-    interview date, and normalized admin codes.
+
+def parse_geo_codes_ifls4() -> pd.DataFrame:
     """
-    # TODO: Check if we have hour
-    date_cols = wave_config.interview_date_cols
-    dates = dates[
-        (dates[date_cols.year] > 0)
-        & (dates[date_cols.month] > 0)
-        & (dates[date_cols.day] > 0)
+    Extract household geography from a wave's screening file.
+    Rename and standardize
+
+    Does additional work to convert IFLS4 2007 BPS codes to 2014 BPS codes compatible with GADM boundaries
+
+    """
+    cfg = WAVE_GEO_CONFIGS["IFLS4"]
+    screening_dataset = read_stata_df(
+        cfg["file"],
+        convert_categoricals=False,
+    )
+    # Reverse the dict so mapping works
+    rename_dict = {v: k for k, v in cfg["geo_columns"].items()}
+    screening_dataset = screening_dataset.rename(columns=rename_dict)
+    # Rename 2000 codes as well since mapping dict doesn't have all the 2007 codes
+    rename_dict_00 = {v: k for k, v in cfg["geo_columns_00"].items()}
+    screening_dataset = screening_dataset.rename(columns=rename_dict_00)
+    screening_dataset = screening_dataset[
+        list(rename_dict.values()) + list(rename_dict_00.values())
     ].copy()
-    dates["interview_date"] = pd.to_datetime(
+
+    # We want one per household, not per interviewee
+    screening_dataset["province"] = screening_dataset.province.astype(int)
+    screening_dataset["kabupaten"] = screening_dataset.kabupaten.astype(int)
+    screening_dataset["kecamatan"] = screening_dataset.kecamatan.astype(int)
+    # Generate combined code for easy matching with GAMD boundary data.
+    # The code is province (2 digits) + kabupaten (2 digits) + kecamatan (3 digits)
+    screening_dataset["gadm_fullcode_07"] = (
+        screening_dataset.province.astype(str).str.zfill(2)
+        + screening_dataset.kabupaten.astype(str).str.zfill(2)
+        + screening_dataset.kecamatan.astype(str).str.zfill(3)
+    ).astype(int)
+
+    screening_dataset["gadm_fullcode_00"] = (
+        screening_dataset.province_00.astype(int).astype(str).str.zfill(2)
+        + screening_dataset.kabupaten_00.astype(int).astype(str).str.zfill(2)
+        + screening_dataset.kecamatan_00.astype(int).astype(str).str.zfill(3)
+    ).astype(int)
+
+    mapping_00 = generate_mapping_data(original_col="kecid00")
+    mapping_07 = generate_mapping_data(original_col="kecid07")
+
+    screening_dataset["wave"] = "IFLS4"
+
+    screening_dataset = screening_dataset.merge(
+        mapping_07,
+        left_on=["gadm_fullcode_07"],
+        right_on=["kecid07"],
+        how="left",
+        validate="many_to_one",
+    )
+    screening_dataset["gadm_fullcode_07_2014"] = screening_dataset.gadm_fullcode_2014
+    screening_dataset.drop(columns=["kecid07", "gadm_fullcode_2014"], inplace=True)
+
+    screening_dataset = screening_dataset.merge(
+        mapping_00,
+        left_on=["gadm_fullcode_00"],
+        right_on=["kecid00"],
+        how="left",
+        validate="many_to_one",
+    )
+    screening_dataset["gadm_fullcode"] = screening_dataset.gadm_fullcode_07_2014.fillna(
+        screening_dataset.gadm_fullcode_2014
+    )
+    # Multiple map indicates that a single 2007 district was mapping to many 2014 ones; detect by checking for comma
+    screening_dataset["multiple_kec_remap"] = screening_dataset.gadm_fullcode.apply(
+        lambda x: 1 if isinstance(x, str) and "," in x else 0
+    )
+    screening_dataset = screening_dataset[
+        [
+            "gadm_fullcode",
+            "wave",
+            "hhid",
+            "province",
+            "kabupaten",
+            "kecamatan",
+            "multiple_kec_remap",
+        ]
+    ].copy()
+    return screening_dataset
+
+
+DATE_COLUMNS = [
+    "pidlink",
+    "hhid",
+    "wave",
+    "interview_datetime",
+    "day",
+    "month",
+    "year",
+    "hour_start",
+    "hour_end",
+]
+
+
+def parse_ifls4_survey_info() -> pd.DataFrame:
+    path = Path(RAW_IFLS_EXTRACTED) / "IFLS4" / "hh07" / "b3a_cov.dta"
+    survey_info = read_stata_df(path, convert_categoricals=False)
+    mapping = {
+        "year": "ivwyr",
+        "month": "ivwmth",
+        "day": "ivwday",
+        "hour_start": "beghr",
+        "hour_end": "endhr",
+    }
+    # Each person might have been visited more than once; read the latest date based
+    # based on the visit times so we have right survey time for temperature matching
+    for col, prefix in mapping.items():
+        # Pick the right columb based on the numvis variable
+        survey_info[col] = np.select(
+            [
+                survey_info.numvis == 1,
+                survey_info.numvis == 2,
+                survey_info.numvis == 3,
+            ],
+            [
+                survey_info[f"{prefix}1"],
+                survey_info[f"{prefix}2"],
+                survey_info[f"{prefix}3"],
+            ],
+        )
+    # The raw data just has '8' or '7' for the year
+    survey_info["year"] = survey_info.year + 2000
+
+    survey_info["hhid"] = survey_info["hhid07"]
+    survey_info["wave"] = "IFLS4"
+    # Print hh_id if interview_datetime is null
+    # For IFLS4 four households have incorrect survey dates:
+    # 003134102 -> Feb 30
+    # 073190006 ->  Feb 31
+    # 106150010 ->  Nov 31
+    # 231300004 ->  Nov 31
+    # Fix the above to make it the last day of the month before datetime generation
+    survey_info.loc[survey_info.pidlink == "003134102", "day"] = 28
+    survey_info.loc[survey_info.pidlink == "073190006", "day"] = 28
+    survey_info.loc[survey_info.pidlink == "106150010", "day"] = 30
+    survey_info.loc[survey_info.pidlink == "231300004", "day"] = 30
+
+    survey_info["interview_datetime"] = pd.to_datetime(
         dict(
-            year=wave_config.year_transform(dates[date_cols.year]).astype(int),
-            month=dates[date_cols.month].astype(int),
-            day=dates[date_cols.day].astype(int),
+            year=survey_info.year,
+            month=survey_info.month,
+            day=survey_info.day,
+            hour=survey_info.hour_end,
         ),
         errors="coerce",
     )
-    dates = dates.dropna(subset=["interview_date"])
-    # TODO: Simply dropping seems crazy
-    dates = dates.sort_values(["pidlink", "interview_date"]).drop_duplicates(
-        "pidlink", keep="first"
-    )
-    dates = dates[["pidlink", wave_config.hhid_col, "interview_date"]].rename(
-        columns={wave_config.hhid_col: "hhid"}
-    )
 
-    admin = admin_codes_from_screening(
-        screening,
-        hhid_col=wave_config.hhid_col,
-        admin_cols=wave_config.screening_cols,
+    print(
+        "HHIDs with null interview datetime:",
+        survey_info[survey_info["interview_datetime"].isna()]["pidlink"].tolist(),
     )
-    out = dates.merge(admin, on="hhid", how="inner")
-    out["wave"] = wave_config.wave
-    return INDIVIDUALS_SCHEMA.validate(
-        out[
-            [
-                "pidlink",
-                "hhid",
-                "interview_date",
-                "province_code",
-                "kabupaten_code",
-                "kecamatan_code",
-                "wave",
-            ]
-        ]
-    )
+    return survey_info[DATE_COLUMNS]
 
 
-def _ifls5_individuals() -> pd.DataFrame:
-    # Interview date sits in b3a_time (one row per book-3A interview attempt)
-    cfg = wave_config("IFLS5")
-    folder = wave_folder(RAW_IFLS_EXTRACTED, "IFLS5")
-    dates = read_stata_df(folder / cfg.dates_file, convert_categoricals=False)
-    screening = read_stata_df(folder / cfg.screening_file, convert_categoricals=False)
-    return _individuals_from_frames(
-        dates,
-        screening,
-        cfg,
-    )
+def parse_ifls5_survey_info() -> pd.DataFrame:
+    path = Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "b3a_time.dta"
+    survey_info = read_stata_df(path, convert_categoricals=False)
+    survey_info["year"] = survey_info.ivwyr
+    survey_info["month"] = survey_info.ivwmth
+    survey_info["day"] = survey_info.ivwday
+    survey_info["hour_start"] = survey_info.beghr
+    survey_info["hour_end"] = survey_info.endhr
 
-
-def _ifls4_individuals() -> pd.DataFrame:
-    # b3a_cov has ivwday1/ivwmth1/ivwyr1 (year is 2-digit: 7=2007, 8=2008)
-    cfg = wave_config("IFLS4")
-    folder = wave_folder(RAW_IFLS_EXTRACTED, "IFLS4")
-    dates = read_stata_df(folder / cfg.dates_file, convert_categoricals=False)
-    screening = read_stata_df(folder / cfg.screening_file, convert_categoricals=False)
-    return _individuals_from_frames(
-        dates,
-        screening,
-        cfg,
+    survey_info["interview_datetime"] = pd.to_datetime(
+        dict(
+            year=survey_info.year,
+            month=survey_info.month,
+            day=survey_info.day,
+            hour=survey_info.hour_end,
+        ),
+        errors="coerce",
     )
+    survey_info["hhid"] = survey_info["hhid14"]
+    survey_info["wave"] = "IFLS5"
+    # TODO: use latest time for robustness as well
+    # Sort by pidlink and interview time, then drop duplicates to keep the earliest interview for each person
+    survey_info = survey_info.dropna(subset=["interview_datetime"], how="all")
+    survey_info = survey_info.sort_values(by=["pidlink", "interview_datetime"])
+    survey_info = survey_info.drop_duplicates(subset=["pidlink"], keep="first")
+    return survey_info[DATE_COLUMNS]
 
 
 def main() -> None:
-    parts = [_ifls4_individuals(), _ifls5_individuals()]
-    out = pd.concat(parts, ignore_index=True)
-    GENERATED_DATA.mkdir(parents=True, exist_ok=True)
+    survey_datetime_ifls4 = parse_ifls4_survey_info()
+    survey_datetime_ifls5 = parse_ifls5_survey_info()
+    survey_both = pd.concat(
+        [survey_datetime_ifls4, survey_datetime_ifls5], ignore_index=True
+    )
+    # Catch missing hours tagged as 99
+    survey_both.loc[survey_both.hour_start == 99, "hour_start"] = 0
+    survey_both.loc[survey_both.hour_end == 99, "hour_end"] = 0
+
+    geo_ifls4 = parse_geo_codes_ifls4()
+    geo_ifls5 = parse_geo_codes_ifls5()
+
+    geo_both = pd.concat([geo_ifls4, geo_ifls5], ignore_index=True)
+    geo_both = geo_both.drop_duplicates(subset=["hhid", "wave"], keep="first")
+
+    out = survey_both.merge(
+        geo_both, on=["hhid", "wave"], how="left", validate="many_to_one"
+    )
+    # Validate against schema
+    out = INDIVIDUALS_SCHEMA.validate(out)
     out.to_parquet(GENERATED_DATA / "01_individuals.parquet", index=False)
     print(
-        f"wrote {len(out):,} individual-wave rows to {GENERATED_DATA / 'individuals.parquet'}"
-    )
-    print(
-        out.groupby("wave").agg(
-            n=("pidlink", "size"),
-            date_min=("interview_date", "min"),
-            date_max=("interview_date", "max"),
-            n_provinces=("province_code", "nunique"),
-            n_kabupaten=("kabupaten_code", "nunique"),
-            n_kecamatan=("kecamatan_code", "nunique"),
-        )
+        f"wrote {len(out):,} individual-wave rows to {GENERATED_DATA / '01_individuals.parquet'}"
     )
 
 
