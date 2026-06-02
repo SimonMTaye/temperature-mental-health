@@ -137,7 +137,8 @@ def _ifls5_pce() -> pd.DataFrame:
 
 def _ifls4_pce() -> pd.DataFrame:
     df = read_stata_df(
-        RAW_IFLS_EXTRACTED / "consumption/pce/pce07nom.dta", convert_categoricals=False
+        RAW_IFLS_EXTRACTED / "consumption/pce/pce-1993-1997_2000-2007/pce07nom.dta",
+        convert_categoricals=False,
     )
     df = df[["hhid07", "hhsize", "pce"]].rename(columns={"hhid07": "hhid"})
     df["wave"] = "IFLS4"

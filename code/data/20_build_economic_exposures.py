@@ -11,7 +11,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
 from _commodity_prices import PALM_PRICE_FULL  # noqa: E402
 from _ifls_wave import hhid_col, wave_folder  # noqa: E402
 from _schemas import ECONOMIC_EXPOSURES_SCHEMA  # noqa: E402
@@ -71,7 +70,7 @@ BINARY_COLUMNS = [
 def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     """Build individual job-loss recall fields from one IFLS work-history file."""
     out = pd.DataFrame({"pidlink": df.pidlink})
-    out["recent_job_loss_5y"] = (clean_count(df.tk46c, max_real=50).fillna(0) >= 1)
+    out["recent_job_loss_5y"] = clean_count(df.tk46c, max_real=50).fillna(0) >= 1
     out["involuntary_loss_5y"] = df.tk46m.isin([1, 2, 3])
     out["last_loss_year"] = clean_year(df.tk46dy)
     out["last_loss_month"] = clean_month(df.tk46dm)
@@ -213,8 +212,8 @@ def _add_loss_timing(out: pd.DataFrame) -> pd.DataFrame:
         )
     out["last_loss_date"] = pd.to_datetime(out.last_loss_date)
     out["days_since_last_loss"] = (out.interview_date - out.last_loss_date).dt.days
-    out["job_loss_within_yr"] = (
-        (out.days_since_last_loss >= 0) & (out.days_since_last_loss <= 365)
+    out["job_loss_within_yr"] = (out.days_since_last_loss >= 0) & (
+        out.days_since_last_loss <= 365
     )
     return out
 
