@@ -18,5 +18,8 @@ data
 !code/data/
 !code/data/_schemas.py
 preview.qmd
+preview.html
 code/analysis/exploratory/*
 code/analysis_began
+resources
+sync_to_sink.sh
