@@ -29,7 +29,7 @@ WINDOWS = [
 
 
 def init_gee() -> None:
-    ee.Initialize(GEE_PROEJCT_ID)
+    ee.Initialize(project=GEE_PROEJCT_ID)
 
 
 def shapely_to_ee(g) -> ee.Geometry:
