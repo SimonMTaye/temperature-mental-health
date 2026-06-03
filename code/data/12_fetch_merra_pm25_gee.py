@@ -18,6 +18,7 @@ from datetime import timedelta
 import ee
 import pandas as pd
 import shapely.wkt
+from tqdm.auto import tqdm
 
 from config import GEE_PROEJCT_ID, TMP_PM25 as TMP, GENERATED_DATA
 from _schemas import PM25_DAILY_SCHEMA
@@ -52,9 +53,16 @@ def load_geographies() -> pd.DataFrame:
 
 def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
-    for gadm_fullcode, geometry_wkt, province_code, match_level in geographies[
+    rows = geographies[
         ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
-    ].itertuples(index=False, name=None):
+    ].itertuples(index=False, name=None)
+    for gadm_fullcode, geometry_wkt, province_code, match_level in tqdm(
+        rows,
+        total=len(geographies),
+        desc="MERRA PM2.5 polygons",
+        unit="polygon",
+        leave=False,
+    ):
         g = shapely.wkt.loads(geometry_wkt)
         feats.append(
             ee.Feature(
@@ -177,7 +185,8 @@ def main() -> None:
         starts = pd.date_range(start, end, freq=f"{BATCH_DAYS}D")
         wave_frames = []
         t0 = time.time()
-        for i, s in enumerate(starts, 1):
+        batches = tqdm(starts, desc=f"{tag} MERRA PM2.5", unit="batch")
+        for s in batches:
             batch_start = pd.Timestamp(s)
             if not isinstance(batch_start, pd.Timestamp):
                 raise ValueError(f"{tag}: invalid batch timestamp {s}")
@@ -195,9 +204,10 @@ def main() -> None:
                 time.sleep(30)
                 df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
-            print(
-                f"  {tag} batch {i}/{len(starts)} ({batch_start.date()} -> {e_excl.date()})  "
-                f"rows={len(df)}  elapsed={time.time() - t0:.0f}s"
+            batches.set_postfix(
+                rows=len(df),
+                elapsed_s=f"{time.time() - t0:.0f}",
+                window=f"{batch_start.date()}->{e_excl.date()}",
             )
         wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(cache, index=False)

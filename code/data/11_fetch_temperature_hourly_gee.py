@@ -52,6 +52,7 @@ from datetime import timedelta
 import ee
 import pandas as pd
 import shapely.wkt
+from tqdm.auto import tqdm
 
 from config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE_HOURLY as TMP
 from _schemas import HOURLY_TEMPERATURE_SCHEMA
@@ -92,9 +93,16 @@ def load_geographies() -> pd.DataFrame:
 
 def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
-    for gadm_fullcode, geometry_wkt, province_code, match_level in geographies[
+    rows = geographies[
         ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
-    ].itertuples(index=False, name=None):
+    ].itertuples(index=False, name=None)
+    for gadm_fullcode, geometry_wkt, province_code, match_level in tqdm(
+        rows,
+        total=len(geographies),
+        desc="ERA5 hourly polygons",
+        unit="polygon",
+        leave=False,
+    ):
         g = shapely.wkt.loads(geometry_wkt)
         feats.append(
             ee.Feature(
@@ -237,12 +245,15 @@ def main() -> None:
 
         wave_frames = []
         t0 = time.time()
-        for i, s in enumerate(starts, 1):
+        batches = tqdm(starts, desc=f"{tag} ERA5 hourly", unit="batch")
+        for i, s in enumerate(batches, 1):
             batch_start = pd.Timestamp(s)
             if not isinstance(batch_start, pd.Timestamp):
                 raise ValueError(f"{tag}: invalid batch timestamp {s}")
             candidate_end = batch_start + timedelta(hours=BATCH_HOURS)
-            e_excl = candidate_end if candidate_end <= end_excl_total else end_excl_total
+            e_excl = (
+                candidate_end if candidate_end <= end_excl_total else end_excl_total
+            )
             try:
                 df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
@@ -252,14 +263,15 @@ def main() -> None:
                 df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
 
-            if i % 20 == 0 or i == n_batches:
-                el = time.time() - t0
-                eta = el / i * (n_batches - i)
-                rows = sum(len(f) for f in wave_frames)
-                print(
-                    f"    {tag} {i}/{n_batches}  elapsed={el / 60:.1f}min  "
-                    f"eta={eta / 60:.1f}min  rows={rows:,}"
-                )
+            el = time.time() - t0
+            eta = el / i * (n_batches - i)
+            rows = sum(len(f) for f in wave_frames)
+            batches.set_postfix(
+                elapsed_min=f"{el / 60:.1f}",
+                eta_min=f"{eta / 60:.1f}",
+                rows=f"{rows:,}",
+                window=f"{batch_start}->{e_excl}",
+            )
 
         wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(out_path, index=False)

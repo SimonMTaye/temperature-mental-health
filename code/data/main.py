@@ -14,6 +14,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from tqdm.auto import tqdm
+
 from config import RAW_IFLS, RAW_IFLS_EXTRACTED
 
 # Each entry: archive path (relative to RAW_IFLS) -> extraction dir (relative to RAW_IFLS_EXTRACTED).
@@ -62,15 +64,17 @@ def extract() -> None:
     """
     RAW_IFLS_EXTRACTED.mkdir(parents=True, exist_ok=True)
     n_done, n_skip, n_missing = 0, 0, 0
-    for rel_archive, rel_target in ARCHIVES.items():
+    archives = tqdm(ARCHIVES.items(), desc="IFLS archives", unit="archive")
+    for rel_archive, rel_target in archives:
         archive = RAW_IFLS / rel_archive
         target = RAW_IFLS_EXTRACTED / rel_target
+        archives.set_postfix_str(archive.name, refresh=False)
         if (not target.exists()) and (not archive.exists()):
-            print(f"MISSING    {archive}")
+            tqdm.write(f"MISSING    {archive}")
             n_missing += 1
             continue
         status = unpack_one(archive, target)
-        print(f"{status:10s} {archive.name:55s} -> {target}")
+        tqdm.write(f"{status:10s} {archive.name:55s} -> {target}")
         if status == "extracted":
             n_done += 1
         else:
@@ -105,36 +109,47 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
             "commodity/transport exposures",
         ),
     ),
-    (
-        PipelineStep("30_build_analysis_table_input", "analysis table input"),
-    ),
+    (PipelineStep("30_build_analysis_table_input", "analysis table input"),),
 )
 
 
 def run_step(step: PipelineStep) -> None:
-    print(f"\n--- start {step.module}: {step.label} ---")
+    tqdm.write(f"--- start {step.module}: {step.label} ---")
     module = importlib.import_module(step.module)
     module.main()
-    print(f"--- done  {step.module}: {step.label} ---")
+    tqdm.write(f"--- done  {step.module}: {step.label} ---")
 
 
 def run_layer(layer_index: int, steps: tuple[PipelineStep, ...]) -> None:
-    print(
-        f"\n=== layer {layer_index}: "
-        f"{', '.join(step.module for step in steps)} ==="
-    )
+    print(f"\n=== layer {layer_index}: {', '.join(step.module for step in steps)} ===")
     if len(steps) == 1:
-        run_step(steps[0])
+        with tqdm(
+            steps,
+            desc=f"layer {layer_index}",
+            unit="step",
+            leave=True,
+        ) as progress:
+            for step in progress:
+                progress.set_postfix_str(step.label, refresh=False)
+                run_step(step)
         return
 
     with ThreadPoolExecutor(max_workers=len(steps)) as executor:
         futures = {executor.submit(run_step, step): step for step in steps}
-        for future in as_completed(futures):
-            step = futures[future]
-            try:
-                future.result()
-            except Exception as exc:
-                raise RuntimeError(f"{step.module} failed") from exc
+        with tqdm(
+            total=len(steps),
+            desc=f"layer {layer_index}",
+            unit="step",
+            leave=True,
+        ) as progress:
+            for future in as_completed(futures):
+                step = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    raise RuntimeError(f"{step.module} failed") from exc
+                progress.set_postfix_str(step.label, refresh=False)
+                progress.update()
 
 
 def main() -> None:
@@ -142,7 +157,14 @@ def main() -> None:
     Run all the pipelines to build all datasets, in the correct order with parallelism for the same layer (i.e. layer 0, then 1, then 2)
     """
     extract()
-    for layer_index, steps in enumerate(PIPELINE_LAYERS):
+    layers = tqdm(
+        enumerate(PIPELINE_LAYERS),
+        total=len(PIPELINE_LAYERS),
+        desc="pipeline layers",
+        unit="layer",
+    )
+    for layer_index, steps in layers:
+        layers.set_postfix_str(f"layer {layer_index}", refresh=False)
         run_layer(layer_index, steps)
 
 

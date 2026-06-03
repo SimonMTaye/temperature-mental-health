@@ -29,6 +29,7 @@ from datetime import timedelta
 import ee
 import pandas as pd
 import shapely.wkt
+from tqdm.auto import tqdm
 
 from config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE as TMP
 from _schemas import DAILY_TEMPERATURE_HEAT_SCHEMA
@@ -58,9 +59,16 @@ def load_geographies() -> pd.DataFrame:
 
 def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
-    for gadm_fullcode, geometry_wkt, province_code, match_level in geographies[
+    rows = geographies[
         ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
-    ].itertuples(index=False, name=None):
+    ].itertuples(index=False, name=None)
+    for gadm_fullcode, geometry_wkt, province_code, match_level in tqdm(
+        rows,
+        total=len(geographies),
+        desc="ERA5 daily polygons",
+        unit="polygon",
+        leave=False,
+    ):
         g = shapely.wkt.loads(geometry_wkt)
         feats.append(
             ee.Feature(
@@ -248,14 +256,19 @@ def repair_missing_geographies(
     windows: list[tuple[str, pd.Timestamp, pd.Timestamp]],
 ) -> pd.DataFrame:
     missing_codes = sorted(
-        set(geographies.gadm_fullcode.astype(str)) - set(weather.gadm_fullcode.astype(str))
+        set(geographies.gadm_fullcode.astype(str))
+        - set(weather.gadm_fullcode.astype(str))
     )
     if not missing_codes:
         return weather
 
-    print(f"repairing small geographies with buffered ERA5 polygons")
+    print("repairing small geographies with buffered ERA5 polygons")
     repaired = weather.copy()
-    for buffer_degrees in [0.03, 0.05, 0.10, 0.15]:
+    for buffer_degrees in tqdm(
+        [0.03, 0.05, 0.10, 0.15],
+        desc="ERA5 repair buffers",
+        unit="buffer",
+    ):
         missing_geographies = geographies[
             geographies.gadm_fullcode.astype(str).isin(missing_codes)
         ].copy()
@@ -270,14 +283,17 @@ def repair_missing_geographies(
         for tag, start, end in windows:
             BATCH_DAYS = 2
             starts = pd.date_range(start, end, freq=f"{BATCH_DAYS}D")
-            for i, s in enumerate(starts, 1):
+            batches = tqdm(
+                starts,
+                desc=f"{tag} ERA5 repair {buffer_degrees:.2f}",
+                unit="batch",
+                leave=False,
+            )
+            for s in batches:
                 e_excl = min(s + timedelta(days=BATCH_DAYS), end + timedelta(days=1))
                 df = pull_window(s, e_excl, fc)
                 repair_frames.append(df)
-                if i % 50 == 0 or i == len(starts):
-                    print(
-                        f"    repair {tag} {i}/{len(starts)}  ({s.date()} -> {e_excl.date()})  rows={len(df)}"
-                    )
+                batches.set_postfix(rows=len(df), window=f"{s.date()}->{e_excl.date()}")
 
         if repair_frames:
             repaired = pd.concat([repaired, *repair_frames], ignore_index=True)
@@ -326,7 +342,8 @@ def main() -> None:
         )
         wave_frames = []
         t0 = time.time()
-        for i, s in enumerate(starts, 1):
+        batches = tqdm(starts, desc=f"{tag} ERA5 daily", unit="batch")
+        for i, s in enumerate(batches, 1):
             e_excl = min(s + timedelta(days=BATCH_DAYS), end + timedelta(days=1))
             try:
                 df = pull_window(s, e_excl, fc)
@@ -340,8 +357,11 @@ def main() -> None:
                 wave_frames.append(df)
             el = time.time() - t0
             eta = el / i * (len(starts) - i)
-            print(
-                f"    {tag} batch {i}/{len(starts)}  ({s.date()} -> {e_excl.date()})  elapsed={el:.0f}s  eta={eta:.0f}s  rows={len(df)}"
+            batches.set_postfix(
+                elapsed_s=f"{el:.0f}",
+                eta_s=f"{eta:.0f}",
+                rows=len(df),
+                window=f"{s.date()}->{e_excl.date()}",
             )
         wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(out_path, index=False)

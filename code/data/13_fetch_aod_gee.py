@@ -15,6 +15,7 @@ import time
 import ee
 import pandas as pd
 import shapely.wkt
+from tqdm.auto import tqdm
 
 from config import GENERATED_DATA, GEE_PROEJCT_ID
 from _schemas import AOD_MONTHLY_SCHEMA
@@ -52,9 +53,16 @@ def load_geographies() -> pd.DataFrame:
 
 def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
-    for gadm_fullcode, geometry_wkt, province_code, match_level in geographies[
+    rows = geographies[
         ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
-    ].itertuples(index=False, name=None):
+    ].itertuples(index=False, name=None)
+    for gadm_fullcode, geometry_wkt, province_code, match_level in tqdm(
+        rows,
+        total=len(geographies),
+        desc="MODIS AOD polygons",
+        unit="polygon",
+        leave=False,
+    ):
         g = shapely.wkt.loads(geometry_wkt)
         feats.append(
             ee.Feature(
@@ -95,8 +103,8 @@ def main() -> None:
 
     band = "Aerosol_Optical_Depth_Land_Ocean_Mean_Mean"
     rows_all = []
-    for start, end in define_windows():
-        print(f"window {start} -> {end}")
+    windows = define_windows()
+    for start, end in tqdm(windows, desc="MODIS AOD windows", unit="window"):
         ic = (
             ee.ImageCollection("MODIS/061/MOD08_M3").filterDate(start, end).select(band)
         )
@@ -117,8 +125,9 @@ def main() -> None:
         flat = ic.map(reduce_one).flatten()
         t0 = time.time()
         info = flat.getInfo()
-        print(
-            f"  fetched {len(info['features'])} (kab × month) in {time.time() - t0:.1f}s"
+        tqdm.write(
+            f"  {start} -> {end}: fetched {len(info['features'])} "
+            f"(kab x month) in {time.time() - t0:.1f}s"
         )
         for f in info["features"]:
             p = f["properties"]

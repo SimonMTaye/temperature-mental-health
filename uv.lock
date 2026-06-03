@@ -2919,6 +2919,7 @@ dependencies = [
     { name = "plotnine" },
     { name = "pyarrow" },
     { name = "pyfixest" },
+    { name = "tqdm" },
 ]
 
 [package.dev-dependencies]
@@ -2940,6 +2941,7 @@ requires-dist = [
     { name = "plotnine", specifier = ">=0.15.4" },
     { name = "pyarrow", specifier = ">=24.0.0" },
     { name = "pyfixest", specifier = ">=0.50.1" },
+    { name = "tqdm", specifier = ">=4.67.3" },
 ]
 
 [package.metadata.requires-dev]
