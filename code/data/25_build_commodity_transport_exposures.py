@@ -12,11 +12,11 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _ifls_wave import hhid_col, wave_folder  # noqa: E402
 from _schemas import COMMODITY_TRANSPORT_EXPOSURES_SCHEMA  # noqa: E402
 from _sentinels import clean_money  # noqa: E402
 from _stata import read_stata_df  # noqa: E402
-from config import GENERATED_DATA, RAW_IFLS_EXTRACTED  # noqa: E402
+from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
+from log import log  # noqa: E402
 
 
 PALM_PROVS = {
@@ -60,6 +60,16 @@ OUTPUT_COLUMNS = [
     "high_transport_share",
 ]
 
+IFLS_FOLDERS = {
+    "IFLS4": IFLS4_FOLDER,
+    "IFLS5": IFLS5_FOLDER,
+}
+
+HHID_COLUMNS = {
+    "IFLS4": "hhid07",
+    "IFLS5": "hhid14",
+}
+
 
 def _agricultural_worker_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     """Flag respondents whose main work sector is agriculture."""
@@ -74,7 +84,7 @@ def _agricultural_worker_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame
 
 def _agricultural_worker(wave: str) -> pd.DataFrame:
     tk = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3a_tk2.dta",
+        IFLS_FOLDERS[wave] / "b3a_tk2.dta",
         convert_categoricals=False,
     )
     return _agricultural_worker_from_df(tk, wave=wave)
@@ -84,6 +94,7 @@ def _monthly_food_spending(ks0: pd.DataFrame, *, hhid_col_name: str) -> pd.DataF
     """Convert weekly food spending to monthly household spending."""
     if "ks02a" in ks0.columns:
         ks0 = ks0.copy()
+        # We use 4.33 to convert weekly to monthly spending
         ks0["food_mo"] = clean_money(ks0.ks02a) * 4.33
     else:
         ks0 = pd.DataFrame({hhid_col_name: ks0[hhid_col_name], "food_mo": np.nan})
@@ -121,14 +132,18 @@ def _transport_share_from_frames(
     )
     food = _monthly_food_spending(ks0, hhid_col_name=hhid_col_name)
 
-    out = transport.drop_duplicates(hhid_col_name).merge(total_ks2, on=hhid_col_name)
-    out = out.merge(total_ks3, on=hhid_col_name).merge(
+    out = transport.drop_duplicates(hhid_col_name).merge(
+        total_ks2, on=hhid_col_name, validate="1:1"
+    )
+    out = out.merge(total_ks3, on=hhid_col_name, validate="1:1").merge(
         food,
         on=hhid_col_name,
         how="left",
+        validate="1:1",
     )
-    for col in ["transport_spending_mo", "total_ks2_mo", "total_ks3_mo", "food_mo"]:
-        out[col] = out[col].fillna(0)
+    if wave == "IFLS5":
+        for col in ["transport_spending_mo", "total_ks2_mo", "total_ks3_mo", "food_mo"]:
+            out[col] = out[col].fillna(0)
     out["total_mo"] = out.total_ks2_mo + out.total_ks3_mo + out.food_mo
     out["transport_share"] = out.transport_spending_mo / out.total_mo.replace(0, np.nan)
     out = out[(out.transport_share >= 0) & (out.transport_share <= 1)]
@@ -140,12 +155,12 @@ def _transport_share_from_frames(
 
 
 def _transport_share(wave: str) -> pd.DataFrame:
-    folder = wave_folder(RAW_IFLS_EXTRACTED, wave)
+    folder = IFLS_FOLDERS[wave]
     return _transport_share_from_frames(
         read_stata_df(folder / "b1_ks2.dta", convert_categoricals=False),
         read_stata_df(folder / "b1_ks3.dta", convert_categoricals=False),
         read_stata_df(folder / "b1_ks0.dta", convert_categoricals=False),
-        hhid_col_name=hhid_col(wave),
+        hhid_col_name=HHID_COLUMNS[wave],
         wave=wave,
     )
 
@@ -200,7 +215,7 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         [_transport_share("IFLS4"), _transport_share("IFLS5")],
         ignore_index=True,
     )
-    print(
+    log(
         f"sector rows: {len(agricultural):,}; transport rows: {len(transport):,}; "
         f"median transport share={transport.transport_share.median():.3f}"
     )
@@ -211,12 +226,16 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         individuals[["pidlink", "wave", "province_code"]],
         on=["pidlink", "wave"],
         how="left",
+        validate="1:1",
     )
-    out = out.merge(agricultural, on=["pidlink", "wave"], how="left")
+    out = out.merge(
+        agricultural, on=["pidlink", "wave"], how="left", validate="1:1"
+    )
     out = out.merge(
         transport.drop_duplicates(subset=["hhid", "wave"]),
         on=["hhid", "wave"],
         how="left",
+        validate="m:1",
     )
     out = _add_region_farmer_flags(out)
     out = _add_transport_quintile(out)
@@ -224,9 +243,9 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
     output_path = GENERATED_DATA / "25_commodity_transport_exposures.parquet"
     out_final.to_parquet(output_path, index=False)
 
-    print(f"\nwrote {len(out_final):,} rows to {output_path}")
-    print("\ncommodity/transport prevalence by wave:")
-    print(
+    log(f"wrote {len(out_final):,} rows to {output_path}")
+    log("commodity/transport prevalence by wave:", "DEBUG")
+    log(
         out_final.groupby("wave")
         .agg(
             n=("pidlink", "size"),
@@ -237,7 +256,8 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
             high_transport_pct=("high_transport_share", lambda s: 100 * s.mean()),
             transport_share_med=("transport_share", "median"),
         )
-        .round(3)
+        .round(3),
+        "DEBUG",
     )
     return out_final
 

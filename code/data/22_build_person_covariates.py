@@ -24,11 +24,21 @@ import pandas as pd
 
 # Make _sentinels.py importable when this script is run directly
 sys.path.insert(0, str(Path(__file__).parent))
-from config import GENERATED_DATA, RAW_IFLS_EXTRACTED  # noqa: E402
+from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER, RAW_IFLS_EXTRACTED  # noqa: E402
 from _sentinels import clean_age, clean_categorical  # noqa: E402
-from _ifls_wave import hhid_col, wave_folder  # noqa: E402
 from _schemas import STRESSORS_SCHEMA  # noqa: E402
 from _stata import read_stata_df  # noqa: E402
+from log import log  # noqa: E402
+
+IFLS_FOLDERS = {
+    "IFLS4": IFLS4_FOLDER,
+    "IFLS5": IFLS5_FOLDER,
+}
+
+HHID_COLUMNS = {
+    "IFLS4": "hhid07",
+    "IFLS5": "hhid14",
+}
 
 
 def _demographics_from_roster(ar: pd.DataFrame, *, hhid_col_name: str) -> pd.DataFrame:
@@ -80,26 +90,25 @@ def _demographics_from_roster(ar: pd.DataFrame, *, hhid_col_name: str) -> pd.Dat
         95: 0,
         98: 0,
     }
-    ar["edu_yrs"] = (
-        ar.edu_lvl.map(lvl_map).fillna(0).astype(int) if "edu_lvl" in ar.columns else 0
-    )
+    ar["edu_yrs"] = ar.edu_lvl.map(lvl_map).fillna(0).astype("Int64")
+
     return ar[["pidlink", "hhid", "age", "sex", "married", "widowed", "edu_yrs"]]
 
 
 def _ifls5_demographics() -> pd.DataFrame:
     ar = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, "IFLS5") / "bk_ar1.dta",
+        IFLS5_FOLDER / "bk_ar1.dta",
         convert_categoricals=False,
     )
-    return _demographics_from_roster(ar, hhid_col_name=hhid_col("IFLS5"))
+    return _demographics_from_roster(ar, hhid_col_name=HHID_COLUMNS["IFLS5"])
 
 
 def _ifls4_demographics() -> pd.DataFrame:
     ar = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, "IFLS4") / "bk_ar1.dta",
+        IFLS4_FOLDER / "bk_ar1.dta",
         convert_categoricals=False,
     )
-    return _demographics_from_roster(ar, hhid_col_name=hhid_col("IFLS4"))
+    return _demographics_from_roster(ar, hhid_col_name=HHID_COLUMNS["IFLS4"])
 
 
 def _ifls5_pce() -> pd.DataFrame:
@@ -109,7 +118,7 @@ def _ifls5_pce() -> pd.DataFrame:
     """
     # b1_ks0 has weekly food (ks02a) + monthly non-food various items at HH level
     ks0 = read_stata_df(
-        RAW_IFLS_EXTRACTED / "IFLS5/hh14/b1_ks0.dta", convert_categoricals=False
+        IFLS5_FOLDER / "b1_ks0.dta", convert_categoricals=False
     )
     # Aggregate any monetary monthly columns we can identify
     money_cols = [
@@ -126,10 +135,12 @@ def _ifls5_pce() -> pd.DataFrame:
 
     # household size: count of pidlink in bk_ar1
     ar = read_stata_df(
-        RAW_IFLS_EXTRACTED / "IFLS5/hh14/bk_ar1.dta", convert_categoricals=False
+        IFLS5_FOLDER / "bk_ar1.dta", convert_categoricals=False
     )
     hhsize = ar.groupby("hhid14", as_index=False).agg(hhsize=("pidlink", "size"))
-    out = ks0[["hhid14", "x_total_mo"]].merge(hhsize, on="hhid14")
+    out = ks0[["hhid14", "x_total_mo"]].merge(
+        hhsize, on="hhid14", validate="m:1"
+    )
     out["pce"] = out.x_total_mo / out.hhsize.replace(0, np.nan)
     out["wave"] = "IFLS5"
     return out[["hhid14", "hhsize", "pce", "wave"]].rename(columns={"hhid14": "hhid"})
@@ -160,9 +171,9 @@ def _disaster_from_df(
 
 def _disaster(wave: str) -> pd.DataFrame:
     nd = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, wave) / "b2_nd1.dta", convert_categoricals=False
+        IFLS_FOLDERS[wave] / "b2_nd1.dta", convert_categoricals=False
     )
-    return _disaster_from_df(nd, hhid_col_name=hhid_col(wave), wave=wave)
+    return _disaster_from_df(nd, hhid_col_name=HHID_COLUMNS[wave], wave=wave)
 
 
 def _loan_rejected_from_df(
@@ -180,9 +191,9 @@ def _loan_rejected_from_df(
 
 def _loan_rejected(wave: str) -> pd.DataFrame:
     bh = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, wave) / "b2_bh.dta", convert_categoricals=False
+        IFLS_FOLDERS[wave] / "b2_bh.dta", convert_categoricals=False
     )
-    return _loan_rejected_from_df(bh, hhid_col_name=hhid_col(wave), wave=wave)
+    return _loan_rejected_from_df(bh, hhid_col_name=HHID_COLUMNS[wave], wave=wave)
 
 
 def _agri_occupation_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame:
@@ -210,7 +221,7 @@ def _agri_occupation_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame:
 
 def _agri_occupation(wave: str) -> pd.DataFrame:
     # tk2 has sector codes; tk24 series is the industry of primary job
-    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3a_tk2.dta"
+    p = IFLS_FOLDERS[wave] / "b3a_tk2.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "agri_occupation"])
     tk = read_stata_df(p, convert_categoricals=False)
@@ -226,7 +237,7 @@ def main() -> None:
         ],
         ignore_index=True,
     )
-    print(f"demographics: {len(demo):,}")
+    log(f"demographics: {len(demo):,}")
 
     # PCE
     pce = pd.concat([_ifls4_pce(), _ifls5_pce()], ignore_index=True)
@@ -235,20 +246,20 @@ def main() -> None:
     pce["pce_quintile"] = pce.groupby("wave")["pce"].transform(
         lambda s: pd.qcut(s.rank(method="first"), 5, labels=False) + 1
     )
-    print(f"pce: {len(pce):,}")
+    log(f"pce: {len(pce):,}")
 
     # HH-level shocks
     disaster = pd.concat([_disaster("IFLS4"), _disaster("IFLS5")], ignore_index=True)
     loan = pd.concat(
         [_loan_rejected("IFLS4"), _loan_rejected("IFLS5")], ignore_index=True
     )
-    print(f"disaster: {len(disaster):,}, loan: {len(loan):,}")
+    log(f"disaster: {len(disaster):,}, loan: {len(loan):,}")
 
     # Individual-level
     agri = pd.concat(
         [_agri_occupation("IFLS4"), _agri_occupation("IFLS5")], ignore_index=True
     )
-    print(f"agri occupation: {len(agri):,}")
+    log(f"agri occupation: {len(agri):,}")
 
     # Merge by (pidlink, wave) — most are HH-level so first attach to demo via hhid
     out = demo.copy()
@@ -256,10 +267,11 @@ def main() -> None:
         pce[["hhid", "wave", "hhsize", "pce", "pce_log", "pce_quintile"]],
         on=["hhid", "wave"],
         how="left",
+        validate="m:1",
     )
-    out = out.merge(disaster, on=["hhid", "wave"], how="left")
-    out = out.merge(loan, on=["hhid", "wave"], how="left")
-    out = out.merge(agri, on=["pidlink", "wave"], how="left")
+    out = out.merge(disaster, on=["hhid", "wave"], how="left", validate="m:1")
+    out = out.merge(loan, on=["hhid", "wave"], how="left", validate="m:1")
+    out = out.merge(agri, on=["pidlink", "wave"], how="left", validate="1:1")
 
     for c in [
         "disaster_5yr",
@@ -272,11 +284,11 @@ def main() -> None:
     # Macro shock flags will be computed in the analysis script using interview_date
     out = STRESSORS_SCHEMA.validate(out)
     out.to_parquet(GENERATED_DATA / "22_stressors.parquet", index=False)
-    print(
+    log(
         f"\nwrote {len(out):,} stressor rows to {GENERATED_DATA / '22_stressors.parquet'}"
     )
-    print("\nstressor prevalence by wave:")
-    print(
+    log("stressor prevalence by wave:", "DEBUG")
+    log(
         out.groupby("wave")
         .agg(
             n=("pidlink", "size"),
@@ -290,7 +302,8 @@ def main() -> None:
             disaster_severe_pct=("disaster_severe_5yr", lambda s: 100 * s.mean()),
             agri_occ_pct=("agri_occupation", lambda s: 100 * s.mean()),
         )
-        .round(2)
+        .round(2),
+        "DEBUG",
     )
 
 

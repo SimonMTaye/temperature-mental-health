@@ -13,10 +13,15 @@ Output: data/generated/21_health_bereavement_shocks.parquet
 import numpy as np
 import pandas as pd
 
-from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
-from _ifls_wave import wave_folder
+from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER
 from _schemas import HEALTH_BEREAVEMENT_SHOCKS_SCHEMA
 from _stata import read_stata_df
+from log import log
+
+IFLS_FOLDERS = {
+    "IFLS4": IFLS4_FOLDER,
+    "IFLS5": IFLS5_FOLDER,
+}
 
 
 def _acute_symptom_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
@@ -30,7 +35,7 @@ def _acute_symptom_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
 
 
 def _acute_symptom(wave: str) -> pd.DataFrame:
-    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3b_ma2.dta"
+    p = IFLS_FOLDERS[wave] / "b3b_ma2.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "n_symptoms", "many_symptoms"])
     return _acute_symptom_from_df(read_stata_df(p, convert_categoricals=False), wave=wave)
@@ -45,7 +50,7 @@ def _hospitalised_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
 
 
 def _hospitalised(wave: str) -> pd.DataFrame:
-    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3b_rn2.dta"
+    p = IFLS_FOLDERS[wave] / "b3b_rn2.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "recent_hospitalised"])
     return _hospitalised_from_df(read_stata_df(p, convert_categoricals=False), wave=wave)
@@ -55,7 +60,7 @@ def _accident_2y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.Dat
     if "ma15" not in df.columns:
         return pd.DataFrame(columns=["pidlink", "wave", "recent_accident_2y"])
     df = df[["pidlink", "ma15", "ma16mth", "ma16yr"]].copy()
-    df = df.merge(interview_dates, on="pidlink", how="left")
+    df = df.merge(interview_dates, on="pidlink", how="left", validate="m:1")
     has_acc = df.ma15 == 1
     yr = pd.to_numeric(df.ma16yr, errors="coerce")
     yr = np.where(yr < 100, yr + 2000, yr)
@@ -74,7 +79,7 @@ def _accident_2y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.Dat
 
 
 def _accident_2y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
-    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3b_ma1.dta"
+    p = IFLS_FOLDERS[wave] / "b3b_ma1.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "recent_accident_2y"])
     return _accident_2y_from_df(read_stata_df(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
@@ -84,7 +89,7 @@ def _widowed_5y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.Data
     if "kw11b" not in df.columns:
         return pd.DataFrame(columns=["pidlink", "wave", "recently_widowed_5y"])
     df = df[["pidlink", "kw11b", "kw18mth", "kw18yr"]].copy()
-    df = df.merge(interview_dates, on="pidlink", how="left")
+    df = df.merge(interview_dates, on="pidlink", how="left", validate="m:1")
     # IFLS5 codes: 8 = Widow/Widower, 7 = Divorced, 6 = Separated.
     is_widow = df.kw11b == 8
     yr = pd.to_numeric(df.kw18yr, errors="coerce")
@@ -104,7 +109,7 @@ def _widowed_5y_from_df(df: pd.DataFrame, *, wave: str, interview_dates: pd.Data
 
 
 def _widowed_5y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
-    p = wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3a_kw3.dta"
+    p = IFLS_FOLDERS[wave] / "b3a_kw3.dta"
     if not p.exists():
         return pd.DataFrame(columns=["pidlink", "wave", "recently_widowed_5y"])
     return _widowed_5y_from_df(read_stata_df(p, convert_categoricals=False), wave=wave, interview_dates=interview_dates)
@@ -113,7 +118,9 @@ def _widowed_5y(wave: str, interview_dates: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
-    ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")[["pidlink", "wave", "interview_date"]]
+    ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
+    ind["interview_date"] = pd.to_datetime(ind.interview_datetime).dt.normalize()
+    ind = ind[["pidlink", "wave", "interview_date"]]
     out_frames = []
     for wave in ["IFLS4", "IFLS5"]:
         ints = ind[ind.wave == wave][["pidlink", "interview_date"]].drop_duplicates("pidlink")
@@ -121,9 +128,11 @@ def main() -> None:
         hosp = _hospitalised(wave)
         acc = _accident_2y(wave, ints)
         wid = _widowed_5y(wave, ints)
-        m = ac.merge(hosp, on=["pidlink", "wave"], how="outer") \
-              .merge(acc, on=["pidlink", "wave"], how="outer") \
-              .merge(wid, on=["pidlink", "wave"], how="outer")
+        m = (
+            ac.merge(hosp, on=["pidlink", "wave"], how="outer", validate="1:1")
+            .merge(acc, on=["pidlink", "wave"], how="outer", validate="1:1")
+            .merge(wid, on=["pidlink", "wave"], how="outer", validate="1:1")
+        )
         out_frames.append(m)
 
     out = pd.concat(out_frames, ignore_index=True)
@@ -135,16 +144,16 @@ def main() -> None:
     out_path = GENERATED_DATA / "21_health_bereavement_shocks.parquet"
     out.to_parquet(out_path, index=False)
 
-    print(f"wrote {len(out):,} rows to {out_path}")
-    print("\nshock prevalence by wave (% of adults):")
-    print(out.groupby("wave").agg(
+    log(f"wrote {len(out):,} rows to {out_path}")
+    log("shock prevalence by wave (% of adults):", "DEBUG")
+    log(out.groupby("wave").agg(
         n=("pidlink", "size"),
         n_symptoms_mean=("n_symptoms", "mean"),
         many_symptoms_pct=("many_symptoms", lambda s: 100*s.mean()),
         recent_hospitalised_pct=("recent_hospitalised", lambda s: 100*s.mean()),
         recent_accident_2y_pct=("recent_accident_2y", lambda s: 100*s.mean()),
         recently_widowed_5y_pct=("recently_widowed_5y", lambda s: 100*s.mean()),
-    ).round(3))
+    ).round(3), "DEBUG")
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ from tqdm.auto import tqdm
 
 from config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE as TMP
 from _schemas import DAILY_TEMPERATURE_HEAT_SCHEMA
+from log import log
 
 
 def init_gee() -> None:
@@ -239,7 +240,7 @@ def read_cached_window(path) -> pd.DataFrame | None:
         return None
     cached = pd.read_parquet(path)
     if "gadm_fullcode" not in cached.columns:
-        print(f"  ignoring old kabupaten_code cache at {path}")
+        log(f"ignoring old kabupaten_code cache at {path}", "WARNING")
         return None
     return cached
 
@@ -247,7 +248,7 @@ def read_cached_window(path) -> pd.DataFrame | None:
 def write_output(df: pd.DataFrame) -> None:
     out_path = GENERATED_DATA / "10_daily_temperature_kab.parquet"
     df.to_parquet(out_path, index=False)
-    print(f"\nwrote {len(df):,} rows to {out_path}")
+    log(f"wrote {len(df):,} rows to {out_path}")
 
 
 def repair_missing_geographies(
@@ -262,7 +263,7 @@ def repair_missing_geographies(
     if not missing_codes:
         return weather
 
-    print("repairing small geographies with buffered ERA5 polygons")
+    log("repairing small geographies with buffered ERA5 polygons", "WARNING")
     repaired = weather.copy()
     for buffer_degrees in tqdm(
         [0.03, 0.05, 0.10, 0.15],
@@ -272,7 +273,7 @@ def repair_missing_geographies(
         missing_geographies = geographies[
             geographies.gadm_fullcode.astype(str).isin(missing_codes)
         ].copy()
-        print(
+        log(
             f"  buffer={buffer_degrees:.2f} degrees for {len(missing_geographies)} geographies"
         )
         fc = build_buffered_feature_collection(
@@ -307,7 +308,7 @@ def repair_missing_geographies(
 
     repaired = repaired.drop_duplicates(["gadm_fullcode", "date"], keep="first")
     if missing_codes:
-        print(f"warning: {len(missing_codes)} geographies still missing ERA5 rows")
+        log(f"{len(missing_codes)} geographies still missing ERA5 rows", "WARNING")
     return repaired
 
 
@@ -316,13 +317,13 @@ def main() -> None:
     TMP.mkdir(parents=True, exist_ok=True)
 
     geographies = load_geographies()
-    print(f"polygons to process: {len(geographies)}")
+    log(f"polygons to process: {len(geographies)}")
 
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
     windows = define_windows(ind)
-    print("windows:")
+    log("windows:")
     for tag, a, b in windows:
-        print(f"  {tag}: {a.date()} -> {b.date()}  ({(b - a).days} days)")
+        log(f"  {tag}: {a.date()} -> {b.date()}  ({(b - a).days} days)")
 
     fc = build_feature_collection(geographies)
 
@@ -331,13 +332,13 @@ def main() -> None:
         out_path = TMP / f"{tag}_daily_temp.parquet"
         cached = read_cached_window(out_path)
         if cached is not None:
-            print(f"  {tag}: cached at {out_path}")
+            log(f"  {tag}: cached at {out_path}")
             all_frames.append(cached)
             continue
         # Keep each call under roughly 5,000 features after the gadm_fullcode expansion.
         BATCH_DAYS = 2
         starts = pd.date_range(start, end, freq=f"{BATCH_DAYS}D")
-        print(
+        log(
             f"  {tag}: pulling {(end - start).days + 1} days x {len(geographies)} polygons in {len(starts)} batches"
         )
         wave_frames = []
@@ -349,8 +350,9 @@ def main() -> None:
                 df = pull_window(s, e_excl, fc)
                 wave_frames.append(df)
             except Exception as exc:
-                print(
-                    f"    {s.date()}-{e_excl.date()}  ERROR: {exc}; sleeping 30s and retrying once"
+                log(
+                    f"    {s.date()}-{e_excl.date()} ERROR: {exc}; sleeping 30s and retrying once",
+                    "WARNING",
                 )
                 time.sleep(30)
                 df = pull_window(s, e_excl, fc)
@@ -365,7 +367,7 @@ def main() -> None:
             )
         wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(out_path, index=False)
-        print(f"  {tag}: wrote {len(wave_df):,} rows to {out_path}")
+        log(f"  {tag}: wrote {len(wave_df):,} rows to {out_path}")
         all_frames.append(wave_df)
 
     combined = pd.concat(all_frames, ignore_index=True)
@@ -376,8 +378,8 @@ def main() -> None:
     combined = DAILY_TEMPERATURE_HEAT_SCHEMA.validate(combined)
 
     write_output(combined)
-    print("variable summary (°C / mm):")
-    print(
+    log("variable summary (C / mm):", "DEBUG")
+    log(
         combined[
             [
                 "tmean_c",
@@ -394,7 +396,8 @@ def main() -> None:
             ]
         ]
         .describe()
-        .round(2)
+        .round(2),
+        "DEBUG",
     )
 
 

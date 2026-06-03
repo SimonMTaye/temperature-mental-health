@@ -14,6 +14,7 @@ from pathlib import Path
 from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from _stata import read_stata_df
 from _schemas import INDIVIDUALS_SCHEMA
+from log import log
 
 # Below are dicitonaries that store variable names for easier / cleaner code below
 IFLS4 = {
@@ -267,9 +268,12 @@ def parse_ifls4_survey_info() -> pd.DataFrame:
         errors="coerce",
     )
 
-    print(
-        "HHIDs with null interview datetime:",
-        survey_info[survey_info["interview_datetime"].isna()]["pidlink"].tolist(),
+    null_interview_pids = survey_info[survey_info["interview_datetime"].isna()][
+        "pidlink"
+    ].tolist()
+    log(
+        f"HHIDs with null interview datetime: {null_interview_pids}",
+        "WARNING" if null_interview_pids else "DEBUG",
     )
     return survey_info[DATE_COLUMNS]
 
@@ -324,7 +328,7 @@ def main() -> None:
     # Validate against schema
     out = INDIVIDUALS_SCHEMA.validate(out)
     out.to_parquet(GENERATED_DATA / "01_individuals.parquet", index=False)
-    print(
+    log(
         f"wrote {len(out):,} individual-wave rows to {GENERATED_DATA / '01_individuals.parquet'}"
     )
 

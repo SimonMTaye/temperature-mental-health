@@ -51,6 +51,7 @@ import pandas as pd
 from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from _schemas import CESD_SCORES_SCHEMA
 from _stata import read_stata_df
+from log import log
 
 REVERSE_ITEMS = {"E", "H"}
 CESD_ITEMS = set("ABCDEFGHIJ")
@@ -127,7 +128,7 @@ def build_factor_scores(items: pd.DataFrame) -> pd.DataFrame:
 
     out = factors[0]
     for factor in factors[1:]:
-        out = out.merge(factor, on=["pidlink", "wave"], how="outer")
+        out = out.merge(factor, on=["pidlink", "wave"], how="outer", validate="1:1")
     return out
 
 
@@ -145,7 +146,7 @@ def build_output(score_parts: list[pd.DataFrame], item_parts: list[pd.DataFrame]
     """Build person-wave CES-D scores from wave-level score and item frames."""
     out = pd.concat(score_parts, ignore_index=True)
     factors = build_factor_scores(pd.concat(item_parts, ignore_index=True))
-    out = out.merge(factors, on=["pidlink", "wave"], how="left")
+    out = out.merge(factors, on=["pidlink", "wave"], how="left", validate="1:1")
     out["depressed"] = (out.cesd_raw >= 10).astype(int)
     out = add_factor_z_scores(out)
     return out[OUTPUT_COLUMNS]
@@ -202,10 +203,12 @@ def score_ifls4() -> tuple[pd.DataFrame, pd.DataFrame]:
         yes.groupby("pidlink").agg(cesd10_count=("yes", "sum")).reset_index(),
         on="pidlink",
         how="left",
+        validate="1:1",
     ).merge(
         scored.groupby("pidlink").agg(cesd_raw=("score", "sum")).reset_index(),
         on="pidlink",
         how="left",
+        validate="1:1",
     )
     agg["wave"] = "IFLS4"
     scored["wave"] = "IFLS4"
@@ -217,7 +220,7 @@ def main() -> None:
     scored5, items5 = score_ifls5()
     loose = build_output([scored4, scored5], [items4, items5])
     loose.to_parquet(GENERATED_DATA / "24_cesd_scores_loose.parquet", index=False)
-    print(
+    log(
         f"wrote {len(loose):,} rows to "
         f"{GENERATED_DATA / '24_cesd_scores_loose.parquet'}"
     )
@@ -225,8 +228,8 @@ def main() -> None:
     out = complete_only(loose)
     out = CESD_SCORES_SCHEMA.validate(out)
     out.to_parquet(GENERATED_DATA / "24_cesd_scores.parquet", index=False)
-    print(f"wrote {len(out):,} rows to {GENERATED_DATA / '24_cesd_scores.parquet'}")
-    print(
+    log(f"wrote {len(out):,} rows to {GENERATED_DATA / '24_cesd_scores.parquet'}")
+    log(
         out.groupby("wave")
         .agg(
             n=("pidlink", "size"),
@@ -235,7 +238,8 @@ def main() -> None:
             cesd_raw_p50=("cesd_raw", "median"),
             depressed_pct=("depressed", lambda x: 100 * x.mean()),
         )
-        .round(2)
+        .round(2),
+        "DEBUG",
     )
 
 

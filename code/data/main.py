@@ -10,6 +10,7 @@ files, the archive is skipped. Run from anywhere:
 
 import importlib
 import zipfile
+from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,7 @@ from pathlib import Path
 from tqdm.auto import tqdm
 
 from config import RAW_IFLS, RAW_IFLS_EXTRACTED
+from log import DEFAULT_LOG_FILE, configure_logging, log
 
 # Each entry: archive path (relative to RAW_IFLS) -> extraction dir (relative to RAW_IFLS_EXTRACTED).
 ARCHIVES: dict[str, str] = {
@@ -70,16 +72,16 @@ def extract() -> None:
         target = RAW_IFLS_EXTRACTED / rel_target
         archives.set_postfix_str(archive.name, refresh=False)
         if (not target.exists()) and (not archive.exists()):
-            tqdm.write(f"MISSING    {archive}")
+            log(f"MISSING    {archive}", "WARNING")
             n_missing += 1
             continue
         status = unpack_one(archive, target)
-        tqdm.write(f"{status:10s} {archive.name:55s} -> {target}")
+        log(f"{status:10s} {archive.name:55s} -> {target}")
         if status == "extracted":
             n_done += 1
         else:
             n_skip += 1
-    print(f"\nDone. extracted={n_done}  skipped={n_skip}  missing={n_missing}")
+    log(f"Done. extracted={n_done}  skipped={n_skip}  missing={n_missing}")
 
 
 @dataclass(frozen=True)
@@ -114,14 +116,14 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
 
 
 def run_step(step: PipelineStep) -> None:
-    tqdm.write(f"--- start {step.module}: {step.label} ---")
+    log(f"--- start {step.module}: {step.label} ---")
     module = importlib.import_module(step.module)
     module.main()
-    tqdm.write(f"--- done  {step.module}: {step.label} ---")
+    log(f"--- done  {step.module}: {step.label} ---")
 
 
 def run_layer(layer_index: int, steps: tuple[PipelineStep, ...]) -> None:
-    print(f"\n=== layer {layer_index}: {', '.join(step.module for step in steps)} ===")
+    log(f"=== layer {layer_index}: {', '.join(step.module for step in steps)} ===")
     if len(steps) == 1:
         with tqdm(
             steps,
@@ -152,10 +154,30 @@ def run_layer(layer_index: int, steps: tuple[PipelineStep, ...]) -> None:
                 progress.update()
 
 
+def parse_args() -> tuple[str, Path]:
+    parser = ArgumentParser(description="Run the IFLS data pipeline.")
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Minimum level written to the pipeline log.",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=DEFAULT_LOG_FILE,
+        help="Path to the pipeline log file.",
+    )
+    args = parser.parse_args()
+    return args.log_level, args.log_file
+
+
 def main() -> None:
     """
     Run all the pipelines to build all datasets, in the correct order with parallelism for the same layer (i.e. layer 0, then 1, then 2)
     """
+    log_level, log_file = parse_args()
+    configure_logging(output="file", level=log_level, log_file=log_file)
     extract()
     layers = tqdm(
         enumerate(PIPELINE_LAYERS),

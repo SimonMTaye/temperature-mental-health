@@ -5,18 +5,15 @@ Row level: one record per (pidlink, wave), using the individual panel skeleton
 from 01_individuals.parquet.
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
 from _commodity_prices import PALM_PRICE_FULL  # noqa: E402
-from _ifls_wave import hhid_col, wave_folder  # noqa: E402
 from _schemas import ECONOMIC_EXPOSURES_SCHEMA  # noqa: E402
 from _sentinels import clean_count, clean_month, clean_year  # noqa: E402
 from _stata import read_stata_df  # noqa: E402
-from config import GENERATED_DATA, RAW_IFLS_EXTRACTED  # noqa: E402
+from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
+from log import log  # noqa: E402
 
 
 PALM_PROVS = {
@@ -66,12 +63,24 @@ BINARY_COLUMNS = [
     "palm_region",
 ]
 
+IFLS_FOLDERS = {
+    "IFLS4": IFLS4_FOLDER,
+    "IFLS5": IFLS5_FOLDER,
+}
+
+HHID_COLUMNS = {
+    "IFLS4": "hhid07",
+    "IFLS5": "hhid14",
+}
+
 
 def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     """Build individual job-loss recall fields from one IFLS work-history file."""
     out = pd.DataFrame({"pidlink": df.pidlink})
     out["recent_job_loss_5y"] = clean_count(df.tk46c, max_real=50).fillna(0) >= 1
-    out["involuntary_loss_5y"] = df.tk46m.isin([1, 2, 3])
+    # 1, 2 -> Fired, 3 -> Wage too Low, 4 -> Bad Working Env, 5 -> Refused relocation
+    # 6 -> Prolonged sickness, 7, 8, 9 -> Family related (marriange, child, other) 95 -> Other
+    out["involuntary_loss_5y"] = df.tk46m.isin([1, 2, 3, 4, 5, 6])
     out["last_loss_year"] = clean_year(df.tk46dy)
     out["last_loss_month"] = clean_month(df.tk46dm)
     out["wave"] = wave
@@ -80,7 +89,7 @@ def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
 
 def _job_loss(wave: str) -> pd.DataFrame:
     df = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, wave) / "b3a_tk4.dta",
+        IFLS_FOLDERS[wave] / "b3a_tk4.dta",
         convert_categoricals=False,
     )
     return _job_loss_from_df(df, wave=wave)
@@ -103,10 +112,10 @@ def _vehicle_owner_from_df(
 
 def _vehicle_owner(wave: str) -> pd.DataFrame:
     hr = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, wave) / "b2_hr1.dta",
+        IFLS_FOLDERS[wave] / "b2_hr1.dta",
         convert_categoricals=False,
     )
-    return _vehicle_owner_from_df(hr, hhid_col_name=hhid_col(wave), wave=wave)
+    return _vehicle_owner_from_df(hr, hhid_col_name=HHID_COLUMNS[wave], wave=wave)
 
 
 def _urban_from_df(
@@ -127,10 +136,10 @@ def _urban_from_df(
 def _urban(wave: str) -> pd.DataFrame:
     fname = "bk_sc1.dta" if wave == "IFLS5" else "bk_sc.dta"
     screening = read_stata_df(
-        wave_folder(RAW_IFLS_EXTRACTED, wave) / fname,
+        IFLS_FOLDERS[wave] / fname,
         convert_categoricals=False,
     )
-    return _urban_from_df(screening, hhid_col_name=hhid_col(wave), wave=wave)
+    return _urban_from_df(screening, hhid_col_name=HHID_COLUMNS[wave], wave=wave)
 
 
 def _cash_transfer_from_frames(
@@ -164,7 +173,7 @@ def _cash_transfer_from_frames(
 
     out = rows[0]
     for row in rows[1:]:
-        out = out.merge(row, on="hhid", how="outer")
+        out = out.merge(row, on="hhid", how="outer", validate="1:1")
     for col in ["any_cash_transfer_ksr", "blt_card", "health_card"]:
         if col in out.columns:
             out[col] = out[col].fillna(0).astype(int)
@@ -179,12 +188,12 @@ def _cash_transfer_from_frames(
 
 
 def _cash_transfer(wave: str) -> pd.DataFrame:
-    folder = wave_folder(RAW_IFLS_EXTRACTED, wave)
+    folder = IFLS_FOLDERS[wave]
     ksr_path = folder / "b1_ksr1.dta"
     kr_path = folder / "b2_kr.dta"
     return _cash_transfer_from_frames(
         wave=wave,
-        hhid_col_name=hhid_col(wave),
+        hhid_col_name=HHID_COLUMNS[wave],
         ksr=read_stata_df(ksr_path, convert_categoricals=False)
         if ksr_path.exists()
         else None,
@@ -212,9 +221,17 @@ def _add_loss_timing(out: pd.DataFrame) -> pd.DataFrame:
         )
     out["last_loss_date"] = pd.to_datetime(out.last_loss_date)
     out["days_since_last_loss"] = (out.interview_date - out.last_loss_date).dt.days
-    out["job_loss_within_yr"] = (out.days_since_last_loss >= 0) & (
+    out["job_loss_1_yr"] = (out.days_since_last_loss >= 0) & (
         out.days_since_last_loss <= 365
-    )
+    ).astype(int)
+    out["job_loss_within_yr"] = out["job_loss_1_yr"]
+    out["job_loss_6_months"] = (out.days_since_last_loss >= 0) & (
+        out.days_since_last_loss <= 183
+    ).astype(int)
+    out["job_loss_3_months"] = (out.days_since_last_loss >= 0) & (
+        out.days_since_last_loss <= 92
+    ).astype(int)
+
     return out
 
 
@@ -229,6 +246,7 @@ def _add_palm_price_exposure(out: pd.DataFrame) -> pd.DataFrame:
     prices = pd.Series(PALM_PRICE_FULL.values())
     out["palm_price_z"] = (out.palm_price_usd_mt - prices.mean()) / prices.std()
     out["palm_shock"] = (out.palm_region * (-out.palm_price_z.fillna(0))).clip(lower=0)
+    # TODO: Check where logic for palm household comes from
     return out
 
 
@@ -239,37 +257,37 @@ def _finalize_output(out: pd.DataFrame) -> pd.DataFrame:
     return ECONOMIC_EXPOSURES_SCHEMA.validate(out_final)
 
 
-def build_financial_shocks() -> pd.DataFrame:
+def main() -> pd.DataFrame:
     """Build and write the 20-prefixed financial shock sidecar."""
     jl = pd.concat([_job_loss("IFLS4"), _job_loss("IFLS5")], ignore_index=True)
     veh = pd.concat([_vehicle_owner("IFLS4"), _vehicle_owner("IFLS5")])
     urb = pd.concat([_urban("IFLS4"), _urban("IFLS5")])
     cash = pd.concat([_cash_transfer("IFLS4"), _cash_transfer("IFLS5")])
-    print(
+    log(
         f"job loss rows: {len(jl):,}; vehicle: {len(veh):,}; "
         f"urban: {len(urb):,}; cash: {len(cash):,}"
     )
 
     individuals = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    base = individuals[["pidlink", "wave", "hhid"]].drop_duplicates(["pidlink", "wave"])
-    out = base.merge(jl, on=["pidlink", "wave"], how="left")
-    out = out.merge(veh, on=["hhid", "wave"], how="left")
-    out = out.merge(urb, on=["hhid", "wave"], how="left")
-    out = out.merge(cash, on=["hhid", "wave"], how="left")
-    out = out.merge(
-        individuals[["pidlink", "wave", "interview_date", "province_code"]],
-        on=["pidlink", "wave"],
-        how="left",
-    )
+    individuals["interview_date"] = pd.to_datetime(
+        individuals.interview_datetime
+    ).dt.normalize()
+    base = individuals[
+        ["pidlink", "wave", "hhid", "interview_date", "province_code"]
+    ].drop_duplicates(["pidlink", "wave"])
+    out = base.merge(jl, on=["pidlink", "wave"], how="left", validate="1:1")
+    out = out.merge(veh, on=["hhid", "wave"], how="left", validate="m:1")
+    out = out.merge(urb, on=["hhid", "wave"], how="left", validate="m:1")
+    out = out.merge(cash, on=["hhid", "wave"], how="left", validate="m:1")
     out = _add_loss_timing(out)
     out = _add_palm_price_exposure(out)
     out_final = _finalize_output(out)
     output_path = GENERATED_DATA / "20_economic_exposures.parquet"
     out_final.to_parquet(output_path, index=False)
 
-    print(f"\nwrote {len(out_final):,} rows to {output_path}")
-    print("\nshock prevalence by wave:")
-    print(
+    log(f"wrote {len(out_final):,} rows to {output_path}")
+    log("shock prevalence by wave:", "DEBUG")
+    log(
         out_final.groupby("wave")
         .agg(
             n=("pidlink", "size"),
@@ -281,13 +299,10 @@ def build_financial_shocks() -> pd.DataFrame:
             health_card_pct=("health_card", lambda s: 100 * s.mean()),
             palm_region_pct=("palm_region", lambda s: 100 * s.mean()),
         )
-        .round(2)
+        .round(2),
+        "DEBUG",
     )
     return out_final
-
-
-def main() -> None:
-    build_financial_shocks()
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from tqdm.auto import tqdm
 
 from config import GENERATED_DATA, GEE_PROEJCT_ID
 from _schemas import AOD_MONTHLY_SCHEMA
+from log import log
 
 BASE_WINDOWS = [
     ("2007-06-01", "2008-06-01"),  # IFLS4 part 1
@@ -92,13 +93,13 @@ def define_windows() -> list[tuple[str, str]]:
 def write_output(df: pd.DataFrame) -> None:
     out_path = GENERATED_DATA / "13_aod_monthly_kab.parquet"
     df.to_parquet(out_path, index=False)
-    print(f"\nwrote {len(df):,} rows to {out_path}")
+    log(f"wrote {len(df):,} rows to {out_path}")
 
 
 def main() -> None:
     init_gee()
     geographies = load_geographies()
-    print(f"polygons: {len(geographies)}")
+    log(f"polygons: {len(geographies)}")
     fc = build_feature_collection(geographies)
 
     band = "Aerosol_Optical_Depth_Land_Ocean_Mean_Mean"
@@ -125,7 +126,7 @@ def main() -> None:
         flat = ic.map(reduce_one).flatten()
         t0 = time.time()
         info = flat.getInfo()
-        tqdm.write(
+        log(
             f"  {start} -> {end}: fetched {len(info['features'])} "
             f"(kab x month) in {time.time() - t0:.1f}s"
         )
@@ -147,8 +148,8 @@ def main() -> None:
     df["aod"] = df.aod / 1000.0
     df = AOD_MONTHLY_SCHEMA.validate(df)
     write_output(df)
-    print(df.aod.describe().round(3))
-    print("\n2015 haze months (Sep-Nov) on Sumatra/Kalimantan:")
+    log(df.aod.describe().round(3), "DEBUG")
+    log("2015 haze months (Sep-Nov) on Sumatra/Kalimantan:", "DEBUG")
     haze = df[(df.year == 2015) & (df.month.isin([9, 10, 11]))]
     haze = haze.copy()
     haze["region"] = haze.province_code.apply(
@@ -157,7 +158,10 @@ def main() -> None:
         )
     )
     summ = haze.groupby("region").aod.describe().round(3)
-    print(summ[[c for c in ["count", "mean", "50%", "max"] if c in summ.columns]])
+    log(
+        summ[[c for c in ["count", "mean", "50%", "max"] if c in summ.columns]],
+        "DEBUG",
+    )
 
 
 if __name__ == "__main__":

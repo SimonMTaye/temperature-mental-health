@@ -22,6 +22,7 @@ from tqdm.auto import tqdm
 
 from config import GEE_PROEJCT_ID, TMP_PM25 as TMP, GENERATED_DATA
 from _schemas import PM25_DAILY_SCHEMA
+from log import log
 
 WINDOWS = [
     ("2007-06-06", "2008-08-25"),  # IFLS4 (~445 days)
@@ -145,7 +146,7 @@ def read_cached_window(path) -> pd.DataFrame | None:
         return None
     cached = pd.read_parquet(path)
     if "gadm_fullcode" not in cached.columns:
-        print(f"  ignoring old kabupaten_code cache at {path}")
+        log(f"ignoring old kabupaten_code cache at {path}", "WARNING")
         return None
     return cached
 
@@ -153,7 +154,7 @@ def read_cached_window(path) -> pd.DataFrame | None:
 def write_output(df: pd.DataFrame) -> None:
     out_path = GENERATED_DATA / "12_pm25_daily_kab.parquet"
     df.to_parquet(out_path, index=False)
-    print(f"\nwrote {len(df):,} rows to {out_path}")
+    log(f"wrote {len(df):,} rows to {out_path}")
 
 
 def main() -> None:
@@ -162,7 +163,7 @@ def main() -> None:
 
     geographies = load_geographies()
     fc = build_feature_collection(geographies)
-    print(f"polygons: {len(geographies)}")
+    log(f"polygons: {len(geographies)}")
 
     # Keep each call under roughly 5,000 features after the gadm_fullcode expansion.
     BATCH_DAYS = 2
@@ -174,7 +175,7 @@ def main() -> None:
         cache = TMP / f"{tag}_pm25.parquet"
         cached = read_cached_window(cache)
         if cached is not None:
-            print(f"{tag}: cached")
+            log(f"{tag}: cached")
             all_frames.append(cached)
             continue
         start = pd.Timestamp(start_s)
@@ -198,8 +199,9 @@ def main() -> None:
                 df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
             except Exception as e:
-                print(
-                    f"  ERROR at {batch_start.date()}: {e}; sleeping 30s and retrying"
+                log(
+                    f"ERROR at {batch_start.date()}: {e}; sleeping 30s and retrying",
+                    "WARNING",
                 )
                 time.sleep(30)
                 df = pull_window(batch_start, e_excl, fc)
@@ -218,9 +220,9 @@ def main() -> None:
     combined = combined.sort_values(["gadm_fullcode", "date"]).reset_index(drop=True)
     combined = PM25_DAILY_SCHEMA.validate(combined)
     write_output(combined)
-    print(combined.pm25_ugm3.describe().round(2))
+    log(combined.pm25_ugm3.describe().round(2), "DEBUG")
 
-    print("\n2015 haze months Sumatra+Kalimantan PM2.5:")
+    log("2015 haze months Sumatra+Kalimantan PM2.5:", "DEBUG")
     haze = combined[
         (combined.date >= "2015-09-01") & (combined.date <= "2015-11-30")
     ].copy()
@@ -229,10 +231,11 @@ def main() -> None:
             "Sumatra" if 11 <= p <= 21 else ("Kalimantan" if 61 <= p <= 64 else "Other")
         )
     )
-    print(
+    log(
         haze.groupby("region")
         .pm25_ugm3.describe()
-        .round(2)[["count", "mean", "50%", "max"]]
+        .round(2)[["count", "mean", "50%", "max"]],
+        "DEBUG",
     )
 
 

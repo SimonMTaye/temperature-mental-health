@@ -31,6 +31,7 @@ import pandas as pd
 import importlib
 
 from config import GADM_PATH, GENERATED_DATA
+from log import log
 
 G3 = gpd.read_file(GADM_PATH, layer="ADM_ADM_3").to_crs(4326)
 G2 = gpd.read_file(GADM_PATH, layer="ADM_ADM_2").to_crs(4326)
@@ -63,8 +64,9 @@ def map_to_geometry(row) -> pd.Series:
         # raise ValueError(
         #     f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}"
         # )
-        print(
-            f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}"
+        log(
+            f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}",
+            "WARNING",
         )
         global UNMATCHED, UNMATCHED_L2
         UNMATCHED.append(gadm_code)
@@ -94,11 +96,11 @@ def main() -> None:
     geo_both["gadm_fullcode"] = geo_both["gadm_fullcode"].astype(str)
     geometry_matches = geo_both.apply(map_to_geometry, axis=1)
     geo_both = pd.concat([geo_both, geometry_matches], axis=1)
-    print(f"Unmatched records at L3: {len(UNMATCHED)} / {len(geo_both)}")
-    print(f"Unmatched records at L2: {len(UNMATCHED_L2)} / {len(geo_both)}")
-    print(f"Unmatched records at L1: {len(UNMATCHED_L1)} / {len(geo_both)}")
-    print("\nmatch level counts:")
-    print(geo_both["match_level"].value_counts(dropna=False))
+    log(f"Unmatched records at L3: {len(UNMATCHED)} / {len(geo_both)}")
+    log(f"Unmatched records at L2: {len(UNMATCHED_L2)} / {len(geo_both)}")
+    log(f"Unmatched records at L1: {len(UNMATCHED_L1)} / {len(geo_both)}")
+    log("match level counts:", "DEBUG")
+    log(geo_both["match_level"].value_counts(dropna=False), "DEBUG")
     geo_both.to_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet", index=False)
 
 

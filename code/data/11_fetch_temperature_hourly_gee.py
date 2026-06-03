@@ -56,6 +56,7 @@ from tqdm.auto import tqdm
 
 from config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE_HOURLY as TMP
 from _schemas import HOURLY_TEMPERATURE_SCHEMA
+from log import log
 
 # Keep each call under roughly 5,000 features after the gadm_fullcode expansion.
 BATCH_HOURS = 2
@@ -188,7 +189,7 @@ def read_cached_window(path) -> pd.DataFrame | None:
         return None
     cached = pd.read_parquet(path)
     if "gadm_fullcode" not in cached.columns:
-        print(f"  ignoring old kabupaten_code cache at {path}")
+        log(f"ignoring old kabupaten_code cache at {path}", "WARNING")
         return None
     return cached
 
@@ -196,7 +197,7 @@ def read_cached_window(path) -> pd.DataFrame | None:
 def write_output(df: pd.DataFrame) -> None:
     out_path = GENERATED_DATA / "11_hourly_temperature_kab.parquet"
     df.to_parquet(out_path, index=False)
-    print(f"\nwrote {len(df):,} rows to {out_path}")
+    log(f"wrote {len(df):,} rows to {out_path}")
 
 
 def main() -> None:
@@ -204,16 +205,16 @@ def main() -> None:
     TMP.mkdir(parents=True, exist_ok=True)
 
     geographies = load_geographies()
-    print(f"polygons to process: {len(geographies)}")
+    log(f"polygons to process: {len(geographies)}")
 
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
     windows = define_windows(ind)
-    print("windows:")
+    log("windows:")
     for tag, a, b in windows:
         n_days = (b - a).days + 1
         n_hours = n_days * 24
         n_batches = (n_hours + BATCH_HOURS - 1) // BATCH_HOURS
-        print(
+        log(
             f"  {tag}: {a.date()} -> {b.date()}  "
             f"({n_days:,} days, {n_hours:,} hours, ~{n_batches:,} batches)"
         )
@@ -225,7 +226,7 @@ def main() -> None:
         out_path = TMP / f"{tag}_hourly_temp.parquet"
         cached = read_cached_window(out_path)
         if cached is not None:
-            print(f"  {tag}: cached at {out_path}  -> skipping pull")
+            log(f"  {tag}: cached at {out_path}  -> skipping pull")
             all_frames.append(cached)
             continue
 
@@ -238,7 +239,7 @@ def main() -> None:
             start_t, end_excl_total, freq=f"{BATCH_HOURS}h", inclusive="left"
         )
         n_batches = len(starts)
-        print(
+        log(
             f"  {tag}: pulling {n_batches} batches of {BATCH_HOURS}h "
             f"({BATCH_HOURS * len(geographies)} features per call)"
         )
@@ -258,7 +259,10 @@ def main() -> None:
                 df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
             except Exception as exc:
-                print(f"    {batch_start} ERROR: {exc}; sleeping 30s and retrying once")
+                log(
+                    f"    {batch_start} ERROR: {exc}; sleeping 30s and retrying once",
+                    "WARNING",
+                )
                 time.sleep(30)
                 df = pull_window(batch_start, e_excl, fc)
                 wave_frames.append(df)
@@ -275,7 +279,7 @@ def main() -> None:
 
         wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(out_path, index=False)
-        print(f"  {tag}: wrote {len(wave_df):,} rows to {out_path}")
+        log(f"  {tag}: wrote {len(wave_df):,} rows to {out_path}")
         all_frames.append(wave_df)
 
     combined = pd.concat(all_frames, ignore_index=True)
@@ -285,17 +289,23 @@ def main() -> None:
     )
     combined = HOURLY_TEMPERATURE_SCHEMA.validate(combined)
     write_output(combined)
-    print("variable summary:")
-    print(combined[["tmean_c_hour", "dewp_c_hour"]].describe().round(2))
-    print("\nNote: datetime_utc is in UTC. Indonesia time zones to convert to local:")
-    print(
-        "  WIB (UTC+7):  Sumatra, Java, West Kalimantan, Central Kalimantan -- prov codes 11-36, 61-62"
+    log("variable summary:", "DEBUG")
+    log(combined[["tmean_c_hour", "dewp_c_hour"]].describe().round(2), "DEBUG")
+    log(
+        "Note: datetime_utc is in UTC. Indonesia time zones to convert to local:",
+        "DEBUG",
     )
-    print(
-        "  WITA (UTC+8): Bali, NTB, NTT, South & East Kalimantan, Sulawesi  -- prov codes 51-53, 63-64, 71-76"
+    log(
+        "  WIB (UTC+7):  Sumatra, Java, West Kalimantan, Central Kalimantan -- prov codes 11-36, 61-62",
+        "DEBUG",
     )
-    print(
-        "  WIT (UTC+9):  Maluku, Maluku Utara, Papua, Papua Barat            -- prov codes 81-82, 91-94"
+    log(
+        "  WITA (UTC+8): Bali, NTB, NTT, South & East Kalimantan, Sulawesi  -- prov codes 51-53, 63-64, 71-76",
+        "DEBUG",
+    )
+    log(
+        "  WIT (UTC+9):  Maluku, Maluku Utara, Papua, Papua Barat            -- prov codes 81-82, 91-94",
+        "DEBUG",
     )
 
 
