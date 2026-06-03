@@ -34,7 +34,12 @@ IFLS4 b3b_kp.dta — same 10-item layout, with a SCREENER design:
     kp01 = "in past week did you feel [item]?" (1=yes, 3=no)
     kp02 = how often (only asked if kp01=1; otherwise NaN, treated as freq=0)
 
-Outputs: data/generated/cesd_scores.parquet
+Outputs:
+  data/generated/24_cesd_scores_loose.parquet:
+        all scoreable person-wave rows, including incomplete CES-D rows.
+  data/generated/24_cesd_scores.parquet:
+        complete 10-item person-wave rows validated against the CES-D schema.
+
   cols: pidlink, wave, cesd_raw (0-30 frequency score),
         cesd10_count (IFLS4 only — count of kp01=yes items),
         depressed (1 if cesd_raw>=10 — standard CES-D 10 cutoff),
@@ -48,11 +53,35 @@ from _schemas import CESD_SCORES_SCHEMA
 from _stata import read_stata_df
 
 REVERSE_ITEMS = {"E", "H"}
+CESD_ITEMS = set("ABCDEFGHIJ")
 FACTOR_MAP = {
     "somatic": {"A", "B", "D", "G", "J"},
     "depraffect": {"C", "F", "I"},
     "posaffect": {"E", "H"},
 }
+OUTPUT_COLUMNS = [
+    "pidlink",
+    "wave",
+    "cesd_raw",
+    "cesd10_count",
+    "depressed",
+    "n_items",
+    "somatic",
+    "depraffect",
+    "posaffect",
+    "somatic_z",
+    "depraffect_z",
+    "posaffect_z",
+]
+COMPLETE_SCORE_COLUMNS = [
+    "cesd_raw",
+    "somatic",
+    "depraffect",
+    "posaffect",
+    "somatic_z",
+    "depraffect_z",
+    "posaffect_z",
+]
 
 
 def score_item_frame(df: pd.DataFrame, wave: str) -> pd.DataFrame:
@@ -69,11 +98,22 @@ def score_item_frame(df: pd.DataFrame, wave: str) -> pd.DataFrame:
 
     rev = df.kptype.isin(REVERSE_ITEMS)
     df.loc[rev, "score"] = 3 - df.loc[rev, "score"]
+    guard_scored_items(df)
     return df[["pidlink", "kptype", "score"]]
 
 
+def guard_scored_items(df: pd.DataFrame) -> None:
+    """Fail before aggregation if item codes or scored values leave CES-D bounds."""
+    bad_items = sorted(set(df.kptype.dropna()) - CESD_ITEMS)
+    if bad_items:
+        raise ValueError(f"unexpected CES-D item codes: {bad_items}")
+    if not df.score.between(0, 3).all():
+        bad = df.loc[~df.score.between(0, 3), ["pidlink", "kptype", "score"]].head()
+        raise ValueError(f"CES-D item scores outside 0..3:\n{bad}")
+
+
 def build_factor_scores(items: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate scored CES-D items to factor scores and within-wave z-scores."""
+    """Aggregate scored CES-D items to factor scores."""
     factors = []
     for factor_name, item_set in FACTOR_MAP.items():
         scores = (
@@ -88,12 +128,38 @@ def build_factor_scores(items: pd.DataFrame) -> pd.DataFrame:
     out = factors[0]
     for factor in factors[1:]:
         out = out.merge(factor, on=["pidlink", "wave"], how="outer")
+    return out
 
+
+def add_factor_z_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """Add within-wave standardized factor scores."""
+    out = df.copy()
     for factor_name in FACTOR_MAP:
         out[f"{factor_name}_z"] = out.groupby("wave")[factor_name].transform(
             lambda s: (s - s.mean()) / s.std()
         )
     return out
+
+
+def build_output(score_parts: list[pd.DataFrame], item_parts: list[pd.DataFrame]) -> pd.DataFrame:
+    """Build person-wave CES-D scores from wave-level score and item frames."""
+    out = pd.concat(score_parts, ignore_index=True)
+    factors = build_factor_scores(pd.concat(item_parts, ignore_index=True))
+    out = out.merge(factors, on=["pidlink", "wave"], how="left")
+    out["depressed"] = (out.cesd_raw >= 10).astype(int)
+    out = add_factor_z_scores(out)
+    return out[OUTPUT_COLUMNS]
+
+
+def complete_only(loose: pd.DataFrame) -> pd.DataFrame:
+    """Return canonical CES-D rows with all 10 items and no missing scores."""
+    complete = loose[loose.n_items.eq(10)].dropna(subset=COMPLETE_SCORE_COLUMNS).copy()
+    complete["depressed"] = (complete.cesd_raw >= 10).astype(int)
+    complete = complete.drop(
+        columns=["somatic_z", "depraffect_z", "posaffect_z"]
+    )
+    complete = add_factor_z_scores(complete)
+    return complete[OUTPUT_COLUMNS]
 
 
 def score_ifls5() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -149,27 +215,14 @@ def score_ifls4() -> tuple[pd.DataFrame, pd.DataFrame]:
 def main() -> None:
     scored4, items4 = score_ifls4()
     scored5, items5 = score_ifls5()
-    parts = [scored4, scored5]
-    out = pd.concat(parts, ignore_index=True)
-    factors = build_factor_scores(pd.concat([items4, items5], ignore_index=True))
-    out = out.merge(factors, on=["pidlink", "wave"], how="left")
-    out["depressed"] = (out.cesd_raw >= 10).astype(int)
-    out = out[
-        [
-            "pidlink",
-            "wave",
-            "cesd_raw",
-            "cesd10_count",
-            "depressed",
-            "n_items",
-            "somatic",
-            "depraffect",
-            "posaffect",
-            "somatic_z",
-            "depraffect_z",
-            "posaffect_z",
-        ]
-    ]
+    loose = build_output([scored4, scored5], [items4, items5])
+    loose.to_parquet(GENERATED_DATA / "24_cesd_scores_loose.parquet", index=False)
+    print(
+        f"wrote {len(loose):,} rows to "
+        f"{GENERATED_DATA / '24_cesd_scores_loose.parquet'}"
+    )
+
+    out = complete_only(loose)
     out = CESD_SCORES_SCHEMA.validate(out)
     out.to_parquet(GENERATED_DATA / "24_cesd_scores.parquet", index=False)
     print(f"wrote {len(out):,} rows to {GENERATED_DATA / '24_cesd_scores.parquet'}")
