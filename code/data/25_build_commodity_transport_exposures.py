@@ -71,23 +71,19 @@ HHID_COLUMNS = {
 }
 
 
-def _agricultural_worker_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame:
-    """Flag respondents whose main work sector is agriculture."""
-    if "tk19ab" not in tk.columns:
-        return pd.DataFrame(columns=["pidlink", "wave", "agricultural"])
-    sector = pd.to_numeric(tk.tk19ab.astype(str).str.strip(), errors="coerce")
-    out = tk[["pidlink"]].copy()
-    out["agricultural"] = sector == 1
-    out["wave"] = wave
-    return out.drop_duplicates("pidlink")
-
-
-def _agricultural_worker(wave: str) -> pd.DataFrame:
+def add_worker_sector_dummy(wave: str) -> pd.DataFrame:
     tk = read_stata_df(
         IFLS_FOLDERS[wave] / "b3a_tk2.dta",
         convert_categoricals=False,
     )
-    return _agricultural_worker_from_df(tk, wave=wave)
+    assert "pidlink" in tk.columns, f"Expected pidlink column in {wave} tk dataset"
+    assert "tk19ab" in tk.columns, f"Expected pidlink column in {wave} tk dataset"
+    sector = pd.to_numeric(tk.tk19ab.astype(str).str.strip())
+    out = tk[["pidlink"]].copy()
+    out["agricultural"] = sector == 1
+    out["mining"] = sector == 2
+    out["wave"] = wave
+    return out
 
 
 def _monthly_food_spending(ks0: pd.DataFrame, *, hhid_col_name: str) -> pd.DataFrame:
@@ -165,7 +161,7 @@ def _transport_share(wave: str) -> pd.DataFrame:
     )
 
 
-def _add_region_farmer_flags(out: pd.DataFrame) -> pd.DataFrame:
+def _add_region_worker_flags(out: pd.DataFrame) -> pd.DataFrame:
     is_agricultural = out.agricultural.fillna(0) == 1
     out["palm_region"] = out.province_code.isin(PALM_PROVS)
     out["palm_farmer_individual"] = is_agricultural & out.palm_region
@@ -208,7 +204,7 @@ def _finalize_output(out: pd.DataFrame) -> pd.DataFrame:
 def build_commodity_transport_exposures() -> pd.DataFrame:
     """Build and write the 25-prefixed commodity/transport sidecar."""
     agricultural = pd.concat(
-        [_agricultural_worker("IFLS4"), _agricultural_worker("IFLS5")],
+        [add_worker_sector_dummy("IFLS4"), add_worker_sector_dummy("IFLS5")],
         ignore_index=True,
     )
     transport = pd.concat(
@@ -228,16 +224,31 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         how="left",
         validate="1:1",
     )
-    out = out.merge(
-        agricultural, on=["pidlink", "wave"], how="left", validate="1:1"
-    )
+    out = out.merge(agricultural, on=["pidlink", "wave"], how="left", validate="1:1")
     out = out.merge(
         transport.drop_duplicates(subset=["hhid", "wave"]),
         on=["hhid", "wave"],
         how="left",
         validate="m:1",
     )
-    out = _add_region_farmer_flags(out)
+    out = _add_region_worker_flags(out)
+    ifls4_worker_dummies = out[out.wave == "IFLS4"][
+        [
+            "pidlink",
+            "agricultural",
+            "palm_farmer_individual",
+            "palm_farmer_hh",
+        ]
+    ].copy()
+    # add _ifsl4 suffix to columns
+    ifls4_worker_dummies = ifls4_worker_dummies.rename(
+        columns={
+            "agricultural": "agricultural_ifls4",
+            "palm_farmer_individual": "palm_farmer_individual_ifls4",
+            "palm_farmer_hh": "palm_farmer_hh_ifls4",
+        }
+    )
+    out = out.merge(ifls4_worker_dummies, on="pidlink", how="left", validate="m:1")
     out = _add_transport_quintile(out)
     out_final = _finalize_output(out)
     output_path = GENERATED_DATA / "25_commodity_transport_exposures.parquet"
