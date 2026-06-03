@@ -15,9 +15,20 @@ from log import log
 
 def build_sleep_duration() -> pd.DataFrame:
     df = read_stata_df(IFLS5_FOLDER / "b3a_pna1.dta", convert_categoricals=False)
-    df = df.dropna(subset=["pidlink", "pna04hr", "pna04mnt", "pna05hr", "pna5mnt"]).copy()
-    df = df[(df.pna04hr.between(0, 23)) & (df.pna04mnt.between(0, 59))]
-    df = df[(df.pna05hr.between(0, 23)) & (df.pna5mnt.between(0, 59))]
+    start_n = len(df)
+    required = ["pidlink", "pna04hr", "pna04mnt", "pna05hr", "pna5mnt"]
+    missing_time = df[required].isna().any(axis=1)
+    log(f"sleep duration: dropping {missing_time.sum():,} rows with missing time fields")
+    df = df[~missing_time].copy()
+
+    valid_wake = df.pna04hr.between(0, 23) & df.pna04mnt.between(0, 59)
+    log(f"sleep duration: dropping {(~valid_wake).sum():,} rows with invalid wake times")
+    df = df[valid_wake].copy()
+
+    valid_sleep = df.pna05hr.between(0, 23) & df.pna5mnt.between(0, 59)
+    log(f"sleep duration: dropping {(~valid_sleep).sum():,} rows with invalid sleep times")
+    df = df[valid_sleep].copy()
+
     wake_h = df.pna04hr + df.pna04mnt / 60.0
     sleep_h = df.pna05hr + df.pna5mnt / 60.0
     df["sleep_dur_h"] = np.where(
@@ -25,10 +36,15 @@ def build_sleep_duration() -> pd.DataFrame:
         (24.0 - sleep_h) + wake_h,
         wake_h - sleep_h,
     )
-    df = df[df.sleep_dur_h.between(0.5, 16.0)].copy()
+    valid_duration = df.sleep_dur_h.between(0.5, 16.0)
+    log(
+        f"sleep duration: dropping {(~valid_duration).sum():,} rows with duration outside 0.5-16h"
+    )
+    df = df[valid_duration].copy()
     out = df[["pidlink", "sleep_dur_h"]].drop_duplicates("pidlink").copy()
     out["wave"] = "IFLS5"
     out = out[["pidlink", "wave", "sleep_dur_h"]]
+    log(f"sleep duration: kept {len(out):,} people from {start_n:,} raw rows")
     return SLEEP_DURATION_SCHEMA.validate(out)
 
 

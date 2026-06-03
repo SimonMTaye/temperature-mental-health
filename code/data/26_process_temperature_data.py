@@ -126,15 +126,28 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
 def add_hourly_temperature(df: pd.DataFrame) -> pd.DataFrame:
     hourly_path = GENERATED_DATA / "11_hourly_temperature_kab.parquet"
     df = df.copy()
-    if not hourly_path.exists():
-        log(f"{hourly_path} missing; hourly temperature columns will be null", "WARNING")
-        df["tmean_c_hour"] = np.nan
-        df["heat_hr_dev"] = np.nan
-        return df
+    assert hourly_path.exists(), f"Missing hourly temperature file: {hourly_path}"
 
     hourly = pd.read_parquet(hourly_path)
-    hourly = hourly[[col for col in ["gadm_fullcode", "kabupaten_code", "datetime_utc", "tmean_c_hour"] if col in hourly.columns]]
+    has_gadm_key = {"gadm_fullcode", "datetime_utc", "tmean_c_hour"}.issubset(
+        hourly.columns
+    )
+    has_legacy_kab_key = {"kabupaten_code", "datetime_utc", "tmean_c_hour"}.issubset(
+        hourly.columns
+    )
+    assert has_gadm_key or has_legacy_kab_key, (
+        "11_hourly_temperature_kab.parquet must include either gadm_fullcode or "
+        "kabupaten_code, plus datetime_utc and tmean_c_hour"
+    )
+    hourly = hourly[
+        [
+            col
+            for col in ["gadm_fullcode", "kabupaten_code", "datetime_utc", "tmean_c_hour"]
+            if col in hourly.columns
+        ]
+    ]
     hourly["datetime_utc"] = pd.to_datetime(hourly.datetime_utc, utc=True)
+    # ERA5 hourly timestamps are UTC; IFLS interview hours are local Indonesian time.
     df["utc_offset"] = df.province_code.map(_utc_offset_hours)
     local_hour = df.hour_start.round().clip(lower=0, upper=23).astype(int)
     df["interview_dt_utc"] = (

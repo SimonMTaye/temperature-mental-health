@@ -25,24 +25,28 @@ HHID_COLUMNS = {
 }
 
 
-def _sum_existing(df: pd.DataFrame, columns: list[str]) -> pd.Series:
-    existing = [col for col in columns if col in df.columns]
-    if not existing:
-        return pd.Series(0.0, index=df.index)
-    return (
-        pd.concat([clean_money(df[col]) for col in existing], axis=1)
-        .sum(axis=1, min_count=1)
-        .fillna(0)
-    )
-
-
 def _labor_income(wave: str) -> pd.DataFrame:
-    tk = read_stata_df(IFLS_FOLDERS[wave] / "b3a_tk2.dta", convert_categoricals=False)
-    income_cols = ["tk25a1", "tk25b1", "tk26a1", "tk26b1"]
-    out = tk[["pidlink"]].copy()
-    out["person_labor_income_mo"] = _sum_existing(tk, income_cols)
-    out["wave"] = wave
-    out = out.groupby(["pidlink", "wave"], as_index=False)["person_labor_income_mo"].sum()
+    tk = read_stata_df(
+        IFLS_FOLDERS[wave] / "b3a_tk2.dta", convert_categoricals=False
+    )[["pidlink", "tk25a1", "tk25b1", "tk26a1", "tk26b1"]].copy()
+    out = (
+        tk.assign(
+            wage_job1=clean_money(tk.tk25a1),
+            wage_job2=clean_money(tk.tk25b1),
+            profit_job1=clean_money(tk.tk26a1),
+            profit_job2=clean_money(tk.tk26b1),
+            wave=wave,
+        )
+        .assign(
+            person_labor_income_mo=lambda df: df[
+                ["wage_job1", "wage_job2", "profit_job1", "profit_job2"]
+            ]
+            .sum(axis=1, min_count=1)
+            .fillna(0)
+        )
+        .groupby(["pidlink", "wave"], as_index=False)
+        .agg(person_labor_income_mo=("person_labor_income_mo", "sum"))
+    )
     skeleton = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet").loc[
         lambda df: df.wave == wave, ["pidlink", "hhid", "wave"]
     ]
@@ -55,28 +59,42 @@ def _labor_income(wave: str) -> pd.DataFrame:
     )
 
 
-def _annual_household_profit(
-    wave: str, filename: str, value_columns: list[str]
-) -> pd.DataFrame:
-    path = IFLS_FOLDERS[wave] / filename
-    if not path.exists():
-        return pd.DataFrame(columns=["hhid", "wave", "annual_profit"])
-    df = read_stata_df(path, convert_categoricals=False)
+def _farm_profit(wave: str) -> pd.DataFrame:
     hhid_col = HHID_COLUMNS[wave]
-    out = pd.DataFrame({"hhid": df[hhid_col]})
-    out["annual_profit"] = _sum_existing(df, value_columns)
-    out["wave"] = wave
-    return out.groupby(["hhid", "wave"], as_index=False)["annual_profit"].sum()
+    df = read_stata_df(
+        IFLS_FOLDERS[wave] / "b2_ut1.dta", convert_categoricals=False
+    )[[hhid_col, "ut09"]].copy()
+    return (
+        df.assign(hhid=df[hhid_col], annual_profit=clean_money(df.ut09), wave=wave)
+        .groupby(["hhid", "wave"], as_index=False)
+        .agg(annual_profit=("annual_profit", "sum"))
+    )
+
+
+def _nonfarm_profit(wave: str) -> pd.DataFrame:
+    hhid_col = HHID_COLUMNS[wave]
+    df = read_stata_df(
+        IFLS_FOLDERS[wave] / "b2_nt2.dta", convert_categoricals=False
+    )[[hhid_col, "nt09", "nt26"]].copy()
+    return (
+        df.assign(
+            hhid=df[hhid_col],
+            business_profit=clean_money(df.nt09),
+            rental_income=clean_money(df.nt26),
+            wave=wave,
+        )
+        .assign(
+            annual_profit=lambda x: x[["business_profit", "rental_income"]]
+            .sum(axis=1, min_count=1)
+            .fillna(0)
+        )
+        .groupby(["hhid", "wave"], as_index=False)
+        .agg(annual_profit=("annual_profit", "sum"))
+    )
 
 
 def _nonlabor_income(wave: str) -> pd.DataFrame:
-    frames = [
-        _annual_household_profit(wave, "b2_ut1.dta", ["ut09"]),
-        _annual_household_profit(wave, "b2_nt2.dta", ["nt09", "nt26"]),
-    ]
-    out = pd.concat(frames, ignore_index=True)
-    if out.empty:
-        return pd.DataFrame(columns=["hhid", "wave", "hh_nonlabor_income_mo"])
+    out = pd.concat([_farm_profit(wave), _nonfarm_profit(wave)], ignore_index=True)
     out = out.groupby(["hhid", "wave"], as_index=False)["annual_profit"].sum()
     out["hh_nonlabor_income_mo"] = out.annual_profit / 12.0
     return out[["hhid", "wave", "hh_nonlabor_income_mo"]]
@@ -84,8 +102,6 @@ def _nonlabor_income(wave: str) -> pd.DataFrame:
 
 def _winsorize_within_wave(s: pd.Series, wave: pd.Series) -> pd.Series:
     def trim(x: pd.Series) -> pd.Series:
-        if x.dropna().empty:
-            return x
         return x.clip(lower=x.quantile(0.01), upper=x.quantile(0.99))
 
     return s.groupby(wave).transform(trim)
