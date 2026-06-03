@@ -1,10 +1,11 @@
-"""Pull ERA5-Land daily polygon-mean temperature for every IFLS kabupaten over the
+"""Pull ERA5-Land daily polygon-mean temperature for every IFLS geography over the
 IFLS4 + IFLS5 fielding windows.
 
 Approach
 --------
-For each day in the union of field windows, do ONE GEE reduceRegions over all 303
-kabupaten polygons -> daily means written into a long parquet keyed (kabupaten_code, date).
+For each day in the union of field windows, do ONE GEE reduceRegions over all
+deduplicated GADM polygons -> daily means written into a long parquet keyed
+(gadm_fullcode, date).
 
 Window: 30 days BEFORE earliest interview to 7 days AFTER latest. Gives us lead/lag
 room for placebo and lag-effect specifications without re-pulling later.
@@ -18,7 +19,7 @@ Variables (all at ERA5-Land native ~9 km, polygon-mean):
   precip_mm     daily precip total
   heat_idx_c    heat index (Steadman) — co-stressor with raw heat
 
-Output: data/generated/daily_temperature_kab.parquet  (long, ~285k rows)
+Output: data/generated/10_daily_temperature_kab.parquet
 """
 
 import math
@@ -44,14 +45,53 @@ def shapely_to_ee(g) -> ee.Geometry:
     return ee.Geometry(g.__geo_interface__, opt_geodesic=False, opt_evenOdd=True)
 
 
-def build_polygon_collection(kab: pd.DataFrame) -> ee.FeatureCollection:
+def load_geographies() -> pd.DataFrame:
+    geographies = pd.read_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet")
+    required = ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
+    missing = [col for col in required if col not in geographies.columns]
+    if missing:
+        raise ValueError(f"02_kabupaten_polygons.parquet missing columns: {missing}")
+    geographies = geographies.dropna(subset=["geometry_wkt"]).copy()
+    geographies["gadm_fullcode"] = geographies["gadm_fullcode"].astype(str)
+    return geographies[required].drop_duplicates("gadm_fullcode").reset_index(drop=True)
+
+
+def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
-    for geometry_wkt, kabupaten_code in kab[
-        ["geometry_wkt", "kabupaten_code"]
+    for gadm_fullcode, geometry_wkt, province_code, match_level in geographies[
+        ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
     ].itertuples(index=False, name=None):
         g = shapely.wkt.loads(geometry_wkt)
         feats.append(
-            ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(kabupaten_code)})
+            ee.Feature(
+                shapely_to_ee(g),
+                {
+                    "gadm_fullcode": str(gadm_fullcode),
+                    "province_code": int(province_code),
+                    "match_level": str(match_level),
+                },
+            )
+        )
+    return ee.FeatureCollection(feats)
+
+
+def build_buffered_feature_collection(
+    geographies: pd.DataFrame, buffer_degrees: float
+) -> ee.FeatureCollection:
+    feats = []
+    for gadm_fullcode, geometry_wkt, province_code, match_level in geographies[
+        ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
+    ].itertuples(index=False, name=None):
+        g = shapely.wkt.loads(geometry_wkt).buffer(buffer_degrees)
+        feats.append(
+            ee.Feature(
+                shapely_to_ee(g),
+                {
+                    "gadm_fullcode": str(gadm_fullcode),
+                    "province_code": int(province_code),
+                    "match_level": str(match_level),
+                },
+            )
         )
     return ee.FeatureCollection(feats)
 
@@ -90,7 +130,9 @@ def pull_window(
             continue
         rows.append(
             {
-                "kabupaten_code": int(p["kabupaten_code"]),
+                "gadm_fullcode": str(p["gadm_fullcode"]),
+                "province_code": int(p["province_code"]),
+                "match_level": str(p["match_level"]),
                 "date": p["date"],
                 "tmean_c": p["temperature_2m"] - 273.15,
                 "tmax_c": p["temperature_2m_max"] - 273.15,
@@ -133,8 +175,8 @@ def derive_humidity_and_heat_index(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_heat_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add daily threshold, rolling hot-day, CDD, and local-extreme heat features."""
-    df = df.sort_values(["kabupaten_code", "date"]).reset_index(drop=True).copy()
-    g = df.groupby("kabupaten_code", group_keys=False)
+    df = df.sort_values(["gadm_fullcode", "date"]).reset_index(drop=True).copy()
+    g = df.groupby("gadm_fullcode", group_keys=False)
 
     for threshold in [28, 30, 32]:
         df[f"hot{threshold}"] = (df.tmax_c >= threshold).astype(int)
@@ -165,20 +207,12 @@ def add_heat_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def main() -> None:
-    init_gee()
-    TMP.mkdir(parents=True, exist_ok=True)
-
-    kab = pd.read_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet")
-    kab = kab.dropna(subset=["geometry_wkt"]).reset_index(drop=True)
-    print(f"polygons to process: {len(kab)}")
-
-    # Compute date windows
-    ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    # Holes between IFLS4 and IFLS5 are wasted; pull each wave window separately
-    w4 = ind[ind.wave == "IFLS4"]
-    w5 = ind[ind.wave == "IFLS5"]
-    windows = [
+def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timestamp]]:
+    interview_date = pd.to_datetime(ind.interview_datetime).dt.normalize()
+    dated = ind.assign(interview_date=interview_date)
+    w4 = dated[dated.wave == "IFLS4"]
+    w5 = dated[dated.wave == "IFLS5"]
+    return [
         (
             "IFLS4",
             w4.interview_date.min() - timedelta(days=30),
@@ -190,24 +224,105 @@ def main() -> None:
             w5.interview_date.max() + timedelta(days=7),
         ),
     ]
+
+
+def read_cached_window(path) -> pd.DataFrame | None:
+    if not path.exists():
+        return None
+    cached = pd.read_parquet(path)
+    if "gadm_fullcode" not in cached.columns:
+        print(f"  ignoring old kabupaten_code cache at {path}")
+        return None
+    return cached
+
+
+def write_output(df: pd.DataFrame) -> None:
+    out_path = GENERATED_DATA / "10_daily_temperature_kab.parquet"
+    df.to_parquet(out_path, index=False)
+    print(f"\nwrote {len(df):,} rows to {out_path}")
+
+
+def repair_missing_geographies(
+    geographies: pd.DataFrame,
+    weather: pd.DataFrame,
+    windows: list[tuple[str, pd.Timestamp, pd.Timestamp]],
+) -> pd.DataFrame:
+    missing_codes = sorted(
+        set(geographies.gadm_fullcode.astype(str)) - set(weather.gadm_fullcode.astype(str))
+    )
+    if not missing_codes:
+        return weather
+
+    print(f"repairing small geographies with buffered ERA5 polygons")
+    repaired = weather.copy()
+    for buffer_degrees in [0.03, 0.05, 0.10, 0.15]:
+        missing_geographies = geographies[
+            geographies.gadm_fullcode.astype(str).isin(missing_codes)
+        ].copy()
+        print(
+            f"  buffer={buffer_degrees:.2f} degrees for {len(missing_geographies)} geographies"
+        )
+        fc = build_buffered_feature_collection(
+            missing_geographies, buffer_degrees=buffer_degrees
+        )
+
+        repair_frames = []
+        for tag, start, end in windows:
+            BATCH_DAYS = 2
+            starts = pd.date_range(start, end, freq=f"{BATCH_DAYS}D")
+            for i, s in enumerate(starts, 1):
+                e_excl = min(s + timedelta(days=BATCH_DAYS), end + timedelta(days=1))
+                df = pull_window(s, e_excl, fc)
+                repair_frames.append(df)
+                if i % 50 == 0 or i == len(starts):
+                    print(
+                        f"    repair {tag} {i}/{len(starts)}  ({s.date()} -> {e_excl.date()})  rows={len(df)}"
+                    )
+
+        if repair_frames:
+            repaired = pd.concat([repaired, *repair_frames], ignore_index=True)
+            repaired = repaired.drop_duplicates(["gadm_fullcode", "date"], keep="first")
+        missing_codes = sorted(
+            set(geographies.gadm_fullcode.astype(str))
+            - set(repaired.gadm_fullcode.astype(str))
+        )
+        if not missing_codes:
+            return repaired
+
+    repaired = repaired.drop_duplicates(["gadm_fullcode", "date"], keep="first")
+    if missing_codes:
+        print(f"warning: {len(missing_codes)} geographies still missing ERA5 rows")
+    return repaired
+
+
+def main() -> None:
+    init_gee()
+    TMP.mkdir(parents=True, exist_ok=True)
+
+    geographies = load_geographies()
+    print(f"polygons to process: {len(geographies)}")
+
+    ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
+    windows = define_windows(ind)
     print("windows:")
     for tag, a, b in windows:
         print(f"  {tag}: {a.date()} -> {b.date()}  ({(b - a).days} days)")
 
-    fc = build_polygon_collection(kab)
+    fc = build_feature_collection(geographies)
 
     all_frames = []
     for tag, start, end in windows:
         out_path = TMP / f"{tag}_daily_temp.parquet"
-        if out_path.exists():
+        cached = read_cached_window(out_path)
+        if cached is not None:
             print(f"  {tag}: cached at {out_path}")
-            all_frames.append(pd.read_parquet(out_path))
+            all_frames.append(cached)
             continue
-        # Batch in 15-day windows: ~4500 features/call, well under getInfo limits
-        BATCH_DAYS = 15
+        # Keep each call under roughly 5,000 features after the gadm_fullcode expansion.
+        BATCH_DAYS = 2
         starts = pd.date_range(start, end, freq=f"{BATCH_DAYS}D")
         print(
-            f"  {tag}: pulling {(end - start).days + 1} days x {len(kab)} polygons in {len(starts)} batches"
+            f"  {tag}: pulling {(end - start).days + 1} days x {len(geographies)} polygons in {len(starts)} batches"
         )
         wave_frames = []
         t0 = time.time()
@@ -234,14 +349,13 @@ def main() -> None:
         all_frames.append(wave_df)
 
     combined = pd.concat(all_frames, ignore_index=True)
+    combined = repair_missing_geographies(geographies, combined, windows)
     combined = derive_humidity_and_heat_index(combined)
     combined["date"] = pd.to_datetime(combined.date)
     combined = add_heat_features(combined)
     combined = DAILY_TEMPERATURE_HEAT_SCHEMA.validate(combined)
 
-    out_path = GENERATED_DATA / "10_daily_temperature_kab.parquet"
-    combined.to_parquet(out_path, index=False)
-    print(f"\nwrote {len(combined):,} rows to {out_path}")
+    write_output(combined)
     print("variable summary (°C / mm):")
     print(
         combined[

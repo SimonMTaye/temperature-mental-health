@@ -61,10 +61,10 @@ def map_to_geometry(row) -> pd.Series:
     match_level = "kecamatan"
     if len(polygons) == 0:
         # raise ValueError(
-        #     f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten']} PID: {row['hhid']}"
+        #     f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}"
         # )
         print(
-            f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten']} PID: {row['hhid']}"
+            f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}"
         )
         global UNMATCHED, UNMATCHED_L2
         UNMATCHED.append(gadm_code)
@@ -72,7 +72,7 @@ def map_to_geometry(row) -> pd.Series:
         match_level = "kabupaten"
         if len(polygons) == 0:
             # print(
-            #     f"No kabupaten geometry found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten']} PID: {row['hhid']}"
+            #     f"No kabupaten geometry found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}"
             # )
             UNMATCHED_L2.append(gadm_code)
             if len(polygons) == 0:

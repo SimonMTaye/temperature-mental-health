@@ -1,4 +1,4 @@
-"""Pull ERA5-Land HOURLY temperature_2m per kabupaten across the IFLS4 + IFLS5
+"""Pull ERA5-Land HOURLY temperature_2m per IFLS geography across the IFLS4 + IFLS5
 fielding windows.
 
 Same source (ERA5-Land), same polygons, same reduction as the daily pull
@@ -9,10 +9,11 @@ and as a richer source for the daytime-only / nighttime-only Tmax/Tmin checks).
 
 Approach
 --------
-For each batch of 16 hours, do ONE GEE reduceRegions over all kabupaten polygons
--> hourly means written into a long parquet keyed (kabupaten_code, datetime_utc).
+For each batch of 16 hours, do ONE GEE reduceRegions over all deduplicated GADM
+polygons -> hourly means written into a long parquet keyed
+(gadm_fullcode, datetime_utc).
 
-  16 hours x 303 polygons = 4,848 features per call (under the 5,000 getInfo cap).
+  16 hours x N polygons should stay under the getInfo cap.
 
 Variables (ERA5-Land native ~9 km, polygon-mean):
   tmean_c_hour  hourly 2m air temperature (deg C; converted from Kelvin)
@@ -22,7 +23,7 @@ Coverage
 --------
   IFLS4: ~445 days x 24h = ~10,680 hours per polygon
   IFLS5: ~505 days x 24h = ~12,120 hours per polygon
-  Total: ~22,800 hours x 303 kabs = ~7M rows
+  Total: ~22,800 hours x N geographies
 
 Runtime estimate
 ----------------
@@ -55,8 +56,8 @@ import shapely.wkt
 from config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE_HOURLY as TMP
 from _schemas import HOURLY_TEMPERATURE_SCHEMA
 
-# Hours per server-side call. 16 * 303 polygons = 4,848 features (under 5000 cap).
-BATCH_HOURS = 16
+# Keep each call under roughly 5,000 features after the gadm_fullcode expansion.
+BATCH_HOURS = 2
 
 BANDS = [
     "temperature_2m",
@@ -78,14 +79,32 @@ def shapely_to_ee(g) -> ee.Geometry:
     return ee.Geometry(g.__geo_interface__, opt_geodesic=False, opt_evenOdd=True)
 
 
-def build_polygon_collection(kab: pd.DataFrame) -> ee.FeatureCollection:
+def load_geographies() -> pd.DataFrame:
+    geographies = pd.read_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet")
+    required = ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
+    missing = [col for col in required if col not in geographies.columns]
+    if missing:
+        raise ValueError(f"02_kabupaten_polygons.parquet missing columns: {missing}")
+    geographies = geographies.dropna(subset=["geometry_wkt"]).copy()
+    geographies["gadm_fullcode"] = geographies["gadm_fullcode"].astype(str)
+    return geographies[required].drop_duplicates("gadm_fullcode").reset_index(drop=True)
+
+
+def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     feats = []
-    for geometry_wkt, kabupaten_code in kab[
-        ["geometry_wkt", "kabupaten_code"]
+    for gadm_fullcode, geometry_wkt, province_code, match_level in geographies[
+        ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
     ].itertuples(index=False, name=None):
         g = shapely.wkt.loads(geometry_wkt)
         feats.append(
-            ee.Feature(shapely_to_ee(g), {"kabupaten_code": int(kabupaten_code)})
+            ee.Feature(
+                shapely_to_ee(g),
+                {
+                    "gadm_fullcode": str(gadm_fullcode),
+                    "province_code": int(province_code),
+                    "match_level": str(match_level),
+                },
+            )
         )
     return ee.FeatureCollection(feats)
 
@@ -122,7 +141,9 @@ def pull_window(
             continue
         rows.append(
             {
-                "kabupaten_code": int(p["kabupaten_code"]),
+                "gadm_fullcode": str(p["gadm_fullcode"]),
+                "province_code": int(p["province_code"]),
+                "match_level": str(p["match_level"]),
                 "datetime_utc": p["datetime"],
                 "tmean_c_hour": p["temperature_2m"] - 273.15,
                 "dewp_c_hour": (
@@ -135,19 +156,12 @@ def pull_window(
     return pd.DataFrame(rows)
 
 
-def main() -> None:
-    init_gee()
-    TMP.mkdir(parents=True, exist_ok=True)
-
-    kab = pd.read_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet")
-    kab = kab.dropna(subset=["geometry_wkt"]).reset_index(drop=True)
-    print(f"polygons to process: {len(kab)}")
-
-    # Same windows as the daily pull (30d lead, 7d lag).
-    ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    w4 = ind[ind.wave == "IFLS4"]
-    w5 = ind[ind.wave == "IFLS5"]
-    windows = [
+def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timestamp]]:
+    interview_date = pd.to_datetime(ind.interview_datetime).dt.normalize()
+    dated = ind.assign(interview_date=interview_date)
+    w4 = dated[dated.wave == "IFLS4"]
+    w5 = dated[dated.wave == "IFLS5"]
+    return [
         (
             "IFLS4",
             w4.interview_date.min() - timedelta(days=30),
@@ -159,6 +173,33 @@ def main() -> None:
             w5.interview_date.max() + timedelta(days=7),
         ),
     ]
+
+
+def read_cached_window(path) -> pd.DataFrame | None:
+    if not path.exists():
+        return None
+    cached = pd.read_parquet(path)
+    if "gadm_fullcode" not in cached.columns:
+        print(f"  ignoring old kabupaten_code cache at {path}")
+        return None
+    return cached
+
+
+def write_output(df: pd.DataFrame) -> None:
+    out_path = GENERATED_DATA / "11_hourly_temperature_kab.parquet"
+    df.to_parquet(out_path, index=False)
+    print(f"\nwrote {len(df):,} rows to {out_path}")
+
+
+def main() -> None:
+    init_gee()
+    TMP.mkdir(parents=True, exist_ok=True)
+
+    geographies = load_geographies()
+    print(f"polygons to process: {len(geographies)}")
+
+    ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
+    windows = define_windows(ind)
     print("windows:")
     for tag, a, b in windows:
         n_days = (b - a).days + 1
@@ -169,14 +210,15 @@ def main() -> None:
             f"({n_days:,} days, {n_hours:,} hours, ~{n_batches:,} batches)"
         )
 
-    fc = build_polygon_collection(kab)
+    fc = build_feature_collection(geographies)
 
     all_frames = []
     for tag, start, end in windows:
         out_path = TMP / f"{tag}_hourly_temp.parquet"
-        if out_path.exists():
+        cached = read_cached_window(out_path)
+        if cached is not None:
             print(f"  {tag}: cached at {out_path}  -> skipping pull")
-            all_frames.append(pd.read_parquet(out_path))
+            all_frames.append(cached)
             continue
 
         # Snap start to top-of-hour
@@ -190,7 +232,7 @@ def main() -> None:
         n_batches = len(starts)
         print(
             f"  {tag}: pulling {n_batches} batches of {BATCH_HOURS}h "
-            f"({BATCH_HOURS * len(kab)} features per call)"
+            f"({BATCH_HOURS * len(geographies)} features per call)"
         )
 
         wave_frames = []
@@ -226,12 +268,11 @@ def main() -> None:
 
     combined = pd.concat(all_frames, ignore_index=True)
     combined["datetime_utc"] = pd.to_datetime(combined.datetime_utc, utc=True)
-    combined = combined.sort_values(["kabupaten_code", "datetime_utc"]).reset_index(
+    combined = combined.sort_values(["gadm_fullcode", "datetime_utc"]).reset_index(
         drop=True
     )
-    out_path = GENERATED_DATA / "11_hourly_temperature_kab.parquet"
-    combined.to_parquet(out_path, index=False)
-    print(f"\nwrote {len(combined):,} rows to {out_path}")
+    combined = HOURLY_TEMPERATURE_SCHEMA.validate(combined)
+    write_output(combined)
     print("variable summary:")
     print(combined[["tmean_c_hour", "dewp_c_hour"]].describe().round(2))
     print("\nNote: datetime_utc is in UTC. Indonesia time zones to convert to local:")
@@ -244,7 +285,6 @@ def main() -> None:
     print(
         "  WIT (UTC+9):  Maluku, Maluku Utara, Papua, Papua Barat            -- prov codes 81-82, 91-94"
     )
-    HOURLY_TEMPERATURE_SCHEMA.validate(combined)
 
 
 if __name__ == "__main__":

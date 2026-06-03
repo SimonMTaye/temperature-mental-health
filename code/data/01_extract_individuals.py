@@ -21,14 +21,14 @@ IFLS4 = {
     "file": Path(RAW_IFLS_EXTRACTED) / "IFLS4" / "hh07" / "bk_sc.dta",
     "geo_columns": {
         "hhid": "hhid07",
-        "province": "sc010707",
-        "kabupaten": "sc020707",
-        "kecamatan": "sc030707",
+        "province_code": "sc010707",
+        "kabupaten_code": "sc020707",
+        "kecamatan_code": "sc030707",
     },
     "geo_columns_00": {
-        "province_00": "sc010700",
-        "kabupaten_00": "sc020700",
-        "kecamatan_00": "sc030700",
+        "province_code_00": "sc010700",
+        "kabupaten_code_00": "sc020700",
+        "kecamatan_code_00": "sc030700",
     },
 }
 
@@ -37,9 +37,9 @@ IFLS5 = {
     "file": Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "bk_sc1.dta",
     "geo_columns": {
         "hhid": "hhid14",
-        "province": "sc01_14_14",
-        "kabupaten": "sc02_14_14",
-        "kecamatan": "sc03_14_14",
+        "province_code": "sc01_14_14",
+        "kabupaten_code": "sc02_14_14",
+        "kecamatan_code": "sc03_14_14",
     },
 }
 
@@ -66,15 +66,15 @@ def parse_geo_codes_ifls5() -> pd.DataFrame:
     screening_dataset = screening_dataset[cfg["geo_columns"].keys()].copy()
 
     # We want one per household, not per interviewee
-    screening_dataset["province"] = screening_dataset.province.astype(int)
-    screening_dataset["kabupaten"] = screening_dataset.kabupaten.astype(int)
-    screening_dataset["kecamatan"] = screening_dataset.kecamatan.astype(int)
+    screening_dataset["province_code"] = screening_dataset.province_code.astype(int)
+    screening_dataset["kabupaten_code"] = screening_dataset.kabupaten_code.astype(int)
+    screening_dataset["kecamatan_code"] = screening_dataset.kecamatan_code.astype(int)
     # Generate combined code for easy matching with GAMD boundary data.
     # The code is province (2 digits) + kabupaten (2 digits) + kecamatan (3 digits)
     screening_dataset["gadm_fullcode"] = (
-        screening_dataset.province.astype(str).str.zfill(2)
-        + screening_dataset.kabupaten.astype(str).str.zfill(2)
-        + screening_dataset.kecamatan.astype(str).str.zfill(3)
+        screening_dataset.province_code.astype(str).str.zfill(2)
+        + screening_dataset.kabupaten_code.astype(str).str.zfill(2)
+        + screening_dataset.kecamatan_code.astype(str).str.zfill(3)
     ).astype(int)
     screening_dataset["wave"] = "IFLS5"
     # Below is an indicator column to flag remapping complication when converting IFLS4 Admin codes to 5
@@ -83,10 +83,10 @@ def parse_geo_codes_ifls5() -> pd.DataFrame:
     return screening_dataset[
         [
             "hhid",
-            "province",
-            "kabupaten",
+            "province_code",
+            "kabupaten_code",
             "gadm_fullcode",
-            "kecamatan",
+            "kecamatan_code",
             "wave",
             "multiple_kec_remap",
         ]
@@ -141,21 +141,21 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
     ].copy()
 
     # We want one per household, not per interviewee
-    screening_dataset["province"] = screening_dataset.province.astype(int)
-    screening_dataset["kabupaten"] = screening_dataset.kabupaten.astype(int)
-    screening_dataset["kecamatan"] = screening_dataset.kecamatan.astype(int)
+    screening_dataset["province_code"] = screening_dataset.province_code.astype(int)
+    screening_dataset["kabupaten_code"] = screening_dataset.kabupaten_code.astype(int)
+    screening_dataset["kecamatan_code"] = screening_dataset.kecamatan_code.astype(int)
     # Generate combined code for easy matching with GAMD boundary data.
     # The code is province (2 digits) + kabupaten (2 digits) + kecamatan (3 digits)
     screening_dataset["gadm_fullcode_07"] = (
-        screening_dataset.province.astype(str).str.zfill(2)
-        + screening_dataset.kabupaten.astype(str).str.zfill(2)
-        + screening_dataset.kecamatan.astype(str).str.zfill(3)
+        screening_dataset.province_code.astype(str).str.zfill(2)
+        + screening_dataset.kabupaten_code.astype(str).str.zfill(2)
+        + screening_dataset.kecamatan_code.astype(str).str.zfill(3)
     ).astype(int)
 
     screening_dataset["gadm_fullcode_00"] = (
-        screening_dataset.province_00.astype(int).astype(str).str.zfill(2)
-        + screening_dataset.kabupaten_00.astype(int).astype(str).str.zfill(2)
-        + screening_dataset.kecamatan_00.astype(int).astype(str).str.zfill(3)
+        screening_dataset.province_code_00.astype(int).astype(str).str.zfill(2)
+        + screening_dataset.kabupaten_code_00.astype(int).astype(str).str.zfill(2)
+        + screening_dataset.kecamatan_code_00.astype(int).astype(str).str.zfill(3)
     ).astype(int)
 
     mapping_00 = generate_mapping_data(original_col="kecid00")
@@ -192,9 +192,9 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
             "gadm_fullcode",
             "wave",
             "hhid",
-            "province",
-            "kabupaten",
-            "kecamatan",
+            "province_code",
+            "kabupaten_code",
+            "kecamatan_code",
             "multiple_kec_remap",
         ]
     ].copy()

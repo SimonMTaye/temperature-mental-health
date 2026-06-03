@@ -91,7 +91,6 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
     ),
     (
         PipelineStep("10_fetch_temperature_gee", "daily temperature"),
-        PipelineStep("11_fetch_temperature_hourly_gee", "hourly temperature"),
         PipelineStep("12_fetch_merra_pm25_gee", "MERRA PM2.5"),
         PipelineStep("13_fetch_aod_gee", "AOD"),
     ),

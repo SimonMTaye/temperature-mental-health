@@ -10,6 +10,8 @@ PROJECT = Path(__file__).resolve().parents[2]
 RAW_ROOT = PROJECT / "data" / "raw"
 RAW_IFLS = RAW_ROOT / "IFLS"
 RAW_IFLS_EXTRACTED = RAW_IFLS / "extracted"
+IFLS4_FOLDER = RAW_IFLS_EXTRACTED / "IFLS4" / "hh07"
+IFLS5_FOLDER = RAW_IFLS_EXTRACTED / "IFLS5" / "hh14"
 
 # Repo-local generated artifacts.
 CODE = PROJECT / "code"
