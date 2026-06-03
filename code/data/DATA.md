@@ -79,8 +79,9 @@ when the interface fits.
   BPS and GADM sources.
 - `10_fetch_temperature_gee.py`: pulls ERA5-Land daily polygon-mean temperature
   and weather variables.
-- `11_fetch_temperature_hourly_gee.py`: pulls ERA5-Land hourly temperature and
-  dewpoint for within-day heat analysis.
+- `11_fetch_temperature_hourly_gee.py`: optional/manual ERA5-Land hourly
+  temperature and dewpoint pull for within-day heat analysis; it is not run by
+  `main.py`.
 - `12_fetch_merra_pm25_gee.py`: builds daily kabupaten PM2.5 from MERRA-2
   aerosol components.
 - `13_fetch_aod_gee.py`: builds monthly kabupaten MODIS AOD as a haze proxy.
