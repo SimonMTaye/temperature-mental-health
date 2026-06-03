@@ -142,7 +142,9 @@ def add_factor_z_scores(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def build_output(score_parts: list[pd.DataFrame], item_parts: list[pd.DataFrame]) -> pd.DataFrame:
+def build_output(
+    score_parts: list[pd.DataFrame], item_parts: list[pd.DataFrame]
+) -> pd.DataFrame:
     """Build person-wave CES-D scores from wave-level score and item frames."""
     out = pd.concat(score_parts, ignore_index=True)
     factors = build_factor_scores(pd.concat(item_parts, ignore_index=True))
@@ -156,9 +158,7 @@ def complete_only(loose: pd.DataFrame) -> pd.DataFrame:
     """Return canonical CES-D rows with all 10 items and no missing scores."""
     complete = loose[loose.n_items.eq(10)].dropna(subset=COMPLETE_SCORE_COLUMNS).copy()
     complete["depressed"] = (complete.cesd_raw >= 10).astype(int)
-    complete = complete.drop(
-        columns=["somatic_z", "depraffect_z", "posaffect_z"]
-    )
+    complete = complete.drop(columns=["somatic_z", "depraffect_z", "posaffect_z"])
     complete = add_factor_z_scores(complete)
     return complete[OUTPUT_COLUMNS]
 
@@ -225,8 +225,7 @@ def main() -> None:
         f"{GENERATED_DATA / '24_cesd_scores_loose.parquet'}"
     )
 
-    out = complete_only(loose)
-    out = CESD_SCORES_SCHEMA.validate(out)
+    out = loose.pipe(complete_only).pipe(CESD_SCORES_SCHEMA.validate)
     out.to_parquet(GENERATED_DATA / "24_cesd_scores.parquet", index=False)
     log(f"wrote {len(out):,} rows to {GENERATED_DATA / '24_cesd_scores.parquet'}")
     log(

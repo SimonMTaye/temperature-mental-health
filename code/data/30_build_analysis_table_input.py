@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 
 from config import GENERATED_DATA
-from _commodity_prices import COFFEE_PRICE, PALM_3MO_DECLINE, RUBBER_PRICE
 from _schemas import ANALYSIS_TABLE_INPUT_SCHEMA
 from log import log
 
@@ -183,7 +182,7 @@ def build_core_panel() -> pd.DataFrame:
 
 
 def add_model_variables(df: pd.DataFrame) -> pd.DataFrame:
-    """Add common outcome, heat, threshold, and shock variables used by tables."""
+    """Add common outcome, heat, and threshold variables used by tables."""
     df = df.copy()
     df["precip_mm"] = df.precip_mm.clip(lower=0)
     df["female"] = (df.sex == "F").astype(int)
@@ -200,26 +199,6 @@ def add_model_variables(df: pd.DataFrame) -> pd.DataFrame:
     df["cdd_tmin23"] = (df.tmin_c - 23.0).clip(lower=0)
     df["cdd_tmin24"] = (df.tmin_c - 24.0).clip(lower=0)
 
-    intvw_ym = list(zip(df.interview_date.dt.year, df.interview_date.dt.month))
-    df["palm_3mo_decline"] = (
-        pd.Series(intvw_ym, index=df.index).map(PALM_3MO_DECLINE).fillna(0.0)
-    )
-    df["palm_shock"] = df.palm_farmer_hh * df.palm_3mo_decline
-    df["fuel_shock"] = df.post_subsidy * df.transport_share
-
-    rp = pd.Series(list(RUBBER_PRICE.values()))
-    df["rubber_price_usd_kg"] = pd.Series(intvw_ym, index=df.index).map(RUBBER_PRICE)
-    df["rubber_price_z"] = (df.rubber_price_usd_kg - rp.mean()) / rp.std()
-    df["rubber_shock"] = df.rubber_farmer_individual * (
-        -df.rubber_price_z.fillna(0)
-    ).clip(lower=0)
-
-    cp = pd.Series(list(COFFEE_PRICE.values()))
-    df["coffee_price_clb"] = pd.Series(intvw_ym, index=df.index).map(COFFEE_PRICE)
-    df["coffee_price_z"] = (df.coffee_price_clb - cp.mean()) / cp.std()
-    df["coffee_shock"] = df.coffee_farmer_individual * (
-        -df.coffee_price_z.fillna(0)
-    ).clip(lower=0)
     return df
 
 
@@ -266,22 +245,30 @@ def main() -> None:
     df = add_model_variables(df)
     df = df.dropna(
         subset=[
-            "job_loss_within_yr",
+            "job_loss_1_yr",
             "palm_farmer_individual",
+            "palm_farmer_individual_ifls4",
             "palm_farmer_hh",
+            "palm_farmer_hh_ifls4",
             "rubber_farmer_individual",
             "coffee_farmer_individual",
+            "coal_worker_individual",
+            "coal_worker_individual_ifls4",
+            "coal_worker_hh",
+            "coal_worker_hh_ifls4",
             "transport_share",
             "vehicle_owner",
         ]
     ).copy()
 
     int_cols = [
-        "job_loss_within_yr",
+        "job_loss_1_yr",
         "palm_farmer_individual",
         "palm_farmer_hh",
         "rubber_farmer_individual",
         "coffee_farmer_individual",
+        "coal_worker_individual",
+        "coal_worker_hh",
         "vehicle_owner",
     ]
     for col in int_cols:
@@ -297,9 +284,9 @@ def main() -> None:
         .agg(
             n=("pidlink", "size"),
             cesd_z_mean=("cesd_z", "mean"),
-            job_loss_pct=("job_loss_within_yr", lambda s: 100 * s.mean()),
-            palm_shock_mean=("palm_shock", "mean"),
-            fuel_shock_mean=("fuel_shock", "mean"),
+            job_loss_pct=("job_loss_1_yr", lambda s: 100 * s.mean()),
+            palm_farmer_hh_pct=("palm_farmer_hh", lambda s: 100 * s.mean()),
+            coal_worker_hh_pct=("coal_worker_hh", lambda s: 100 * s.mean()),
         )
         .round(4),
         "DEBUG",

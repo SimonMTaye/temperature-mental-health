@@ -117,9 +117,7 @@ def _ifls5_pce() -> pd.DataFrame:
     Quintile within IFLS5 sample.
     """
     # b1_ks0 has weekly food (ks02a) + monthly non-food various items at HH level
-    ks0 = read_stata_df(
-        IFLS5_FOLDER / "b1_ks0.dta", convert_categoricals=False
-    )
+    ks0 = read_stata_df(IFLS5_FOLDER / "b1_ks0.dta", convert_categoricals=False)
     # Aggregate any monetary monthly columns we can identify
     money_cols = [
         c for c in ks0.columns if c.startswith("ks") and ks0[c].dtype.kind in "if"
@@ -134,13 +132,9 @@ def _ifls5_pce() -> pd.DataFrame:
     ks0["x_total_mo"] = weekly_food + monthly_other
 
     # household size: count of pidlink in bk_ar1
-    ar = read_stata_df(
-        IFLS5_FOLDER / "bk_ar1.dta", convert_categoricals=False
-    )
+    ar = read_stata_df(IFLS5_FOLDER / "bk_ar1.dta", convert_categoricals=False)
     hhsize = ar.groupby("hhid14", as_index=False).agg(hhsize=("pidlink", "size"))
-    out = ks0[["hhid14", "x_total_mo"]].merge(
-        hhsize, on="hhid14", validate="m:1"
-    )
+    out = ks0[["hhid14", "x_total_mo"]].merge(hhsize, on="hhid14", validate="m:1")
     out["pce"] = out.x_total_mo / out.hhsize.replace(0, np.nan)
     out["wave"] = "IFLS5"
     return out[["hhid14", "hhsize", "pce", "wave"]].rename(columns={"hhid14": "hhid"})
@@ -170,9 +164,7 @@ def _disaster_from_df(
 
 
 def _disaster(wave: str) -> pd.DataFrame:
-    nd = read_stata_df(
-        IFLS_FOLDERS[wave] / "b2_nd1.dta", convert_categoricals=False
-    )
+    nd = read_stata_df(IFLS_FOLDERS[wave] / "b2_nd1.dta", convert_categoricals=False)
     return _disaster_from_df(nd, hhid_col_name=HHID_COLUMNS[wave], wave=wave)
 
 
@@ -190,9 +182,7 @@ def _loan_rejected_from_df(
 
 
 def _loan_rejected(wave: str) -> pd.DataFrame:
-    bh = read_stata_df(
-        IFLS_FOLDERS[wave] / "b2_bh.dta", convert_categoricals=False
-    )
+    bh = read_stata_df(IFLS_FOLDERS[wave] / "b2_bh.dta", convert_categoricals=False)
     return _loan_rejected_from_df(bh, hhid_col_name=HHID_COLUMNS[wave], wave=wave)
 
 
@@ -228,6 +218,25 @@ def _agri_occupation(wave: str) -> pd.DataFrame:
     return _agri_occupation_from_df(tk, wave=wave)
 
 
+def _add_pce_fields(pce: pd.DataFrame) -> pd.DataFrame:
+    return pce.assign(
+        pce=lambda df: df.pce.replace([0, np.inf, -np.inf], np.nan),
+        pce_log=lambda df: np.log(df.pce),
+        pce_quintile=lambda df: df.groupby("wave")["pce"].transform(
+            lambda s: pd.qcut(s.rank(method="first"), 5, labels=False) + 1
+        ),
+    )
+
+
+def _finalize_stressors(out: pd.DataFrame) -> pd.DataFrame:
+    return out.assign(
+        disaster_5yr=lambda df: df.disaster_5yr.fillna(0).astype(int),
+        disaster_severe_5yr=lambda df: df.disaster_severe_5yr.fillna(0).astype(int),
+        loan_rejected=lambda df: df.loan_rejected.fillna(0).astype(int),
+        agri_occupation=lambda df: df.agri_occupation.fillna(0).astype(int),
+    ).pipe(STRESSORS_SCHEMA.validate)
+
+
 def main() -> None:
     # Demographics
     demo = pd.concat(
@@ -240,11 +249,8 @@ def main() -> None:
     log(f"demographics: {len(demo):,}")
 
     # PCE
-    pce = pd.concat([_ifls4_pce(), _ifls5_pce()], ignore_index=True)
-    pce["pce"] = pce.pce.replace([0, np.inf, -np.inf], np.nan)
-    pce["pce_log"] = np.log(pce.pce)
-    pce["pce_quintile"] = pce.groupby("wave")["pce"].transform(
-        lambda s: pd.qcut(s.rank(method="first"), 5, labels=False) + 1
+    pce = pd.concat([_ifls4_pce(), _ifls5_pce()], ignore_index=True).pipe(
+        _add_pce_fields
     )
     log(f"pce: {len(pce):,}")
 
@@ -262,27 +268,18 @@ def main() -> None:
     log(f"agri occupation: {len(agri):,}")
 
     # Merge by (pidlink, wave) — most are HH-level so first attach to demo via hhid
-    out = demo.copy()
-    out = out.merge(
-        pce[["hhid", "wave", "hhsize", "pce", "pce_log", "pce_quintile"]],
-        on=["hhid", "wave"],
-        how="left",
-        validate="m:1",
+    out = (
+        demo.merge(
+            pce[["hhid", "wave", "hhsize", "pce", "pce_log", "pce_quintile"]],
+            on=["hhid", "wave"],
+            how="left",
+            validate="m:1",
+        )
+        .merge(disaster, on=["hhid", "wave"], how="left", validate="m:1")
+        .merge(loan, on=["hhid", "wave"], how="left", validate="m:1")
+        .merge(agri, on=["pidlink", "wave"], how="left", validate="1:1")
+        .pipe(_finalize_stressors)
     )
-    out = out.merge(disaster, on=["hhid", "wave"], how="left", validate="m:1")
-    out = out.merge(loan, on=["hhid", "wave"], how="left", validate="m:1")
-    out = out.merge(agri, on=["pidlink", "wave"], how="left", validate="1:1")
-
-    for c in [
-        "disaster_5yr",
-        "disaster_severe_5yr",
-        "loan_rejected",
-        "agri_occupation",
-    ]:
-        out[c] = out[c].fillna(0).astype(int)
-
-    # Macro shock flags will be computed in the analysis script using interview_date
-    out = STRESSORS_SCHEMA.validate(out)
     out.to_parquet(GENERATED_DATA / "22_stressors.parquet", index=False)
     log(
         f"\nwrote {len(out):,} stressor rows to {GENERATED_DATA / '22_stressors.parquet'}"

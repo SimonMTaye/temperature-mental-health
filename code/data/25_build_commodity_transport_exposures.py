@@ -35,6 +35,7 @@ PALM_PROVS = {
     63,
     64,
 }
+COAL_PROVS = {16, 63, 64}
 
 # Top rubber provinces: North Sumatra, Riau, Jambi, South Sumatra, West Kalimantan.
 RUBBER_PROVS = {12, 14, 15, 16, 61}
@@ -48,11 +49,18 @@ OUTPUT_COLUMNS = [
     "agricultural",
     "palm_region",
     "palm_farmer_individual",
+    "palm_farmer_individual_ifls4",
     "palm_farmer_hh",
+    "palm_farmer_hh_ifls4",
     "rubber_region",
     "rubber_farmer_individual",
     "coffee_region",
     "coffee_farmer_individual",
+    "coal_region",
+    "coal_worker_individual",
+    "coal_worker_individual_ifls4",
+    "coal_worker_hh",
+    "coal_worker_hh_ifls4",
     "transport_spending_mo",
     "total_mo",
     "transport_share",
@@ -80,8 +88,9 @@ def add_worker_sector_dummy(wave: str) -> pd.DataFrame:
     assert "tk19ab" in tk.columns, f"Expected pidlink column in {wave} tk dataset"
     sector = pd.to_numeric(tk.tk19ab.astype(str).str.strip())
     out = tk[["pidlink"]].copy()
-    out["agricultural"] = sector == 1
-    out["mining"] = sector == 2
+    # TODO: Check why there is missing in the raw data
+    out["agricultural"] = (sector == 1).fillna(0)
+    out["mining"] = (sector == 2).fillna(0)
     out["wave"] = wave
     return out
 
@@ -162,7 +171,8 @@ def _transport_share(wave: str) -> pd.DataFrame:
 
 
 def _add_region_worker_flags(out: pd.DataFrame) -> pd.DataFrame:
-    is_agricultural = out.agricultural.fillna(0) == 1
+    is_agricultural = out.agricultural == 1
+    is_mining = out.mining == 1
     out["palm_region"] = out.province_code.isin(PALM_PROVS)
     out["palm_farmer_individual"] = is_agricultural & out.palm_region
     out["palm_farmer_hh"] = out.groupby(["hhid", "wave"])[
@@ -172,6 +182,11 @@ def _add_region_worker_flags(out: pd.DataFrame) -> pd.DataFrame:
     out["rubber_farmer_individual"] = is_agricultural & out.rubber_region
     out["coffee_region"] = out.province_code.isin(COFFEE_PROVS)
     out["coffee_farmer_individual"] = is_agricultural & out.coffee_region
+    out["coal_region"] = out.province_code.isin(COAL_PROVS)
+    out["coal_worker_individual"] = is_mining & out.coal_region
+    out["coal_worker_hh"] = out.groupby(["hhid", "wave"])[
+        "coal_worker_individual"
+    ].transform("max")
     return out
 
 
@@ -181,24 +196,6 @@ def _add_transport_quintile(out: pd.DataFrame) -> pd.DataFrame:
     )
     out["high_transport_share"] = out.transport_share_q5 == 5
     return out
-
-
-def _finalize_output(out: pd.DataFrame) -> pd.DataFrame:
-    out_final = out[OUTPUT_COLUMNS].copy()
-    for col in [
-        "palm_region",
-        "palm_farmer_individual",
-        "palm_farmer_hh",
-        "rubber_region",
-        "rubber_farmer_individual",
-        "coffee_region",
-        "coffee_farmer_individual",
-        "high_transport_share",
-    ]:
-        out_final[col] = out_final[col].fillna(0).astype(int)
-    if "agricultural" in out_final.columns:
-        out_final["agricultural"] = out_final.agricultural.fillna(0).astype(int)
-    return COMMODITY_TRANSPORT_EXPOSURES_SCHEMA.validate(out_final)
 
 
 def build_commodity_transport_exposures() -> pd.DataFrame:
@@ -216,41 +213,45 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         f"median transport share={transport.transport_share.median():.3f}"
     )
 
-    individuals = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    base = individuals[["pidlink", "wave", "hhid"]].drop_duplicates(["pidlink", "wave"])
-    out = base.merge(
-        individuals[["pidlink", "wave", "province_code"]],
-        on=["pidlink", "wave"],
-        how="left",
-        validate="1:1",
+    out_final = (
+        pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
+        .loc[:, ["pidlink", "wave", "hhid", "province_code"]]
+        .drop_duplicates(["pidlink", "wave"])
+        .merge(agricultural, on=["pidlink", "wave"], how="left", validate="1:1")
+        .merge(
+            transport.drop_duplicates(subset=["hhid", "wave"]),
+            on=["hhid", "wave"],
+            how="left",
+            validate="m:1",
+        )
+        .pipe(_add_region_worker_flags)
+        .pipe(_add_transport_quintile)
     )
-    out = out.merge(agricultural, on=["pidlink", "wave"], how="left", validate="1:1")
-    out = out.merge(
-        transport.drop_duplicates(subset=["hhid", "wave"]),
-        on=["hhid", "wave"],
-        how="left",
-        validate="m:1",
+    worker_dummy_ifls4 = (
+        out_final
+        # Filter to rows where wave = ifls4
+        .query("wave == 'IFLS4'")
+        # Keep pidlink plus IFLS4 baseline worker columns
+        .filter(
+            items=[
+                "pidlink",
+                "palm_farmer_individual",
+                "palm_farmer_hh",
+                "coal_worker_individual",
+                "coal_worker_hh",
+            ]
+        )
+        # Add IFLS4 dummy to every column
+        .add_suffix("_ifls4", axis=1)
+        # Rename pidlink back to pidlink (remove suffix)
+        .rename(columns={"pidlink_ifls4": "pidlink"})
     )
-    out = _add_region_worker_flags(out)
-    ifls4_worker_dummies = out[out.wave == "IFLS4"][
-        [
-            "pidlink",
-            "agricultural",
-            "palm_farmer_individual",
-            "palm_farmer_hh",
-        ]
-    ].copy()
-    # add _ifsl4 suffix to columns
-    ifls4_worker_dummies = ifls4_worker_dummies.rename(
-        columns={
-            "agricultural": "agricultural_ifls4",
-            "palm_farmer_individual": "palm_farmer_individual_ifls4",
-            "palm_farmer_hh": "palm_farmer_hh_ifls4",
-        }
-    )
-    out = out.merge(ifls4_worker_dummies, on="pidlink", how="left", validate="m:1")
-    out = _add_transport_quintile(out)
-    out_final = _finalize_output(out)
+    out_final = out_final.merge(
+        worker_dummy_ifls4, on="pidlink", how="left", validate="m:1"
+    ).filter(items=OUTPUT_COLUMNS)
+
+    out_final = COMMODITY_TRANSPORT_EXPOSURES_SCHEMA.validate(out_final)
+
     output_path = GENERATED_DATA / "25_commodity_transport_exposures.parquet"
     out_final.to_parquet(output_path, index=False)
 

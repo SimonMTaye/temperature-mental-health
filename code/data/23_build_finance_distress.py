@@ -120,6 +120,15 @@ def _high_medical_oop() -> pd.DataFrame:
     return out
 
 
+def _finalize_finance_distress(out: pd.DataFrame) -> pd.DataFrame:
+    return out.assign(
+        debt_q4=lambda df: df.debt_q4.fillna(0).astype(int),
+        high_med_oop=lambda df: df.high_med_oop.fillna(0).astype(int),
+        debt=lambda df: df.debt.fillna(0),
+        med_oop=lambda df: df.med_oop.fillna(0),
+    ).pipe(FINANCE_DISTRESS_SHOCKS_SCHEMA.validate)
+
+
 def main() -> None:
     debt = _high_debt()
     log(
@@ -135,27 +144,24 @@ def main() -> None:
     )
 
     # Merge to (pidlink, wave) skeleton from individuals.parquet
-    individuals = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    base = individuals[["pidlink", "wave", "hhid"]].drop_duplicates(["pidlink", "wave"])
-    out = base.merge(
-        debt[["hhid", "wave", "debt", "debt_q4"]],
-        on=["hhid", "wave"],
-        how="left",
-        validate="m:1",
+    out = (
+        pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
+        .loc[:, ["pidlink", "wave", "hhid"]]
+        .drop_duplicates(["pidlink", "wave"])
+        .merge(
+            debt[["hhid", "wave", "debt", "debt_q4"]],
+            on=["hhid", "wave"],
+            how="left",
+            validate="m:1",
+        )
+        .merge(
+            moop[["pidlink", "wave", "med_oop", "high_med_oop"]],
+            on=["pidlink", "wave"],
+            how="left",
+            validate="1:1",
+        )
+        .pipe(_finalize_finance_distress)
     )
-    out = out.merge(
-        moop[["pidlink", "wave", "med_oop", "high_med_oop"]],
-        on=["pidlink", "wave"],
-        how="left",
-        validate="1:1",
-    )
-
-    for c in ["debt_q4", "high_med_oop"]:
-        out[c] = out[c].fillna(0).astype(int)
-    for c in ["debt", "med_oop"]:
-        out[c] = out[c].fillna(0)
-
-    out = FINANCE_DISTRESS_SHOCKS_SCHEMA.validate(out)
     out.to_parquet(GENERATED_DATA / "23_finance_distress_shocks.parquet", index=False)
     log(
         f"\nwrote {len(out):,} rows to {GENERATED_DATA / '23_finance_distress_shocks.parquet'}"

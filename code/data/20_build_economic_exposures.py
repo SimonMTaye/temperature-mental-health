@@ -39,7 +39,9 @@ OUTPUT_COLUMNS = [
     "recent_job_loss_5y",
     "involuntary_loss_5y",
     "days_since_last_loss",
-    "job_loss_within_yr",
+    "job_loss_1_yr",
+    "job_loss_6_months",
+    "job_loss_3_months",
     "vehicle_owner",
     "urban",
     "cash_transfer_recipient",
@@ -54,7 +56,9 @@ OUTPUT_COLUMNS = [
 BINARY_COLUMNS = [
     "recent_job_loss_5y",
     "involuntary_loss_5y",
-    "job_loss_within_yr",
+    "job_loss_1_yr",
+    "job_loss_6_months",
+    "job_loss_3_months",
     "vehicle_owner",
     "urban",
     "cash_transfer_recipient",
@@ -224,7 +228,6 @@ def _add_loss_timing(out: pd.DataFrame) -> pd.DataFrame:
     out["job_loss_1_yr"] = (out.days_since_last_loss >= 0) & (
         out.days_since_last_loss <= 365
     ).astype(int)
-    out["job_loss_within_yr"] = out["job_loss_1_yr"]
     out["job_loss_6_months"] = (out.days_since_last_loss >= 0) & (
         out.days_since_last_loss <= 183
     ).astype(int)
@@ -268,20 +271,23 @@ def main() -> pd.DataFrame:
         f"urban: {len(urb):,}; cash: {len(cash):,}"
     )
 
-    individuals = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    individuals["interview_date"] = pd.to_datetime(
-        individuals.interview_datetime
-    ).dt.normalize()
-    base = individuals[
-        ["pidlink", "wave", "hhid", "interview_date", "province_code"]
-    ].drop_duplicates(["pidlink", "wave"])
-    out = base.merge(jl, on=["pidlink", "wave"], how="left", validate="1:1")
-    out = out.merge(veh, on=["hhid", "wave"], how="left", validate="m:1")
-    out = out.merge(urb, on=["hhid", "wave"], how="left", validate="m:1")
-    out = out.merge(cash, on=["hhid", "wave"], how="left", validate="m:1")
-    out = _add_loss_timing(out)
-    out = _add_palm_price_exposure(out)
-    out_final = _finalize_output(out)
+    out_final = (
+        pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
+        .assign(
+            interview_date=lambda df: pd.to_datetime(
+                df.interview_datetime
+            ).dt.normalize()
+        )
+        .loc[:, ["pidlink", "wave", "hhid", "interview_date", "province_code"]]
+        .drop_duplicates(["pidlink", "wave"])
+        .merge(jl, on=["pidlink", "wave"], how="left", validate="1:1")
+        .merge(veh, on=["hhid", "wave"], how="left", validate="m:1")
+        .merge(urb, on=["hhid", "wave"], how="left", validate="m:1")
+        .merge(cash, on=["hhid", "wave"], how="left", validate="m:1")
+        .pipe(_add_loss_timing)
+        .pipe(_add_palm_price_exposure)
+        .pipe(_finalize_output)
+    )
     output_path = GENERATED_DATA / "20_economic_exposures.parquet"
     out_final.to_parquet(output_path, index=False)
 
@@ -292,7 +298,7 @@ def main() -> pd.DataFrame:
         .agg(
             n=("pidlink", "size"),
             recent_loss_pct=("recent_job_loss_5y", lambda s: 100 * s.mean()),
-            job_loss_yr_pct=("job_loss_within_yr", lambda s: 100 * s.mean()),
+            job_loss_yr_pct=("job_loss_1_yr", lambda s: 100 * s.mean()),
             vehicle_pct=("vehicle_owner", lambda s: 100 * s.mean()),
             urban_pct=("urban", lambda s: 100 * s.mean()),
             cash_xfer_pct=("cash_transfer_recipient", lambda s: 100 * s.mean()),

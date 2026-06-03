@@ -16,7 +16,7 @@ def _id_column() -> pa.Column:
 
 def _binary_column(*, nullable: bool = False) -> pa.Column:
     return pa.Column(
-        int,
+        "Int64" if nullable else int,
         checks=pa.Check.isin(BINARY),
         nullable=nullable,
         coerce=True,
@@ -96,9 +96,7 @@ CESD_SCORES_SCHEMA = pa.DataFrameSchema(
         # Indicator for CES-D raw score at or above the cutoff of 10.
         "depressed": _binary_column(),
         # Number of CES-D items contributing to the person-wave score.
-        "n_items": pa.Column(
-            int, checks=pa.Check.eq(10), nullable=False, coerce=True
-        ),
+        "n_items": pa.Column(int, checks=pa.Check.eq(10), nullable=False, coerce=True),
         # CES-D factor scores and within-wave standardized versions.
         "somatic": pa.Column(
             float, checks=pa.Check.between(0, 15), nullable=False, coerce=True
@@ -331,7 +329,11 @@ ECONOMIC_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         # Days between interview date and the last reported job termination date.
         "days_since_last_loss": pa.Column(float, nullable=True, coerce=True),
         # Last job termination occurred within 365 days before interview.
-        "job_loss_within_yr": _binary_column(),
+        "job_loss_1_yr": _binary_column(),
+        # Last job termination occurred within 6 months before interview.
+        "job_loss_6_months": _binary_column(),
+        # Last job termination occurred within 3 months before interview.
+        "job_loss_3_months": _binary_column(),
         # Household owns a vehicle.
         "vehicle_owner": _binary_column(),
         # Household is in an urban area according to the screening file.
@@ -373,8 +375,12 @@ COMMODITY_TRANSPORT_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "palm_region": _binary_column(),
         # Respondent is agricultural and lives in a palm-oil region.
         "palm_farmer_individual": _binary_column(),
+        # IFLS4 respondent-level palm farmer baseline, carried to later waves.
+        "palm_farmer_individual_ifls4": _binary_column(nullable=True),
         # Any household member is flagged as a palm farmer in that wave.
         "palm_farmer_hh": _binary_column(),
+        # IFLS4 household-level palm farmer baseline, carried to later waves.
+        "palm_farmer_hh_ifls4": _binary_column(nullable=True),
         # Household province is in a major rubber-producing region.
         "rubber_region": _binary_column(),
         # Respondent is agricultural and lives in a rubber-producing region.
@@ -383,6 +389,16 @@ COMMODITY_TRANSPORT_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "coffee_region": _binary_column(),
         # Respondent is agricultural and lives in a coffee-producing region.
         "coffee_farmer_individual": _binary_column(),
+        # Household province is in a major coal-producing region.
+        "coal_region": _binary_column(),
+        # Respondent works in mining and lives in a coal-producing region.
+        "coal_worker_individual": _binary_column(),
+        # IFLS4 respondent-level coal worker baseline, carried to later waves.
+        "coal_worker_individual_ifls4": _binary_column(nullable=True),
+        # Any household member is flagged as a coal worker in that wave.
+        "coal_worker_hh": _binary_column(),
+        # IFLS4 household-level coal worker baseline, carried to later waves.
+        "coal_worker_hh_ifls4": _binary_column(nullable=True),
         # Monthly household transportation spending.
         "transport_spending_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
@@ -588,41 +604,32 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "cdd_tmin24": pa.Column(
             float, checks=pa.Check.ge(0), nullable=False, coerce=True
         ),
-        **ECONOMIC_EXPOSURES_SCHEMA.columns,
+        **_schema_columns(
+            ECONOMIC_EXPOSURES_SCHEMA,
+            [
+                name
+                for name in ECONOMIC_EXPOSURES_SCHEMA.columns
+                if name != "palm_shock"
+            ],
+        ),
         # Commodity/transport exposure variables retained in the analysis table.
         **_schema_columns(
             COMMODITY_TRANSPORT_EXPOSURES_SCHEMA,
             [
                 "palm_farmer_individual",
+                "palm_farmer_individual_ifls4",
                 "palm_farmer_hh",
+                "palm_farmer_hh_ifls4",
                 "rubber_farmer_individual",
                 "coffee_farmer_individual",
+                "coal_region",
+                "coal_worker_individual",
+                "coal_worker_individual_ifls4",
+                "coal_worker_hh",
+                "coal_worker_hh_ifls4",
                 "transport_share",
+                "high_transport_share",
             ],
-        ),
-        # Interview month tuple pieces and derived shock variables.
-        "palm_3mo_decline": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=False, coerce=True
-        ),
-        "palm_shock": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=False, coerce=True
-        ),
-        "fuel_shock": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "rubber_price_usd_kg": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "rubber_price_z": pa.Column(float, nullable=True, coerce=True),
-        "rubber_shock": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=False, coerce=True
-        ),
-        "coffee_price_clb": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "coffee_price_z": pa.Column(float, nullable=True, coerce=True),
-        "coffee_shock": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=False, coerce=True
         ),
         # CES-D factor scores and within-wave standardized versions.
         **_schema_columns(
