@@ -39,11 +39,24 @@ OUTPUT_COLUMNS = [
     "recent_job_loss_5y",
     "involuntary_loss_5y",
     "days_since_last_loss",
+    "job_loss_90d",
+    "job_loss_180d",
+    "job_loss_270d",
     "job_loss_1_yr",
+    "job_loss_365d",
+    "job_loss_540d",
+    "job_loss_730d",
+    "job_loss_1095d",
+    "job_loss_1825d",
     "job_loss_6_months",
     "job_loss_3_months",
+    "job_loss_reason_code",
+    "involuntary_loss_1_yr",
+    "family_loss_1_yr",
     "vehicle_owner",
     "urban",
+    "urban_vehicle_hh",
+    "urban_vehicle_hh_ifls4",
     "cash_transfer_recipient",
     "blt_card",
     "health_card",
@@ -56,11 +69,22 @@ OUTPUT_COLUMNS = [
 BINARY_COLUMNS = [
     "recent_job_loss_5y",
     "involuntary_loss_5y",
+    "job_loss_90d",
+    "job_loss_180d",
+    "job_loss_270d",
     "job_loss_1_yr",
+    "job_loss_365d",
+    "job_loss_540d",
+    "job_loss_730d",
+    "job_loss_1095d",
+    "job_loss_1825d",
     "job_loss_6_months",
     "job_loss_3_months",
+    "involuntary_loss_1_yr",
+    "family_loss_1_yr",
     "vehicle_owner",
     "urban",
+    "urban_vehicle_hh",
     "cash_transfer_recipient",
     "blt_card",
     "health_card",
@@ -84,7 +108,9 @@ def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     out["recent_job_loss_5y"] = clean_count(df.tk46c, max_real=50).fillna(0) >= 1
     # 1, 2 -> Fired, 3 -> Wage too Low, 4 -> Bad Working Env, 5 -> Refused relocation
     # 6 -> Prolonged sickness, 7, 8, 9 -> Family related (marriange, child, other) 95 -> Other
-    out["involuntary_loss_5y"] = df.tk46m.isin([1, 2, 3, 4, 5, 6])
+    out["job_loss_reason_code"] = pd.to_numeric(df.tk46m, errors="coerce")
+    out.loc[~out.job_loss_reason_code.between(1, 95), "job_loss_reason_code"] = np.nan
+    out["involuntary_loss_5y"] = out.job_loss_reason_code.isin([1, 2, 3, 4, 5, 6])
     out["last_loss_year"] = clean_year(df.tk46dy)
     out["last_loss_month"] = clean_month(df.tk46dm)
     out["wave"] = wave
@@ -225,14 +251,22 @@ def _add_loss_timing(out: pd.DataFrame) -> pd.DataFrame:
         )
     out["last_loss_date"] = pd.to_datetime(out.last_loss_date)
     out["days_since_last_loss"] = (out.interview_date - out.last_loss_date).dt.days
-    out["job_loss_1_yr"] = (out.days_since_last_loss >= 0) & (
-        out.days_since_last_loss <= 365
+    for days in [90, 180, 270, 365, 540, 730, 1095, 1825]:
+        out[f"job_loss_{days}d"] = (
+            (out.days_since_last_loss >= 0) & (out.days_since_last_loss <= days)
+        ).astype(int)
+    out["job_loss_1_yr"] = out["job_loss_365d"]
+    out["job_loss_6_months"] = (
+        (out.days_since_last_loss >= 0) & (out.days_since_last_loss <= 183)
     ).astype(int)
-    out["job_loss_6_months"] = (out.days_since_last_loss >= 0) & (
-        out.days_since_last_loss <= 183
+    out["job_loss_3_months"] = (
+        (out.days_since_last_loss >= 0) & (out.days_since_last_loss <= 92)
     ).astype(int)
-    out["job_loss_3_months"] = (out.days_since_last_loss >= 0) & (
-        out.days_since_last_loss <= 92
+    out["involuntary_loss_1_yr"] = (
+        out.job_loss_1_yr.eq(1) & out.job_loss_reason_code.isin([1, 2, 3, 4, 5, 6])
+    ).astype(int)
+    out["family_loss_1_yr"] = (
+        out.job_loss_1_yr.eq(1) & out.job_loss_reason_code.isin([7, 8, 9])
     ).astype(int)
 
     return out
@@ -258,6 +292,17 @@ def _finalize_output(out: pd.DataFrame) -> pd.DataFrame:
     for col in BINARY_COLUMNS:
         out_final[col] = out_final[col].fillna(0).astype(int)
     return ECONOMIC_EXPOSURES_SCHEMA.validate(out_final)
+
+
+def _add_urban_vehicle_baseline(out: pd.DataFrame) -> pd.DataFrame:
+    out = out.copy()
+    out["urban_vehicle_hh"] = out.urban.fillna(0).astype(int) * out.vehicle_owner.fillna(0).astype(int)
+    baseline = (
+        out.query("wave == 'IFLS4'")[["pidlink", "urban_vehicle_hh"]]
+        .drop_duplicates("pidlink")
+        .rename(columns={"urban_vehicle_hh": "urban_vehicle_hh_ifls4"})
+    )
+    return out.merge(baseline, on="pidlink", how="left", validate="m:1")
 
 
 def main() -> pd.DataFrame:
@@ -286,6 +331,7 @@ def main() -> pd.DataFrame:
         .merge(cash, on=["hhid", "wave"], how="left", validate="m:1")
         .pipe(_add_loss_timing)
         .pipe(_add_palm_price_exposure)
+        .pipe(_add_urban_vehicle_baseline)
         .pipe(_finalize_output)
     )
     output_path = GENERATED_DATA / "20_economic_exposures.parquet"

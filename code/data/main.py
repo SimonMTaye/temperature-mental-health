@@ -97,6 +97,7 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
     ),
     (
         PipelineStep("10_fetch_temperature_gee", "daily temperature"),
+        PipelineStep("11_fetch_temperature_hourly_gee", "hourly temperature"),
         PipelineStep("12_fetch_merra_pm25_gee", "MERRA PM2.5"),
     ),
     (
@@ -109,6 +110,11 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
             "25_build_commodity_transport_exposures",
             "commodity/transport exposures",
         ),
+    ),
+    (
+        PipelineStep("26_process_temperature_data", "processed temperature"),
+        PipelineStep("27_build_income_mechanism_inputs", "income mechanisms"),
+        PipelineStep("28_build_sleep_duration", "sleep duration"),
     ),
     (PipelineStep("30_build_analysis_table_input", "analysis table input"),),
 )

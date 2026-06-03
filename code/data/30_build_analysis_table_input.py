@@ -6,10 +6,9 @@ table, and figure scripts.
 Output: data/generated/30_analysis_table_input.parquet
 """
 
-import numpy as np
 import pandas as pd
 
-from config import GENERATED_DATA
+from config import GENERATED_DATA, IDR_2007_TO_2014_DEFLATOR
 from _schemas import ANALYSIS_TABLE_INPUT_SCHEMA
 from log import log
 
@@ -40,71 +39,6 @@ def ensure_cesd_factor_columns(ces: pd.DataFrame) -> pd.DataFrame:
     return ces
 
 
-def add_temp_lags(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
-    """For each individual, attach temperature on interview date plus lags/leads."""
-    ind = ind.copy()
-    ind["interview_date"] = pd.to_datetime(ind.interview_datetime).dt.normalize()
-    temp = temp.sort_values(["gadm_fullcode", "date"]).copy()
-
-    temp["tmean_lag1"] = temp.groupby("gadm_fullcode")["tmean_c"].shift(1)
-    temp["tmean_lag3"] = (
-        temp.groupby("gadm_fullcode")["tmean_c"]
-        .rolling(3, min_periods=1)
-        .mean()
-        .reset_index(level=0, drop=True)
-        .shift(1)
-    )
-    temp["tmean_lag7"] = (
-        temp.groupby("gadm_fullcode")["tmean_c"]
-        .rolling(7, min_periods=1)
-        .mean()
-        .reset_index(level=0, drop=True)
-        .shift(1)
-    )
-    temp["tmin_lag1"] = temp.groupby("gadm_fullcode")["tmin_c"].shift(1)
-    temp["tmax_lag1"] = temp.groupby("gadm_fullcode")["tmax_c"].shift(1)
-    temp["heat_idx_lag1"] = temp.groupby("gadm_fullcode")["heat_idx_c"].shift(1)
-    temp["tmean_base30"] = (
-        temp.groupby("gadm_fullcode")["tmean_c"]
-        .rolling(30, min_periods=15)
-        .mean()
-        .reset_index(level=0, drop=True)
-        .shift(1)
-    )
-    temp["tmean_lead7"] = temp.groupby("gadm_fullcode")["tmean_c"].shift(-7)
-
-    keep = [
-        "gadm_fullcode",
-        "date",
-        "match_level",
-        "tmean_c",
-        "tmax_c",
-        "tmin_c",
-        "heat_idx_c",
-        "rh_pct",
-        "precip_mm",
-        "tmean_lag1",
-        "tmean_lag3",
-        "tmean_lag7",
-        "tmin_lag1",
-        "tmax_lag1",
-        "heat_idx_lag1",
-        "tmean_base30",
-        "tmean_lead7",
-    ]
-    out = ind.merge(
-        temp[keep],
-        left_on=["gadm_fullcode", "interview_date"],
-        right_on=["gadm_fullcode", "date"],
-        how="left",
-        validate="m:1",
-    ).drop(columns=["date"])
-
-    out["t_anom_today"] = out.tmean_c - out.tmean_base30
-    out["t_anom_lag1"] = out.tmean_lag1 - out.tmean_base30
-    return out
-
-
 def _pce_decline(df: pd.DataFrame) -> pd.DataFrame:
     """Bottom-quartile of inter-wave PCE change for panel respondents."""
     pce = df[["pidlink", "wave", "pce"]].dropna(subset=["pce"])
@@ -115,11 +49,10 @@ def _pce_decline(df: pd.DataFrame) -> pd.DataFrame:
     if "IFLS4" not in pce_w.columns or "IFLS5" not in pce_w.columns:
         return pd.DataFrame(columns=["pidlink", "wave", "pce_decline_q4"])
     panel = pce_w.dropna()
-    # Approximate IDR inflation factor from 2007 to 2014 ≈ 1.7 (CPI rose ~70 %).
-    # Real change = PCE_5 - PCE_4 * 1.7
-    DEFLATOR = 1.7
-    panel["pce_chg_real"] = panel["IFLS5"] - panel["IFLS4"] * DEFLATOR
-    panel["pce_pct_chg"] = panel["pce_chg_real"] / (panel["IFLS4"] * DEFLATOR)
+    panel["pce_chg_real"] = panel["IFLS5"] - panel["IFLS4"] * IDR_2007_TO_2014_DEFLATOR
+    panel["pce_pct_chg"] = panel["pce_chg_real"] / (
+        panel["IFLS4"] * IDR_2007_TO_2014_DEFLATOR
+    )
     thr = panel["pce_pct_chg"].quantile(0.25)
     panel["pce_decline_q4_flag"] = (panel["pce_pct_chg"] <= thr).astype(int)
 
@@ -137,14 +70,13 @@ def _pce_decline(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_core_panel() -> pd.DataFrame:
-    """Merge person, CES-D, covariate, and interview-date weather inputs."""
+    """Merge person, CES-D, covariate, and processed temperature inputs."""
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
     ces = ensure_cesd_factor_columns(
         pd.read_parquet(GENERATED_DATA / "24_cesd_scores.parquet")
     )
     stress = pd.read_parquet(GENERATED_DATA / "22_stressors.parquet")
-    temp = pd.read_parquet(GENERATED_DATA / "10_daily_temperature_kab.parquet")
-    temp["date"] = pd.to_datetime(temp.date)
+    temp = pd.read_parquet(GENERATED_DATA / "26_processed_temperature_data.parquet")
 
     log(
         f"individuals={len(ind):,}  cesd={len(ces):,}  stressors={len(stress):,}  temp={len(temp):,}"
@@ -158,7 +90,8 @@ def build_core_panel() -> pd.DataFrame:
     )
     log(f"after CES-D merge: {len(df):,}")
 
-    df = add_temp_lags(df, temp)
+    df = df.merge(temp, on=["pidlink", "wave"], how="left", validate="1:1")
+    df["interview_date"] = pd.to_datetime(df.interview_datetime).dt.normalize()
     df = df[df.age >= 15].copy()
     df = df.dropna(subset=["cesd_raw", "tmean_c"]).copy()
     log(f"core analysis sample: {len(df):,} adults")
@@ -170,11 +103,6 @@ def build_core_panel() -> pd.DataFrame:
     df["yogya_quake_catchment"] = (
         df.wave.eq("IFLS4") & df.province_code.isin([33, 34])
     ).astype(int)
-    df["heat_bin"] = pd.cut(
-        df.tmean_c,
-        bins=[-np.inf, 22, 24, 26, 28, np.inf],
-        labels=["<22", "22-24", "24-26", "26-28", "28+"],
-    )
     df["month_year"] = df.interview_date.dt.to_period("M").astype(str)
     df["month"] = df.interview_date.dt.month
     df["year"] = df.interview_date.dt.year
@@ -182,23 +110,12 @@ def build_core_panel() -> pd.DataFrame:
 
 
 def add_model_variables(df: pd.DataFrame) -> pd.DataFrame:
-    """Add common outcome, heat, and threshold variables used by tables."""
+    """Add common outcome and demographic variables used by tables."""
     df = df.copy()
-    df["precip_mm"] = df.precip_mm.clip(lower=0)
     df["female"] = (df.sex == "F").astype(int)
     df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(
         lambda s: (s - s.mean()) / s.std()
     )
-
-    for col in ["tmean_c", "tmax_c", "tmin_c"]:
-        df[f"{col}_dev"] = df[col] - df[col].mean()
-    df["heat_c_dev"] = df["tmean_c_dev"]
-
-    df["cdd_tmax30"] = (df.tmax_c - 30.0).clip(lower=0)
-    df["cdd_tmax32"] = (df.tmax_c - 32.0).clip(lower=0)
-    df["cdd_tmin23"] = (df.tmin_c - 23.0).clip(lower=0)
-    df["cdd_tmin24"] = (df.tmin_c - 24.0).clip(lower=0)
-
     return df
 
 
@@ -209,6 +126,9 @@ def main() -> None:
     economic = pd.read_parquet(GENERATED_DATA / "20_economic_exposures.parquet")
     commodity_transport = pd.read_parquet(
         GENERATED_DATA / "25_commodity_transport_exposures.parquet"
+    )
+    income_mechanisms = pd.read_parquet(
+        GENERATED_DATA / "27_income_mechanism_inputs.parquet"
     )
 
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
@@ -221,6 +141,15 @@ def main() -> None:
     )
     if "palm_region_commodity_transport" in df.columns:
         df = df.drop(columns=["palm_region_commodity_transport"])
+    df = df.merge(
+        income_mechanisms, on=["pidlink", "wave"], how="left", validate="1:1"
+    )
+    df = df.merge(
+        pd.read_parquet(GENERATED_DATA / "28_sleep_duration.parquet"),
+        on=["pidlink", "wave"],
+        how="left",
+        validate="1:1",
+    )
 
     df = df.merge(
         pd.read_parquet(GENERATED_DATA / "21_health_bereavement_shocks.parquet"),
