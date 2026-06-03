@@ -216,7 +216,7 @@ DATE_COLUMNS = [
 
 
 def parse_ifls4_survey_info() -> pd.DataFrame:
-    path = Path(RAW_IFLS_EXTRACTED) / "IFLS4" / "hh07" / "b3a_cov.dta"
+    path = Path(RAW_IFLS_EXTRACTED) / "IFLS4" / "hh07" / "b3b_cov.dta"
     survey_info = read_stata_df(path, convert_categoricals=False)
     mapping = {
         "year": "ivwyr",
@@ -279,7 +279,7 @@ def parse_ifls4_survey_info() -> pd.DataFrame:
 
 
 def parse_ifls5_survey_info() -> pd.DataFrame:
-    path = Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "b3a_time.dta"
+    path = Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "b3b_time.dta"
     survey_info = read_stata_df(path, convert_categoricals=False)
     survey_info["year"] = survey_info.ivwyr
     survey_info["month"] = survey_info.ivwmth
