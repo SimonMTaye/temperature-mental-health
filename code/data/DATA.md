@@ -59,8 +59,8 @@ across scripts.
 
 ## Environmental data and GEE
 
-The current pipeline uses Google Earth Engine for ERA5-Land temperature,
-MERRA-2 PM2.5, and MODIS AOD pulls. Use the existing `config.py`/environment
+The current pipeline uses Google Earth Engine for ERA5-Land temperature and
+MERRA-2 PM2.5 pulls. Use the existing `config.py`/environment
 setup and never commit API keys, project IDs from private `.env` files, or other
 secrets.
 
@@ -84,7 +84,6 @@ when the interface fits.
   `main.py`.
 - `12_fetch_merra_pm25_gee.py`: builds daily kabupaten PM2.5 from MERRA-2
   aerosol components.
-- `13_fetch_aod_gee.py`: builds monthly kabupaten MODIS AOD as a haze proxy.
 - `20_build_economic_exposures.py`: builds job-loss, asset, benefit-card, and
   palm-price exposure variables.
 - `21_build_health_exposures.py`: builds acute health, hospitalization,
