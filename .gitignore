@@ -24,3 +24,6 @@ code/analysis_began
 resources
 sync_to_sink.sh
 code/port
+.codex
+sync_code.sh
+sync_output.sh

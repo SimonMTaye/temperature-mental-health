@@ -252,11 +252,15 @@ def parse_ifls4_survey_info() -> pd.DataFrame:
     # 073190006 ->  Feb 31
     # 106150010 ->  Nov 31
     # 231300004 ->  Nov 31
-    # Fix the above to make it the last day of the month before datetime generation
-    survey_info.loc[survey_info.pidlink == "003134102", "day"] = 28
-    survey_info.loc[survey_info.pidlink == "073190006", "day"] = 28
-    survey_info.loc[survey_info.pidlink == "106150010", "day"] = 30
-    survey_info.loc[survey_info.pidlink == "231300004", "day"] = 30
+    # OLD Fix the above to make it the last day of the month before datetime generation
+    # survey_info.loc[survey_info.pidlink == "003134102", "day"] = 28
+    # survey_info.loc[survey_info.pidlink == "073190006", "day"] = 28
+    # survey_info.loc[survey_info.pidlink == "106150010", "day"] = 30
+    # survey_info.loc[survey_info.pidlink == "231300004", "day"] = 30
+
+    # The above was for time variable from a different  dataset; since updating,
+    # only the row below has an issue with a feb 30 date
+    survey_info.loc[survey_info.pidlink == "275110002", "day"] = 28
 
     survey_info["interview_datetime"] = pd.to_datetime(
         dict(
@@ -267,6 +271,13 @@ def parse_ifls4_survey_info() -> pd.DataFrame:
         ),
         errors="coerce",
     )
+    # if interview_datetime is null, log the undderlying variables using error level
+    null_datetime = survey_info[survey_info["interview_datetime"].isna()]
+    for observation in null_datetime.itertuples():
+        log(
+            f"Null interview datetime for pidlink {observation.pidlink} with year {observation.year}, month {observation.month}, day {observation.day}, hour_end {observation.hour_end}",
+            "ERROR",
+        )
 
     null_interview_pids = survey_info[survey_info["interview_datetime"].isna()][
         "pidlink"
@@ -296,6 +307,14 @@ def parse_ifls5_survey_info() -> pd.DataFrame:
         ),
         errors="coerce",
     )
+    # if interview_datetime is null, log the undderlying variables using error level
+    null_datetime = survey_info[survey_info["interview_datetime"].isna()]
+    for observation in null_datetime.itertuples():
+        log(
+            f"Null interview datetime for pidlink {observation.pidlink} with year {observation.year}, month {observation.month}, day {observation.day}, hour_end {observation.hour_end}",
+            "ERROR",
+        )
+
     survey_info["hhid"] = survey_info["hhid14"]
     survey_info["wave"] = "IFLS5"
     # TODO: use latest time for robustness as well

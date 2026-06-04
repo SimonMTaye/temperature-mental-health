@@ -9,11 +9,14 @@ and as a richer source for the daytime-only / nighttime-only Tmax/Tmin checks).
 
 Approach
 --------
-For each batch of 16 hours, do ONE GEE reduceRegions over all deduplicated GADM
+For each batch of 2 hours, do ONE GEE reduceRegions over all deduplicated GADM
 polygons -> hourly means written into a long parquet keyed
 (gadm_fullcode, datetime_utc).
 
-  16 hours x N polygons should stay under the getInfo cap.
+  BATCH_HOURS is capped at 2 because 2,211 polygons x 2 hours = 4,422 features
+  per getInfo() call, just under GEE's ~5,000 feature response limit.
+  To compensate, batches are fetched in parallel via ThreadPoolExecutor
+  (getInfo is I/O-bound).  With 4 workers the wall-clock time is ~1/4 of serial.
 
 Variables (ERA5-Land native ~9 km, polygon-mean):
   tmean_c_hour  hourly 2m air temperature (deg C; converted from Kelvin)
@@ -27,9 +30,9 @@ Coverage
 
 Runtime estimate
 ----------------
-  Number of batches per wave: ceil((days * 24) / 16) hours = ~670 (IFLS4) + 760 (IFLS5)
-  At ~8-12s per call, plan ~3-5 hours for the full pull. Per-wave caches let you
-  resume after interruption.
+  Number of batches per wave: ceil((days * 24) / 2) hours = ~4,900 (IFLS4) + ~6,100 (IFLS5)
+  At ~8-12s per call serial: ~25-35 hours.  With 4 workers in parallel: ~6-9 hours.
+  Per-wave caches let you resume after interruption.
 
 Output
 ------
@@ -47,6 +50,7 @@ where it left off.
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 
 import ee
@@ -58,8 +62,11 @@ from config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE_HOURLY as TMP
 from _schemas import HOURLY_TEMPERATURE_SCHEMA
 from log import log
 
-# Keep each call under roughly 5,000 features after the gadm_fullcode expansion.
+# 2 hours x 2,211 polygons = 4,422 features per getInfo() call.
+# GEE's getInfo response limit is ~5,000 features, so BATCH_HOURS cannot
+# be raised without first splitting geographies into separate calls.
 BATCH_HOURS = 2
+MAX_WORKERS = 4  # Conservative: 4 concurrent getInfo() calls, well under GEE's ~3 req/s limit
 
 BANDS = [
     "temperature_2m",
@@ -165,6 +172,26 @@ def pull_window(
     return pd.DataFrame(rows)
 
 
+def pull_window_with_retry(
+    start: pd.Timestamp, end_excl: pd.Timestamp, fc: ee.FeatureCollection,
+    max_retries: int = 3,
+) -> pd.DataFrame:
+    """pull_window with exponential-backoff retry, safe for threaded use."""
+    for attempt in range(max_retries):
+        try:
+            return pull_window(start, end_excl, fc)
+        except Exception:
+            if attempt == max_retries - 1:
+                raise
+            wait = (attempt + 1) * 30
+            log(
+                f"    {start} error, retrying in {wait}s "
+                f"(attempt {attempt + 1}/{max_retries})",
+                "WARNING",
+            )
+            time.sleep(wait)
+
+
 def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timestamp]]:
     interview_date = pd.to_datetime(ind.interview_datetime).dt.normalize()
     dated = ind.assign(interview_date=interview_date)
@@ -244,38 +271,50 @@ def main() -> None:
             f"({BATCH_HOURS * len(geographies)} features per call)"
         )
 
-        wave_frames = []
-        t0 = time.time()
-        batches = tqdm(starts, desc=f"{tag} ERA5 hourly", unit="batch")
-        for i, s in enumerate(batches, 1):
+        # --- Build batch windows ------------------------------------------------
+        batch_windows: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+        for s in starts:
             batch_start = pd.Timestamp(s)
-            if not isinstance(batch_start, pd.Timestamp):
-                raise ValueError(f"{tag}: invalid batch timestamp {s}")
             candidate_end = batch_start + timedelta(hours=BATCH_HOURS)
             e_excl = (
                 candidate_end if candidate_end <= end_excl_total else end_excl_total
             )
-            try:
-                df = pull_window(batch_start, e_excl, fc)
-                wave_frames.append(df)
-            except Exception as exc:
-                log(
-                    f"    {batch_start} ERROR: {exc}; sleeping 30s and retrying once",
-                    "WARNING",
-                )
-                time.sleep(30)
-                df = pull_window(batch_start, e_excl, fc)
-                wave_frames.append(df)
+            batch_windows.append((batch_start, e_excl))
 
-            el = time.time() - t0
-            eta = el / i * (n_batches - i)
-            rows = sum(len(f) for f in wave_frames)
-            batches.set_postfix(
-                elapsed_min=f"{el / 60:.1f}",
-                eta_min=f"{eta / 60:.1f}",
-                rows=f"{rows:,}",
-                window=f"{batch_start}->{e_excl}",
+        # --- Fetch in parallel (getInfo is I/O-bound) --------------------------
+        wave_frames = []
+        t0 = time.time()
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            future_to_window = {
+                executor.submit(pull_window_with_retry, bs, be, fc): (bs, be)
+                for bs, be in batch_windows
+            }
+            pbar = tqdm(
+                as_completed(future_to_window),
+                total=len(future_to_window),
+                desc=f"{tag} ERA5 hourly",
+                unit="batch",
             )
+            for i, fut in enumerate(pbar, 1):
+                batch_start, e_excl = future_to_window[fut]
+                try:
+                    df = fut.result()
+                    wave_frames.append(df)
+                except Exception as exc:
+                    log(
+                        f"    {batch_start} FAILED after all retries: {exc}",
+                        "ERROR",
+                    )
+                    raise
+
+                el = time.time() - t0
+                eta = el / i * (len(future_to_window) - i)
+                n_rows = sum(len(f) for f in wave_frames)
+                pbar.set_postfix(
+                    elapsed_min=f"{el / 60:.1f}",
+                    eta_min=f"{eta / 60:.1f}",
+                    rows=f"{n_rows:,}",
+                )
 
         wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(out_path, index=False)

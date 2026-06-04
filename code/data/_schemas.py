@@ -322,26 +322,45 @@ ECONOMIC_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "pidlink": _id_column(),
         # IFLS survey wave for the economic exposure record.
         "wave": _wave_column(),
+        # Respondent reports no paid work in the past week by TK01A.
+        "unemployed_since_then": _binary_column(),
         # Respondent had at least one job termination in the past 5 years.
-        "recent_job_loss_5y": _binary_column(),
+        "lost_job_5y": _binary_column(),
+        # Past-5-year job termination among respondents not currently working.
+        "job_loss_5y": _binary_column(),
         # Last job termination reason was fired, laid off, or plant closure.
         "involuntary_loss_5y": _binary_column(),
         # Days between interview date and the last reported job termination date.
         "days_since_last_loss": pa.Column(float, nullable=True, coerce=True),
         # Last job termination occurred within the named day window before interview.
+        "lost_job_90d": _binary_column(),
+        "lost_job_180d": _binary_column(),
+        "lost_job_270d": _binary_column(),
+        # Last job termination occurred within 365 days before interview.
+        "lost_job_1_yr": _binary_column(),
+        "lost_job_365d": _binary_column(),
+        "lost_job_540d": _binary_column(),
+        "lost_job_730d": _binary_column(),
+        "lost_job_1095d": _binary_column(),
+        "lost_job_1825d": _binary_column(),
+        # Last job termination occurred within 6 months before interview.
+        "lost_job_6_months": _binary_column(),
+        # Last job termination occurred within 3 months before interview.
+        "lost_job_3_months": _binary_column(),
+        # Last job termination window, filtered to respondents not currently working.
         "job_loss_90d": _binary_column(),
         "job_loss_180d": _binary_column(),
         "job_loss_270d": _binary_column(),
-        # Last job termination occurred within 365 days before interview.
+        # Last job termination within 365 days, filtered to non-current workers.
         "job_loss_1_yr": _binary_column(),
         "job_loss_365d": _binary_column(),
         "job_loss_540d": _binary_column(),
         "job_loss_730d": _binary_column(),
         "job_loss_1095d": _binary_column(),
         "job_loss_1825d": _binary_column(),
-        # Last job termination occurred within 6 months before interview.
+        # Last job termination within 6 months, filtered to non-current workers.
         "job_loss_6_months": _binary_column(),
-        # Last job termination occurred within 3 months before interview.
+        # Last job termination within 3 months, filtered to non-current workers.
         "job_loss_3_months": _binary_column(),
         # Most recent job-loss reason code, from TK46m.
         "job_loss_reason_code": pa.Column(float, nullable=True, coerce=True),
