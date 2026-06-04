@@ -12,7 +12,7 @@ TABLE = "table_k_job_loss_reason"
 
 def fit_reason(df, variable: str) -> dict[str, object]:
     formula = f"cesd_z ~ heat_c_dev * {variable} + {CONTROLS} | {FE_POOLED}"
-    required = ["cesd_z", "heat_c_dev", variable, "month", "year", "wave", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"]
+    required = ["cesd_z", "heat_c_dev", variable, "month", "year", "wave", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"]
     model = fit_model(df, formula, required)
     frame = df.dropna(subset=required)
     stats = term_stats(model, f"heat_c_dev:{variable}")
@@ -29,7 +29,7 @@ def fit_reason(df, variable: str) -> dict[str, object]:
 
 def fit_joint(df) -> dict[str, object]:
     formula = f"cesd_z ~ heat_c_dev * (involuntary_loss_1_yr + family_loss_1_yr) + {CONTROLS} | {FE_POOLED}"
-    required = ["cesd_z", "heat_c_dev", "involuntary_loss_1_yr", "family_loss_1_yr", "month", "year", "wave", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"]
+    required = ["cesd_z", "heat_c_dev", "involuntary_loss_1_yr", "family_loss_1_yr", "month", "year", "wave", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"]
     model = fit_model(df, formula, required)
     invol = term_stats(model, "heat_c_dev:involuntary_loss_1_yr")
     family = term_stats(model, "heat_c_dev:family_loss_1_yr")

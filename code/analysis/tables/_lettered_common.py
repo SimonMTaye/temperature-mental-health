@@ -16,10 +16,12 @@ TABLE_DIR = PROJECT / "output" / "tables"
 
 CONTROLS = "age + female + edu_yrs + married + widowed"
 CONTROL_COLUMNS = ["age", "female", "edu_yrs", "married", "widowed"]
-FE_POOLED = "month + year + wave + kecamatan_code"
-FE_IFLS5 = "month + year + kecamatan_code"
-FE_WITHIN_DAY = "day_id + kecamatan_code"
-CLUSTER = "kabupaten_code"
+KECAMATAN_FE = "kecamatan_fe_code"
+KABUPATEN_CLUSTER = "kabupaten_cluster_code"
+FE_POOLED = f"month + year + wave + {KECAMATAN_FE}"
+FE_IFLS5 = f"month + year + {KECAMATAN_FE}"
+FE_WITHIN_DAY = f"day_id + {KECAMATAN_FE}"
+CLUSTER = KABUPATEN_CLUSTER
 
 BASELINE_GROUPS = [
     "palm_farmer_hh_ifls4",
@@ -28,10 +30,25 @@ BASELINE_GROUPS = [
 ]
 
 
+def zfilled_code(series: pd.Series, width: int) -> pd.Series:
+    """Format administrative codes as zero-padded strings."""
+    return (
+        pd.to_numeric(series, errors="coerce")
+        .astype("Int64")
+        .astype("string")
+        .str.zfill(width)
+    )
+
+
 def load_analysis() -> pd.DataFrame:
     """Load the canonical analysis input and add table-local indicators."""
     df = pd.read_parquet(ANALYSIS_INPUT).copy()
-    require_columns(df, ["wave"])
+    require_columns(df, ["wave", "province_code", "kabupaten_code", "kecamatan_code"])
+    province = zfilled_code(df["province_code"], 2)
+    kabupaten = zfilled_code(df["kabupaten_code"], 2)
+    kecamatan = zfilled_code(df["kecamatan_code"], 3)
+    df[KECAMATAN_FE] = province + kabupaten + kecamatan
+    df[KABUPATEN_CLUSTER] = province + kabupaten
     df["ifls5"] = (df["wave"] == "IFLS5").astype(int)
     return df
 
@@ -76,7 +93,7 @@ def model_frame(
     df: pd.DataFrame,
     columns: Iterable[str],
     *,
-    singleton_columns: Iterable[str] = ("kecamatan_code",),
+    singleton_columns: Iterable[str] = (KECAMATAN_FE,),
 ) -> pd.DataFrame:
     """Create a model frame with required values and identifiable FE groups."""
     out = nonmissing(df, columns)
@@ -93,7 +110,7 @@ def base_required(outcome: str, heat: str = "heat_c_dev") -> list[str]:
         outcome,
         heat,
         CLUSTER,
-        "kecamatan_code",
+        KECAMATAN_FE,
         "month",
         "year",
         "wave",
@@ -106,7 +123,7 @@ def fit_model(
     formula: str,
     required_columns: Iterable[str],
     *,
-    singleton_columns: Iterable[str] = ("kecamatan_code",),
+    singleton_columns: Iterable[str] = (KECAMATAN_FE,),
 ):
     """Fit a fixed-effect OLS model after table-standard sample filtering."""
     data = model_frame(

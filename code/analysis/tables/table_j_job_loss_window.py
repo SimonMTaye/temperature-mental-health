@@ -19,7 +19,7 @@ WINDOWS = [
 
 def fit_window(df, variable: str) -> dict[str, object]:
     formula = f"cesd_z ~ heat_c_dev * {variable} + {CONTROLS} | {FE_POOLED}"
-    required = ["cesd_z", "heat_c_dev", variable, "month", "year", "wave", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"]
+    required = ["cesd_z", "heat_c_dev", variable, "month", "year", "wave", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"]
     model = fit_model(df, formula, required)
     stats = term_stats(model, f"heat_c_dev:{variable}")
     frame = df.dropna(subset=required)

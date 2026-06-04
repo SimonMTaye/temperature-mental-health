@@ -71,7 +71,7 @@ def main() -> None:
                     sub5,
                     f"cesd_z ~ {heat} * post_subsidy * urban_vehicle_hh_ifls4 + {CONTROLS} | {FE_IFLS5}",
                     f"{heat}:post_subsidy:urban_vehicle_hh_ifls4",
-                    ["cesd_z", heat, "post_subsidy", "urban_vehicle_hh_ifls4", "month", "year", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"],
+                    ["cesd_z", heat, "post_subsidy", "urban_vehicle_hh_ifls4", "month", "year", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"],
                 ),
             ]
         )

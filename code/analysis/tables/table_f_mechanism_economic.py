@@ -9,7 +9,7 @@ TABLE = "table_f_mechanism_economic"
 
 def fit_terms(data, outcome: str, rhs: str, terms: dict[str, str], fe: str, required: list[str]) -> dict[str, object]:
     formula = f"{outcome} ~ {rhs} + {CONTROLS} | {fe}"
-    model = fit_model(data, formula, [outcome, *required, "month", "year", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"])
+    model = fit_model(data, formula, [outcome, *required, "month", "year", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"])
     return {"dv": outcome, **multi_stats(model, terms)}
 
 

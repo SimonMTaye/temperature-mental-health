@@ -23,7 +23,7 @@ def main() -> None:
                 run_spec(df, heat, "Job loss", df, f"cesd_z ~ {heat} * job_loss_1_yr + {CONTROLS} | {FE_POOLED}", f"{heat}:job_loss_1_yr", [*base_required("cesd_z", heat), "job_loss_1_yr"]),
                 run_spec(df, heat, "Palm shock", df, f"cesd_z ~ {heat} * ifls5 * palm_farmer_hh_ifls4 + {CONTROLS} | {FE_POOLED}", f"{heat}:ifls5:palm_farmer_hh_ifls4", [*base_required("cesd_z", heat), "ifls5", "palm_farmer_hh_ifls4"]),
                 run_spec(df, heat, "Coal shock", df, f"cesd_z ~ {heat} * ifls5 * coal_worker_hh_ifls4 + {CONTROLS} | {FE_POOLED}", f"{heat}:ifls5:coal_worker_hh_ifls4", [*base_required("cesd_z", heat), "ifls5", "coal_worker_hh_ifls4"]),
-                run_spec(df, heat, "Fuel cut", sub5, f"cesd_z ~ {heat} * post_subsidy * urban_vehicle_hh_ifls4 + {CONTROLS} | {FE_IFLS5}", f"{heat}:post_subsidy:urban_vehicle_hh_ifls4", ["cesd_z", heat, "post_subsidy", "urban_vehicle_hh_ifls4", "month", "year", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"]),
+                run_spec(df, heat, "Fuel cut", sub5, f"cesd_z ~ {heat} * post_subsidy * urban_vehicle_hh_ifls4 + {CONTROLS} | {FE_IFLS5}", f"{heat}:post_subsidy:urban_vehicle_hh_ifls4", ["cesd_z", heat, "post_subsidy", "urban_vehicle_hh_ifls4", "month", "year", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"]),
             ]
         )
 

@@ -26,7 +26,7 @@ def main() -> None:
                 {"dv": dv, "column": "Job loss", **fit_row(df, f"{dv} ~ heat_c_dev * job_loss_1_yr + {CONTROLS} | {FE_POOLED}", "heat_c_dev:job_loss_1_yr", [*base_required(dv), "job_loss_1_yr"])},
                 {"dv": dv, "column": "Palm shock", **fit_row(df, f"{dv} ~ heat_c_dev * ifls5 * palm_farmer_hh_ifls4 + {CONTROLS} | {FE_POOLED}", "heat_c_dev:ifls5:palm_farmer_hh_ifls4", [*base_required(dv), "ifls5", "palm_farmer_hh_ifls4"])},
                 {"dv": dv, "column": "Coal shock", **fit_row(df, f"{dv} ~ heat_c_dev * ifls5 * coal_worker_hh_ifls4 + {CONTROLS} | {FE_POOLED}", "heat_c_dev:ifls5:coal_worker_hh_ifls4", [*base_required(dv), "ifls5", "coal_worker_hh_ifls4"])},
-                {"dv": dv, "column": "Fuel cut", **fit_row(sub5, f"{dv} ~ heat_c_dev * post_subsidy * urban_vehicle_hh_ifls4 + {CONTROLS} | {FE_IFLS5}", "heat_c_dev:post_subsidy:urban_vehicle_hh_ifls4", [dv, "heat_c_dev", "post_subsidy", "urban_vehicle_hh_ifls4", "month", "year", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"])},
+                {"dv": dv, "column": "Fuel cut", **fit_row(sub5, f"{dv} ~ heat_c_dev * post_subsidy * urban_vehicle_hh_ifls4 + {CONTROLS} | {FE_IFLS5}", "heat_c_dev:post_subsidy:urban_vehicle_hh_ifls4", [dv, "heat_c_dev", "post_subsidy", "urban_vehicle_hh_ifls4", "month", "year", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"])},
             ]
         )
 

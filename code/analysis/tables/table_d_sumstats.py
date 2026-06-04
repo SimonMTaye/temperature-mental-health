@@ -64,8 +64,8 @@ def main() -> None:
     required = [
         "cesd_z",
         "tmean_c",
-        "kecamatan_code",
-        "kabupaten_code",
+        "kecamatan_fe_code",
+        "kabupaten_cluster_code",
         "month",
         "year",
         "wave",
@@ -94,8 +94,8 @@ def main() -> None:
     body.extend(
         [
             r"\midrule",
-            rf"Kabupaten clusters & \multicolumn{{3}}{{c}}{{{panel_df['kabupaten_code'].nunique():,}}} \\",
-            rf"Kecamatan fixed-effect units & \multicolumn{{3}}{{c}}{{{panel_df['kecamatan_code'].nunique():,}}} \\",
+            rf"Kabupaten clusters & \multicolumn{{3}}{{c}}{{{panel_df['kabupaten_cluster_code'].nunique():,}}} \\",
+            rf"Kecamatan fixed-effect units & \multicolumn{{3}}{{c}}{{{panel_df['kecamatan_fe_code'].nunique():,}}} \\",
             r"\bottomrule",
             r"\end{tabular}",
         ]

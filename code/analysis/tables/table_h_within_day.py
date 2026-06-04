@@ -8,7 +8,7 @@ TABLE = "table_h_within_day"
 
 
 def fit_term(data, formula: str, term: str, required: list[str]) -> dict[str, object]:
-    model = fit_model(data, formula, required, singleton_columns=("kecamatan_code", "day_id"))
+    model = fit_model(data, formula, required, singleton_columns=("kecamatan_fe_code", "day_id"))
     return term_stats(model, term)
 
 
@@ -17,7 +17,7 @@ def main() -> None:
     if df["heat_hr_dev"].notna().sum() == 0 or df["tmean_c_hour"].notna().sum() == 0:
         raise ValueError("table_h cannot run: canonical hourly columns tmean_c_hour and heat_hr_dev are entirely missing")
     sub5 = df[df["wave"] == "IFLS5"].copy()
-    required = ["cesd_z", "heat_hr_dev", "day_id", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"]
+    required = ["cesd_z", "heat_hr_dev", "day_id", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"]
     specs = [
         ("Heat", df, f"cesd_z ~ heat_hr_dev + {CONTROLS} | {FE_WITHIN_DAY}", "heat_hr_dev", required),
         ("Job loss", df, f"cesd_z ~ heat_hr_dev * job_loss_1_yr + {CONTROLS} | {FE_WITHIN_DAY}", "heat_hr_dev:job_loss_1_yr", [*required, "job_loss_1_yr"]),

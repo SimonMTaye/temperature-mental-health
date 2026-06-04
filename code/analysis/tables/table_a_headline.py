@@ -74,7 +74,7 @@ def main() -> None:
                 "urban_vehicle_hh_ifls4",
                 "month",
                 "year",
-                "kecamatan_code",
+                "kecamatan_fe_code",
                 *BASELINE_GROUPS,
                 *base_required("cesd_z")[6:],
             ],

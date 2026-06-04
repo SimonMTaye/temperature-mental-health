@@ -9,7 +9,7 @@ TABLE = "table_g_mechanism_sleep"
 
 def fit_sleep(data, formula_rhs: str, terms: dict[str, str], required: list[str]) -> dict[str, object]:
     formula = f"sleep_dur_h ~ {formula_rhs} + {CONTROLS} | {FE_IFLS5}"
-    model = fit_model(data, formula, ["sleep_dur_h", "heat_c_dev", *required, "month", "year", "kecamatan_code", "age", "female", "edu_yrs", "married", "widowed"])
+    model = fit_model(data, formula, ["sleep_dur_h", "heat_c_dev", *required, "month", "year", "kecamatan_fe_code", "age", "female", "edu_yrs", "married", "widowed"])
     return multi_stats(model, terms)
 
 
