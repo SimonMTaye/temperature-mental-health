@@ -36,9 +36,22 @@ PALM_PROVS = {
 OUTPUT_COLUMNS = [
     "pidlink",
     "wave",
-    "recent_job_loss_5y",
+    "unemployed_since_then",
+    "lost_job_5y",
+    "job_loss_5y",
     "involuntary_loss_5y",
     "days_since_last_loss",
+    "lost_job_90d",
+    "lost_job_180d",
+    "lost_job_270d",
+    "lost_job_1_yr",
+    "lost_job_365d",
+    "lost_job_540d",
+    "lost_job_730d",
+    "lost_job_1095d",
+    "lost_job_1825d",
+    "lost_job_6_months",
+    "lost_job_3_months",
     "job_loss_90d",
     "job_loss_180d",
     "job_loss_270d",
@@ -67,8 +80,21 @@ OUTPUT_COLUMNS = [
 ]
 
 BINARY_COLUMNS = [
-    "recent_job_loss_5y",
+    "unemployed_since_then",
+    "lost_job_5y",
+    "job_loss_5y",
     "involuntary_loss_5y",
+    "lost_job_90d",
+    "lost_job_180d",
+    "lost_job_270d",
+    "lost_job_1_yr",
+    "lost_job_365d",
+    "lost_job_540d",
+    "lost_job_730d",
+    "lost_job_1095d",
+    "lost_job_1825d",
+    "lost_job_6_months",
+    "lost_job_3_months",
     "job_loss_90d",
     "job_loss_180d",
     "job_loss_270d",
@@ -101,11 +127,26 @@ HHID_COLUMNS = {
     "IFLS5": "hhid14",
 }
 
+LOSS_SUFFIXES = [
+    "5y",
+    "90d",
+    "180d",
+    "270d",
+    "1_yr",
+    "365d",
+    "540d",
+    "730d",
+    "1095d",
+    "1825d",
+    "6_months",
+    "3_months",
+]
+
 
 def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     """Build individual job-loss recall fields from one IFLS work-history file."""
     out = pd.DataFrame({"pidlink": df.pidlink})
-    out["recent_job_loss_5y"] = clean_count(df.tk46c, max_real=50).fillna(0) >= 1
+    out["lost_job_5y"] = clean_count(df.tk46c, max_real=50).fillna(0) >= 1
     # 1, 2 -> Fired, 3 -> Wage too Low, 4 -> Bad Working Env, 5 -> Refused relocation
     # 6 -> Prolonged sickness, 7, 8, 9 -> Family related (marriange, child, other) 95 -> Other
     out["job_loss_reason_code"] = pd.to_numeric(df.tk46m, errors="coerce")
@@ -117,12 +158,28 @@ def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     return out.drop_duplicates("pidlink")
 
 
+def _unemployment_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
+    """Flag respondents who did no paid work in the past week."""
+    out = pd.DataFrame({"pidlink": df.pidlink})
+    out["unemployed_since_then"] = df.tk01a.isin([2, 3])
+    out["wave"] = wave
+    return out.drop_duplicates("pidlink")
+
+
 def _job_loss(wave: str) -> pd.DataFrame:
     df = read_stata_df(
         IFLS_FOLDERS[wave] / "b3a_tk4.dta",
         convert_categoricals=False,
     )
     return _job_loss_from_df(df, wave=wave)
+
+
+def _unemployment(wave: str) -> pd.DataFrame:
+    df = read_stata_df(
+        IFLS_FOLDERS[wave] / "b3a_tk1.dta",
+        convert_categoricals=False,
+    )
+    return _unemployment_from_df(df, wave=wave)
 
 
 def _vehicle_owner_from_df(
@@ -252,16 +309,22 @@ def _add_loss_timing(out: pd.DataFrame) -> pd.DataFrame:
     out["last_loss_date"] = pd.to_datetime(out.last_loss_date)
     out["days_since_last_loss"] = (out.interview_date - out.last_loss_date).dt.days
     for days in [90, 180, 270, 365, 540, 730, 1095, 1825]:
-        out[f"job_loss_{days}d"] = (
+        out[f"lost_job_{days}d"] = (
             (out.days_since_last_loss >= 0) & (out.days_since_last_loss <= days)
         ).astype(int)
-    out["job_loss_1_yr"] = out["job_loss_365d"]
-    out["job_loss_6_months"] = (
+    out["lost_job_1_yr"] = out["lost_job_365d"]
+    out["lost_job_6_months"] = (
         (out.days_since_last_loss >= 0) & (out.days_since_last_loss <= 183)
     ).astype(int)
-    out["job_loss_3_months"] = (
+    out["lost_job_3_months"] = (
         (out.days_since_last_loss >= 0) & (out.days_since_last_loss <= 92)
     ).astype(int)
+
+    unemployed = out.unemployed_since_then.fillna(0).astype(bool)
+    for suffix in LOSS_SUFFIXES:
+        out[f"job_loss_{suffix}"] = (
+            out[f"lost_job_{suffix}"].eq(1) & unemployed
+        ).astype(int)
     out["involuntary_loss_1_yr"] = (
         out.job_loss_1_yr.eq(1) & out.job_loss_reason_code.isin([1, 2, 3, 4, 5, 6])
     ).astype(int)
@@ -296,7 +359,9 @@ def _finalize_output(out: pd.DataFrame) -> pd.DataFrame:
 
 def _add_urban_vehicle_baseline(out: pd.DataFrame) -> pd.DataFrame:
     out = out.copy()
-    out["urban_vehicle_hh"] = out.urban.fillna(0).astype(int) * out.vehicle_owner.fillna(0).astype(int)
+    out["urban_vehicle_hh"] = (
+        out.urban.fillna(0).astype(int) * out.vehicle_owner.fillna(0).astype(int)
+    )
     baseline = (
         out.query("wave == 'IFLS4'")[["pidlink", "urban_vehicle_hh"]]
         .drop_duplicates("pidlink")
@@ -308,11 +373,13 @@ def _add_urban_vehicle_baseline(out: pd.DataFrame) -> pd.DataFrame:
 def main() -> pd.DataFrame:
     """Build and write the 20-prefixed financial shock sidecar."""
     jl = pd.concat([_job_loss("IFLS4"), _job_loss("IFLS5")], ignore_index=True)
+    unemp = pd.concat([_unemployment("IFLS4"), _unemployment("IFLS5")])
     veh = pd.concat([_vehicle_owner("IFLS4"), _vehicle_owner("IFLS5")])
     urb = pd.concat([_urban("IFLS4"), _urban("IFLS5")])
     cash = pd.concat([_cash_transfer("IFLS4"), _cash_transfer("IFLS5")])
     log(
-        f"job loss rows: {len(jl):,}; vehicle: {len(veh):,}; "
+        f"job loss rows: {len(jl):,}; unemployment: {len(unemp):,}; "
+        f"vehicle: {len(veh):,}; "
         f"urban: {len(urb):,}; cash: {len(cash):,}"
     )
 
@@ -326,6 +393,7 @@ def main() -> pd.DataFrame:
         .loc[:, ["pidlink", "wave", "hhid", "interview_date", "province_code"]]
         .drop_duplicates(["pidlink", "wave"])
         .merge(jl, on=["pidlink", "wave"], how="left", validate="1:1")
+        .merge(unemp, on=["pidlink", "wave"], how="left", validate="1:1")
         .merge(veh, on=["hhid", "wave"], how="left", validate="m:1")
         .merge(urb, on=["hhid", "wave"], how="left", validate="m:1")
         .merge(cash, on=["hhid", "wave"], how="left", validate="m:1")
@@ -343,7 +411,8 @@ def main() -> pd.DataFrame:
         out_final.groupby("wave")
         .agg(
             n=("pidlink", "size"),
-            recent_loss_pct=("recent_job_loss_5y", lambda s: 100 * s.mean()),
+            lost_job_5y_pct=("lost_job_5y", lambda s: 100 * s.mean()),
+            unemployed_pct=("unemployed_since_then", lambda s: 100 * s.mean()),
             job_loss_yr_pct=("job_loss_1_yr", lambda s: 100 * s.mean()),
             vehicle_pct=("vehicle_owner", lambda s: 100 * s.mean()),
             urban_pct=("urban", lambda s: 100 * s.mean()),
