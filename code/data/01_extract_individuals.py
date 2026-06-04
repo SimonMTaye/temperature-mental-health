@@ -44,27 +44,21 @@ IFLS5 = {
     },
 }
 
-WAVE_GEO_CONFIGS: dict[str, dict] = {
-    "IFLS5": IFLS5,
-    "IFLS4": IFLS4,
-}
-
 
 def parse_geo_codes_ifls5() -> pd.DataFrame:
     """
     Extract household geography from a wave's screening file.
     Rename and standardize
-
     """
-    cfg = WAVE_GEO_CONFIGS["IFLS5"]
+    cfg = IFLS5
     screening_dataset = read_stata_df(
-        cfg["file"],
+        cfg["file"],  # ty:ignore[invalid-argument-type]
         convert_categoricals=False,
     )
     # Reverse the dict so mapping works
-    rename_dict = {v: k for k, v in cfg["geo_columns"].items()}
+    rename_dict = {v: k for k, v in cfg["geo_columns"].items()}  # ty:ignore[unresolved-attribute]
     screening_dataset = screening_dataset.rename(columns=rename_dict)
-    screening_dataset = screening_dataset[cfg["geo_columns"].keys()].copy()
+    screening_dataset = screening_dataset[cfg["geo_columns"].keys()].copy()  # ty:ignore[unresolved-attribute]
 
     # We want one per household, not per interviewee
     screening_dataset["province_code"] = screening_dataset.province_code.astype(int)
@@ -126,16 +120,16 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
     Does additional work to convert IFLS4 2007 BPS codes to 2014 BPS codes compatible with GADM boundaries
 
     """
-    cfg = WAVE_GEO_CONFIGS["IFLS4"]
+    cfg = IFLS4
     screening_dataset = read_stata_df(
-        cfg["file"],
+        cfg["file"],  # ty:ignore[invalid-argument-type]
         convert_categoricals=False,
     )
     # Reverse the dict so mapping works
-    rename_dict = {v: k for k, v in cfg["geo_columns"].items()}
+    rename_dict = {v: k for k, v in cfg["geo_columns"].items()}  # ty:ignore[unresolved-attribute]
     screening_dataset = screening_dataset.rename(columns=rename_dict)
     # Rename 2000 codes as well since mapping dict doesn't have all the 2007 codes
-    rename_dict_00 = {v: k for k, v in cfg["geo_columns_00"].items()}
+    rename_dict_00 = {v: k for k, v in cfg["geo_columns_00"].items()}  # ty:ignore[unresolved-attribute]
     screening_dataset = screening_dataset.rename(columns=rename_dict_00)
     screening_dataset = screening_dataset[
         list(rename_dict.values()) + list(rename_dict_00.values())

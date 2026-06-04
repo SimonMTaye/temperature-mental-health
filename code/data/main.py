@@ -22,19 +22,6 @@ from log import DEFAULT_LOG_FILE, configure_logging, log
 
 # Each entry: archive path (relative to RAW_IFLS) -> extraction dir (relative to RAW_IFLS_EXTRACTED).
 ARCHIVES: dict[str, str] = {
-    # Wave 1 (1993)
-    # "IFLS1/cf93dta.zip": "IFLS1/cf93",
-    # "IFLS1/hh93dta.zip": "IFLS1/hh93",
-    # "IFLS1/DRU1195.zip": "IFLS1/doc",
-    # # Wave 2 (1997)
-    # "IFLS2/cf97dta.zip": "IFLS2/cf97",
-    # "IFLS2/hh97dta.zip": "IFLS2/hh97",
-    # "IFLS2/vol1_7.zip": "IFLS2/doc",
-    # # Wave 3 (2000)
-    # "IFLS3/cf00_all_dta.zip": "IFLS3/cf00",
-    # "IFLS3/cf00_all_doc.zip": "IFLS3/cf00_doc",
-    # "IFLS3/hh00_all_dta.zip": "IFLS3/hh00",
-    # "IFLS3/hh00_all_doc.zip": "IFLS3/hh00_doc",
     # Wave 4 (2007)
     "IFLS4/cf07_all_dta.zip": "IFLS4/cf07",
     "IFLS4/cf07_all_doc.zip": "IFLS4/cf07_doc",
