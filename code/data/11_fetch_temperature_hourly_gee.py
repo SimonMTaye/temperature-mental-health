@@ -67,6 +67,7 @@ from log import log
 # be raised without first splitting geographies into separate calls.
 BATCH_HOURS = 2
 MAX_WORKERS = 4  # Conservative: 4 concurrent getInfo() calls, well under GEE's ~3 req/s limit
+KEY_COLUMNS = ["gadm_fullcode", "datetime_utc"]
 
 BANDS = [
     "temperature_2m",
@@ -190,6 +191,7 @@ def pull_window_with_retry(
                 "WARNING",
             )
             time.sleep(wait)
+    raise RuntimeError(f"failed to pull {start} after {max_retries} attempts")
 
 
 def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timestamp]]:
@@ -211,14 +213,199 @@ def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timest
     ]
 
 
+def normalize_cached_window(cached: pd.DataFrame) -> pd.DataFrame:
+    """Normalize cache keys and keep fetch_time as tmp-only provenance."""
+    cached = cached.copy()
+    cached["gadm_fullcode"] = cached["gadm_fullcode"].astype(str)
+    cached["datetime_utc"] = pd.to_datetime(cached.datetime_utc, utc=True)
+    if "fetch_time" not in cached.columns:
+        cached["fetch_time"] = pd.NaT
+    else:
+        cached["fetch_time"] = pd.to_datetime(cached.fetch_time, utc=True)
+    return cached.drop_duplicates(KEY_COLUMNS, keep="first").reset_index(drop=True)
+
+
 def read_cached_window(path) -> pd.DataFrame | None:
+    """Read a wave tmp cache, ignoring legacy caches keyed by kabupaten_code."""
     if not path.exists():
         return None
     cached = pd.read_parquet(path)
     if "gadm_fullcode" not in cached.columns:
         log(f"ignoring old kabupaten_code cache at {path}", "WARNING")
         return None
-    return cached
+    return normalize_cached_window(cached)
+
+
+def hourly_window_bounds(
+    start: pd.Timestamp, end: pd.Timestamp
+) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Return inclusive wave start hour and exclusive wave end hour."""
+    start_t = pd.Timestamp(start.date())
+    end_excl_total = pd.Timestamp(end.date()) + pd.Timedelta(days=1)
+    if not isinstance(start_t, pd.Timestamp):
+        raise ValueError(f"invalid start timestamp {start}")
+    if not isinstance(end_excl_total, pd.Timestamp):
+        raise ValueError(f"invalid end timestamp {end_excl_total}")
+    return start_t, end_excl_total
+
+
+def build_required_keys(
+    geographies: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp
+) -> pd.MultiIndex:
+    """Build the full gadm_fullcode-hour key set required for one wave."""
+    start_t, end_excl_total = hourly_window_bounds(start, end)
+    hours = pd.date_range(start_t, end_excl_total, freq="h", inclusive="left")
+    hours = pd.DatetimeIndex(pd.to_datetime(hours, utc=True))
+    return pd.MultiIndex.from_product(
+        [geographies.gadm_fullcode.astype(str).unique(), hours],
+        names=KEY_COLUMNS,
+    )
+
+def missing_required_keys(
+    required_keys: pd.MultiIndex, cached: pd.DataFrame | None
+) -> pd.DataFrame:
+    """Return required keys that are absent from the existing tmp cache."""
+    if cached is None:
+        return required_keys.to_frame(index=False)
+    cached_keys = cached[KEY_COLUMNS].copy()
+    cached_keys["gadm_fullcode"] = cached_keys["gadm_fullcode"].astype(str)
+    cached_keys["datetime_utc"] = pd.to_datetime(cached_keys.datetime_utc, utc=True)
+    missing = required_keys.difference(pd.MultiIndex.from_frame(cached_keys))
+    return missing.to_frame(index=False)
+
+
+def keep_missing_rows_only(df: pd.DataFrame, missing_keys: pd.DataFrame) -> pd.DataFrame:
+    """Keep only rows returned by GEE that correspond to requested missing keys."""
+    if df.empty:
+        return df
+    out = df.copy()
+    out["gadm_fullcode"] = out["gadm_fullcode"].astype(str)
+    out["datetime_utc"] = pd.to_datetime(out.datetime_utc, utc=True)
+    missing_index = pd.MultiIndex.from_frame(missing_keys[KEY_COLUMNS])
+    out_index = pd.MultiIndex.from_frame(out[KEY_COLUMNS])
+    return out.loc[out_index.isin(missing_index)].reset_index(drop=True)
+
+
+def fetch_missing_rows(
+    tag: str,
+    missing_keys: pd.DataFrame,
+    geographies: pd.DataFrame,
+    fetch_time: pd.Timestamp,
+) -> pd.DataFrame:
+    """Fetch missing hourly rows using only the geographies missing for each hour."""
+    if missing_keys.empty:
+        return pd.DataFrame()
+
+    missing_keys = missing_keys.copy()
+    missing_keys["datetime_utc"] = pd.to_datetime(missing_keys.datetime_utc, utc=True)
+    geo_lookup = geographies.set_index("gadm_fullcode", drop=False)
+    tasks = []
+    for dt, dt_keys in missing_keys.groupby("datetime_utc", sort=True):
+        dt_geographies = geo_lookup.loc[
+            dt_keys.gadm_fullcode.astype(str).unique()
+        ].reset_index(drop=True)
+        fc = build_feature_collection(dt_geographies)
+        start_candidate = pd.Timestamp(str(dt))
+        if not isinstance(start_candidate, pd.Timestamp):
+            raise ValueError(f"{tag}: invalid missing datetime {dt}")
+        start = start_candidate
+        tasks.append((start, start + timedelta(hours=1), dt_keys, fc))
+
+    frames = []
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_keys = {
+            executor.submit(pull_window_with_retry, start, end_excl, fc): dt_keys
+            for start, end_excl, dt_keys, fc in tasks
+        }
+        pbar = tqdm(
+            as_completed(future_to_keys),
+            total=len(future_to_keys),
+            desc=f"{tag} ERA5 hourly missing",
+            unit="hour",
+        )
+        for i, fut in enumerate(pbar, 1):
+            dt_keys = future_to_keys[fut]
+            df = keep_missing_rows_only(fut.result(), dt_keys)
+            if not df.empty:
+                df["fetch_time"] = fetch_time
+                frames.append(df)
+            el = time.time() - t0
+            eta = el / i * (len(future_to_keys) - i)
+            pbar.set_postfix(
+                elapsed_min=f"{el / 60:.1f}",
+                eta_min=f"{eta / 60:.1f}",
+                rows=f"{sum(len(frame) for frame in frames):,}",
+            )
+    return pd.concat(frames, ignore_index=True)
+
+
+def pull_wave_from_scratch(
+    tag: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    geographies: pd.DataFrame,
+    fetch_time: pd.Timestamp,
+) -> pd.DataFrame:
+    """Run the original full-wave pull when no usable tmp cache exists."""
+    fc = build_feature_collection(geographies)
+    start_t, end_excl_total = hourly_window_bounds(start, end)
+    starts = pd.date_range(
+        start_t, end_excl_total, freq=f"{BATCH_HOURS}h", inclusive="left"
+    )
+    n_batches = len(starts)
+    log(
+        f"  {tag}: pulling {n_batches} batches of {BATCH_HOURS}h "
+        f"({BATCH_HOURS * len(geographies)} features per call)"
+    )
+
+    batch_windows: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    for s in starts:
+        batch_start = pd.Timestamp(s)
+        candidate_end = batch_start + timedelta(hours=BATCH_HOURS)
+        e_excl = candidate_end if candidate_end <= end_excl_total else end_excl_total
+        if not isinstance(batch_start, pd.Timestamp):
+            raise ValueError(f"{tag}: invalid batch timestamp {s}")
+        if not isinstance(e_excl, pd.Timestamp):
+            raise ValueError(f"{tag}: invalid batch end {e_excl}")
+        batch_windows.append((batch_start, e_excl))
+
+    wave_frames = []
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_window = {
+            executor.submit(pull_window_with_retry, bs, be, fc): (bs, be)
+            for bs, be in batch_windows
+        }
+        pbar = tqdm(
+            as_completed(future_to_window),
+            total=len(future_to_window),
+            desc=f"{tag} ERA5 hourly",
+            unit="batch",
+        )
+        for i, fut in enumerate(pbar, 1):
+            batch_start, _ = future_to_window[fut]
+            try:
+                df = fut.result()
+                wave_frames.append(df)
+            except Exception as exc:
+                log(
+                    f"    {batch_start} FAILED after all retries: {exc}",
+                    "ERROR",
+                )
+                raise
+
+            el = time.time() - t0
+            eta = el / i * (len(future_to_window) - i)
+            n_rows = sum(len(f) for f in wave_frames)
+            pbar.set_postfix(
+                elapsed_min=f"{el / 60:.1f}",
+                eta_min=f"{eta / 60:.1f}",
+                rows=f"{n_rows:,}",
+            )
+    wave_df = pd.concat(wave_frames, ignore_index=True)
+    wave_df["fetch_time"] = fetch_time
+    return wave_df
 
 
 def write_output(df: pd.DataFrame) -> None:
@@ -246,82 +433,33 @@ def main() -> None:
             f"({n_days:,} days, {n_hours:,} hours, ~{n_batches:,} batches)"
         )
 
-    fc = build_feature_collection(geographies)
-
     all_frames = []
     for tag, start, end in windows:
         out_path = TMP / f"{tag}_hourly_temp.parquet"
+        fetch_time = pd.Timestamp.now(tz="UTC")
+        required_keys = build_required_keys(geographies, start, end)
         cached = read_cached_window(out_path)
-        if cached is not None:
-            log(f"  {tag}: cached at {out_path}  -> skipping pull")
-            all_frames.append(cached)
-            continue
-
-        # Snap start to top-of-hour
-        start_t = pd.Timestamp(start.date()) + pd.Timedelta(hours=0)
-        end_excl_total = pd.Timestamp(end.date()) + pd.Timedelta(days=1)
-        if not isinstance(end_excl_total, pd.Timestamp):
-            raise ValueError(f"{tag}: invalid end timestamp {end_excl_total}")
-        starts = pd.date_range(
-            start_t, end_excl_total, freq=f"{BATCH_HOURS}h", inclusive="left"
-        )
-        n_batches = len(starts)
+        cached = None if cached is not None and cached.empty else cached
+        missing_keys = missing_required_keys(required_keys, cached)
         log(
-            f"  {tag}: pulling {n_batches} batches of {BATCH_HOURS}h "
-            f"({BATCH_HOURS * len(geographies)} features per call)"
+            f"  {tag}: cache has {0 if cached is None else len(cached):,} rows; "
+            f"{len(missing_keys):,} of {len(required_keys):,} keys need fetching"
         )
-
-        # --- Build batch windows ------------------------------------------------
-        batch_windows: list[tuple[pd.Timestamp, pd.Timestamp]] = []
-        for s in starts:
-            batch_start = pd.Timestamp(s)
-            candidate_end = batch_start + timedelta(hours=BATCH_HOURS)
-            e_excl = (
-                candidate_end if candidate_end <= end_excl_total else end_excl_total
+        if cached is None:
+            wave_df = pull_wave_from_scratch(
+                tag, start, end, geographies, fetch_time
             )
-            batch_windows.append((batch_start, e_excl))
-
-        # --- Fetch in parallel (getInfo is I/O-bound) --------------------------
-        wave_frames = []
-        t0 = time.time()
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            future_to_window = {
-                executor.submit(pull_window_with_retry, bs, be, fc): (bs, be)
-                for bs, be in batch_windows
-            }
-            pbar = tqdm(
-                as_completed(future_to_window),
-                total=len(future_to_window),
-                desc=f"{tag} ERA5 hourly",
-                unit="batch",
+        else:
+            fetched = fetch_missing_rows(tag, missing_keys, geographies, fetch_time)
+            wave_df = normalize_cached_window(
+                pd.concat([cached, fetched], ignore_index=True)
             )
-            for i, fut in enumerate(pbar, 1):
-                batch_start, e_excl = future_to_window[fut]
-                try:
-                    df = fut.result()
-                    wave_frames.append(df)
-                except Exception as exc:
-                    log(
-                        f"    {batch_start} FAILED after all retries: {exc}",
-                        "ERROR",
-                    )
-                    raise
-
-                el = time.time() - t0
-                eta = el / i * (len(future_to_window) - i)
-                n_rows = sum(len(f) for f in wave_frames)
-                pbar.set_postfix(
-                    elapsed_min=f"{el / 60:.1f}",
-                    eta_min=f"{eta / 60:.1f}",
-                    rows=f"{n_rows:,}",
-                )
-
-        wave_df = pd.concat(wave_frames, ignore_index=True)
         wave_df.to_parquet(out_path, index=False)
         log(f"  {tag}: wrote {len(wave_df):,} rows to {out_path}")
         all_frames.append(wave_df)
 
     combined = pd.concat(all_frames, ignore_index=True)
+    combined = combined.drop(columns=["fetch_time"], errors="ignore")
     combined["datetime_utc"] = pd.to_datetime(combined.datetime_utc, utc=True)
     combined = combined.sort_values(["gadm_fullcode", "datetime_utc"]).reset_index(
         drop=True
