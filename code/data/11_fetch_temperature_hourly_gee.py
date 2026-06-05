@@ -306,6 +306,16 @@ def keep_missing_rows_only(
     return out.loc[out_index.isin(missing_index)].reset_index(drop=True)
 
 
+def pull_missing_window(
+    start: pd.Timestamp,
+    end_excl: pd.Timestamp,
+    dt_geographies: pd.DataFrame,
+    feature_collection_builder,
+) -> pd.DataFrame:
+    fc = feature_collection_builder(dt_geographies)
+    return pull_window_with_retry(start, end_excl, fc)
+
+
 def fetch_missing_rows(
     tag: str,
     missing_keys: pd.DataFrame,
@@ -321,24 +331,41 @@ def fetch_missing_rows(
     missing_keys = missing_keys.copy()
     missing_keys["datetime_utc"] = pd.to_datetime(missing_keys.datetime_utc, utc=True)
     geo_lookup = geographies.set_index("gadm_fullcode", drop=False)
+    grouped_missing_keys = list(missing_keys.groupby("datetime_utc", sort=True))
+    log(
+        f"  {tag}: {description or 'ERA5 hourly missing'} has "
+        f"{len(grouped_missing_keys):,} hourly EE calls for "
+        f"{len(missing_keys):,} keys"
+    )
+
     tasks = []
-    for dt, dt_keys in missing_keys.groupby("datetime_utc", sort=True):
+    for dt, dt_keys in tqdm(
+        grouped_missing_keys,
+        desc=f"{description or f'{tag} ERA5 hourly missing'} prepare",
+        unit="hour",
+        leave=False,
+    ):
         dt_geographies = geo_lookup.loc[dt_keys.gadm_fullcode.unique()].reset_index(
             drop=True
         )
-        fc = feature_collection_builder(dt_geographies)
         start_candidate = pd.Timestamp(str(dt))
         if not isinstance(start_candidate, pd.Timestamp):
             raise ValueError(f"{tag}: invalid missing datetime {dt}")
         start = start_candidate
-        tasks.append((start, start + timedelta(hours=1), dt_keys, fc))
+        tasks.append((start, start + timedelta(hours=1), dt_keys, dt_geographies))
 
     frames = []
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_keys = {
-            executor.submit(pull_window_with_retry, start, end_excl, fc): dt_keys
-            for start, end_excl, dt_keys, fc in tasks
+            executor.submit(
+                pull_missing_window,
+                start,
+                end_excl,
+                dt_geographies,
+                feature_collection_builder,
+            ): dt_keys
+            for start, end_excl, dt_keys, dt_geographies in tasks
         }
         pbar = tqdm(
             as_completed(future_to_keys),
