@@ -270,7 +270,7 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
         .copy()
     )
     assert good_match_mapping.vote_kecid14.is_unique, (
-        "gadm_fullcode_07 should be unique in good match mapping"
+        "vote_kecid14 should be unique in good match mapping"
     )
     assert good_match_mapping.vote_kecid14.isna().sum() == 0, (
         "gadm_fullcode should not have nulls in good match mapping"
@@ -302,7 +302,6 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
     ].copy()
     vote_matches["gadm_fullcode"] = vote_matches.vote_kecid14
     vote_matches["bps_mapping"] = "voting_based"
-    vote_matches["multiple_kec_remap"] = 0
     good_matches = pd.concat([good_matches, vote_matches], ignore_index=True)
 
     bad_matches = bad_matches[bad_matches.good_match_mapping == "no_good_match"].copy()
@@ -350,9 +349,6 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
     )
     bad_matches["bps_mapping"] = "select_first"
     # Multiple map indicates that a single 2007 district was mapping to many 2014 ones; detect by checking for comma
-    bad_matches["multiple_kec_remap"] = bad_matches.gadm_fullcode.apply(
-        lambda x: 1 if isinstance(x, str) and "," in x else 0
-    )
 
     screening_dataset = pd.concat([good_matches, bad_matches], ignore_index=True)
     screening_dataset["kecamatan_code_map"] = screening_dataset.bps_mapping
