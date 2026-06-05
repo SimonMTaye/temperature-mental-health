@@ -17,6 +17,20 @@ dependencies = [
     "tqdm>=4.67.3",
 ]
 
+[project.scripts]
+preview = "analysis.preview:main"
+clean = "data.main:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "code"}
+
+[tool.setuptools.packages.find]
+where = ["code"]
+
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
