@@ -17,8 +17,7 @@ output
 data
 !code/data/
 !code/data/_schemas.py
-preview.qmd
-preview.html
+preview*
 code/analysis/exploratory/*
 code/analysis_began
 resources
@@ -27,3 +26,4 @@ code/port
 .codex
 sync_code.sh
 sync_output.sh
+check_newer.sh

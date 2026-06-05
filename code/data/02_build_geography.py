@@ -1,4 +1,4 @@
-"""Build IFLS kabupaten -> GADM polygon lookup.
+"""Build IFLS GADM geography -> polygon lookup.
 
 Why kabupaten and not kecamatan?
   IFLS exposes BPS prov + kab + kec codes, but its kec codes are from a 2007/2010-era
@@ -13,22 +13,21 @@ Why polygon (not centroid)?
 
 Steps
 -----
-1. Cached BPS reference (cahyadsn/wilayah) -> kabupaten_code -> kab_name.
-2. GADM v4.1 Indonesia adm-2 polygons (already downloaded to E:/IFLS/extracted/gadm/).
-3. Match by normalized name (within province ADM1 if needed for disambiguation).
-4. Store polygon geometry as WKT in the parquet so it's directly usable by GEE later.
-5. Fallback: unmatched kabupaten get the province polygon (flagged).
+1. Parse IFLS4 and IFLS5 household geography from the individual extraction step.
+2. Resolve each distinct GADM geography code to ADM3, then ADM2, then ADM1 geometry.
+3. Store polygon geometry as WKT in the parquet so it's directly usable by GEE later.
+4. Fallback: unmatched kecamatan get the kabupaten or province polygon (flagged).
 
 Outputs
 -------
-data/generated/kabupaten_polygons.parquet
-  cols: kabupaten_code, province_code, nama_kab, nama_prov, geometry_wkt,
-        centroid_lat, centroid_lon, area_km2, match_level (kabupaten / province)
+data/generated/02_kabupaten_polygons.parquet
+  cols: gadm_fullcode, province_code, geometry_wkt, match_level
 """
 
 import geopandas as gpd
 import pandas as pd
 import importlib
+from shapely import union_all
 
 from config import GADM_PATH, GENERATED_DATA
 from log import log
@@ -36,17 +35,14 @@ from log import log
 G3 = gpd.read_file(GADM_PATH, layer="ADM_ADM_3").to_crs(4326)
 G2 = gpd.read_file(GADM_PATH, layer="ADM_ADM_2").to_crs(4326)
 G1 = gpd.read_file(GADM_PATH, layer="ADM_ADM_1").to_crs(4326)
-# TODO: Double check the EPSG codes (geographic coordinate math stuff) used below
-G3_eq = G3.to_crs(3857)
 
 
-# Track unmatched records at each level for debugging and fallback logic
-UNMATCHED = []
-UNMATCHED_L2 = []
-UNMATCHED_L1 = []
+G3_BY_CODE = dict(zip(G3.CC_3.astype(str), G3.geometry, strict=False))
+G2_BY_CODE = dict(zip(G2.CC_2.astype(str), G2.geometry, strict=False))
+G1_BY_CODE = dict(zip(G1.CC_1.astype(str), G1.geometry, strict=False))
 
 
-def map_to_geometry(row) -> pd.Series:
+def map_to_geometry(gadm_code: str) -> dict[str, str | None]:
     """
     Return geometry for the given GADM code.
 
@@ -56,36 +52,33 @@ def map_to_geometry(row) -> pd.Series:
     3. ADM1 (province) polygon if no ADM2 match.
 
     """
-    gadm_code = str(row["gadm_fullcode"])
     kec_codes = gadm_code.split(",")
-    polygons = G3[G3.CC_3.isin(kec_codes)]
+    polygons = [G3_BY_CODE[code] for code in kec_codes if code in G3_BY_CODE]
     match_level = "kecamatan"
     if len(polygons) == 0:
-        # raise ValueError(
-        #     f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}"
-        # )
-        log(
-            f"No geometries found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}",
-            "WARNING",
-        )
-        global UNMATCHED, UNMATCHED_L2
-        UNMATCHED.append(gadm_code)
-        polygons = G2[G2.CC_2 == gadm_code[:4]]
+        polygons = [G2_BY_CODE[gadm_code[:4]]] if gadm_code[:4] in G2_BY_CODE else []
         match_level = "kabupaten"
         if len(polygons) == 0:
-            # print(
-            #     f"No kabupaten geometry found for:\n\t GADM code {gadm_code} Wave: {row['wave']} Kabupaten: {row['kabupaten_code']} PID: {row['hhid']}"
-            # )
-            UNMATCHED_L2.append(gadm_code)
+            polygons = (
+                [G1_BY_CODE[gadm_code[:2]]] if gadm_code[:2] in G1_BY_CODE else []
+            )
+            match_level = "province"
             if len(polygons) == 0:
-                polygons = G1[G1.CC_1 == gadm_code[:2]]
-                match_level = "province"
-                if len(polygons) == 0:
-                    # print(f"No province geometry found for:\n\t GADM code {gadm_code}")
-                    UNMATCHED_L1.append(gadm_code)
-                    return pd.Series({"geometry_wkt": None, "match_level": "unmatched"})
-    dissolved = polygons.geometry.union_all().wkt
-    return pd.Series({"geometry_wkt": dissolved, "match_level": match_level})
+                log(f"No geometry found for GADM code {gadm_code}", "WARNING")
+                return {"geometry_wkt": None, "match_level": "unmatched"}
+    geometry = polygons[0] if len(polygons) == 1 else union_all(polygons)
+    return {"geometry_wkt": geometry.wkt, "match_level": match_level}
+
+
+def build_geometry_matches(gadm_codes: pd.Series) -> pd.DataFrame:
+    """Resolve each distinct GADM code once and return a merge-ready lookup."""
+    unique_codes = list(gadm_codes.drop_duplicates())
+
+    def build_record(gadm_code: str) -> dict[str, str | None]:
+        return {"gadm_fullcode": gadm_code, **map_to_geometry(gadm_code)}
+
+    records = [build_record(gadm_code) for gadm_code in unique_codes]
+    return pd.DataFrame.from_records(records)
 
 
 def main() -> None:
@@ -93,15 +86,27 @@ def main() -> None:
     geo_ifls4 = first_module.parse_geo_codes_ifls4()
     geo_ifls5 = first_module.parse_geo_codes_ifls5()
     geo_both = pd.concat([geo_ifls4, geo_ifls5], ignore_index=True)
-    geo_both["gadm_fullcode"] = geo_both["gadm_fullcode"].astype(str)
-    geometry_matches = geo_both.apply(map_to_geometry, axis=1)
-    geo_both = pd.concat([geo_both, geometry_matches], axis=1)
-    log(f"Unmatched records at L3: {len(UNMATCHED)} / {len(geo_both)}")
-    log(f"Unmatched records at L2: {len(UNMATCHED_L2)} / {len(geo_both)}")
-    log(f"Unmatched records at L1: {len(UNMATCHED_L1)} / {len(geo_both)}")
+    geo_both = geo_both.drop_duplicates(subset=["hhid", "wave"], keep="first")
+    geo_keys = geo_both[["gadm_fullcode", "province_code"]].drop_duplicates(
+        "gadm_fullcode"
+    )
+    geometry_matches = build_geometry_matches(geo_keys["gadm_fullcode"])
+    geo_keys = geo_keys.merge(geometry_matches, on="gadm_fullcode", how="left")
+    geo_both = geo_both.merge(
+        geo_keys[["gadm_fullcode", "match_level"]], on="gadm_fullcode", how="left"
+    )
+    log(
+        f"Unmatched records at L3: {(geo_both['match_level'] != 'kecamatan').sum()} / {len(geo_both)}"
+    )
+    log(
+        f"Unmatched records at L2: {geo_both['match_level'].isin(['province', 'unmatched']).sum()} / {len(geo_both)}"
+    )
+    log(
+        f"Unmatched records at L1: {(geo_both['match_level'] == 'unmatched').sum()} / {len(geo_both)}"
+    )
     log("match level counts:", "DEBUG")
     log(geo_both["match_level"].value_counts(dropna=False), "DEBUG")
-    geo_both.to_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet", index=False)
+    geo_keys.to_parquet(GENERATED_DATA / "02_kabupaten_polygons.parquet", index=False)
 
 
 if __name__ == "__main__":

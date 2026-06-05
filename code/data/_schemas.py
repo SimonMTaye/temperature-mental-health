@@ -66,7 +66,12 @@ INDIVIDUALS_SCHEMA = pa.DataFrameSchema(
         # BPS seven-digit kecamatan code, computed from kabupaten_code and within-kabupaten kecamatan.
         "kecamatan_code": pa.Column(int, nullable=False, coerce=True),
         # Combined geo code converted to 2014 BPS codes compatible with GADM boundaries; may have more than 1 code for IFLS4 due boundary changes
-        "gadm_fullcode": pa.Column(str, nullable=False, coerce=True),
+        "gadm_fullcode": pa.Column(
+            str,
+            checks=pa.Check.str_matches(r"^\d+(,\d+)*$"),
+            nullable=False,
+            coerce=True,
+        ),
         # Description of how 2007 BPS codes were mapped to 2014 ones
         "kecamatan_code_map": pa.Column(str, nullable=False, coerce=True),
         # IFLS survey wave for the person record.

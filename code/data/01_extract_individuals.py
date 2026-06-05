@@ -10,6 +10,7 @@ Output: data/generated/01_individuals.parquet
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from decimal import Decimal, InvalidOperation
 
 from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from _stata import read_stata_df
@@ -45,6 +46,24 @@ IFLS5 = {
 }
 
 
+def clean_gadm_code(value: object) -> str:
+    """Return canonical integer-code strings, preserving comma-separated mappings."""
+    if pd.isna(value):
+        raise ValueError("gadm_fullcode cannot be missing")
+
+    def clean_part(part: str) -> str:
+        part = part.strip()
+        try:
+            numeric = Decimal(part)
+        except InvalidOperation:
+            raise ValueError(f"invalid GADM code component: {part}") from None
+        if numeric != numeric.to_integral_value():
+            raise ValueError(f"non-integer GADM code component: {part}")
+        return str(int(numeric))
+
+    return ",".join(clean_part(part) for part in str(value).split(","))
+
+
 def parse_geo_codes_ifls5() -> pd.DataFrame:
     """
     Extract household geography from a wave's screening file.
@@ -70,7 +89,7 @@ def parse_geo_codes_ifls5() -> pd.DataFrame:
         screening_dataset.province_code.astype(str).str.zfill(2)
         + screening_dataset.kabupaten_code.astype(str).str.zfill(2)
         + screening_dataset.kecamatan_code.astype(str).str.zfill(3)
-    ).astype(int)
+    ).map(clean_gadm_code)
     screening_dataset["wave"] = "IFLS5"
     # Below is an indicator column to flag remapping complication when converting IFLS4 Admin codes to 5
     # Not relevant for IFLS5 so set to 0
@@ -365,6 +384,9 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
         ]
     ].copy()
     screening_dataset["wave"] = "IFLS4"
+    screening_dataset["gadm_fullcode"] = screening_dataset.gadm_fullcode.map(
+        clean_gadm_code
+    )
     return screening_dataset
 
 

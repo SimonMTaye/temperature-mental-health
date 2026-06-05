@@ -54,7 +54,6 @@ def load_geographies() -> pd.DataFrame:
     if missing:
         raise ValueError(f"02_kabupaten_polygons.parquet missing columns: {missing}")
     geographies = geographies.dropna(subset=["geometry_wkt"]).copy()
-    geographies["gadm_fullcode"] = geographies["gadm_fullcode"].astype(str)
     return geographies[required].drop_duplicates("gadm_fullcode").reset_index(drop=True)
 
 
@@ -63,13 +62,7 @@ def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     rows = geographies[
         ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
     ].itertuples(index=False, name=None)
-    for gadm_fullcode, geometry_wkt, province_code, match_level in tqdm(
-        rows,
-        total=len(geographies),
-        desc="ERA5 daily polygons",
-        unit="polygon",
-        leave=False,
-    ):
+    for gadm_fullcode, geometry_wkt, province_code, match_level in rows:
         g = shapely.wkt.loads(geometry_wkt)
         feats.append(
             ee.Feature(
@@ -240,7 +233,6 @@ def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timest
 def normalize_cached_window(cached: pd.DataFrame) -> pd.DataFrame:
     """Normalize cache keys and keep fetch_time as tmp-only provenance."""
     cached = cached.copy()
-    cached["gadm_fullcode"] = cached["gadm_fullcode"].astype(str)
     cached["date"] = pd.to_datetime(cached.date).dt.normalize()
     if "fetch_time" not in cached.columns:
         cached["fetch_time"] = pd.NaT
@@ -266,9 +258,10 @@ def build_required_keys(
     """Build the full gadm_fullcode-date key set required for one wave."""
     dates = pd.DatetimeIndex(pd.date_range(start, end, freq="D"))
     return pd.MultiIndex.from_product(
-        [geographies.gadm_fullcode.astype(str).unique(), dates],
+        [geographies.gadm_fullcode.unique(), dates],
         names=KEY_COLUMNS,
     )
+
 
 def missing_required_keys(
     required_keys: pd.MultiIndex, cached: pd.DataFrame | None
@@ -277,18 +270,18 @@ def missing_required_keys(
     if cached is None:
         return required_keys.to_frame(index=False)
     cached_keys = cached[KEY_COLUMNS].copy()
-    cached_keys["gadm_fullcode"] = cached_keys["gadm_fullcode"].astype(str)
     cached_keys["date"] = pd.to_datetime(cached_keys.date).dt.normalize()
     missing = required_keys.difference(pd.MultiIndex.from_frame(cached_keys))
     return missing.to_frame(index=False)
 
 
-def keep_missing_rows_only(df: pd.DataFrame, missing_keys: pd.DataFrame) -> pd.DataFrame:
+def keep_missing_rows_only(
+    df: pd.DataFrame, missing_keys: pd.DataFrame
+) -> pd.DataFrame:
     """Keep only rows returned by GEE that correspond to requested missing keys."""
     if df.empty:
         return df
     out = df.copy()
-    out["gadm_fullcode"] = out["gadm_fullcode"].astype(str)
     out["date"] = pd.to_datetime(out.date).dt.normalize()
     missing_index = pd.MultiIndex.from_frame(missing_keys[KEY_COLUMNS])
     out_index = pd.MultiIndex.from_frame(out[KEY_COLUMNS])
@@ -323,7 +316,7 @@ def fetch_missing_rows(
         pulled = []
         for date, date_keys in batch_keys.groupby("date", sort=True):
             date_geographies = geo_lookup.loc[
-                date_keys.gadm_fullcode.astype(str).unique()
+                date_keys.gadm_fullcode.unique()
             ].reset_index(drop=True)
             fc = build_feature_collection(date_geographies)
             day_candidate = pd.Timestamp(date)
@@ -399,8 +392,7 @@ def repair_missing_geographies(
 ) -> pd.DataFrame:
     """Retry geographies with no ERA5 rows using progressively buffered polygons."""
     missing_codes = sorted(
-        set(geographies.gadm_fullcode.astype(str))
-        - set(weather.gadm_fullcode.astype(str))
+        set(geographies.gadm_fullcode) - set(weather.gadm_fullcode)
     )
     if not missing_codes:
         return weather
@@ -413,7 +405,7 @@ def repair_missing_geographies(
         unit="buffer",
     ):
         missing_geographies = geographies[
-            geographies.gadm_fullcode.astype(str).isin(missing_codes)
+            geographies.gadm_fullcode.isin(missing_codes)
         ].copy()
         log(
             f"  buffer={buffer_degrees:.2f} degrees for {len(missing_geographies)} geographies"
@@ -443,8 +435,7 @@ def repair_missing_geographies(
             repaired = pd.concat([repaired, *repair_frames], ignore_index=True)
             repaired = repaired.drop_duplicates(["gadm_fullcode", "date"], keep="first")
         missing_codes = sorted(
-            set(geographies.gadm_fullcode.astype(str))
-            - set(repaired.gadm_fullcode.astype(str))
+            set(geographies.gadm_fullcode) - set(repaired.gadm_fullcode)
         )
         if not missing_codes:
             return repaired
@@ -495,9 +486,7 @@ def main() -> None:
             f"{len(missing_keys):,} of {len(required_keys):,} keys need fetching"
         )
         if cached is None:
-            wave_df = pull_wave_from_scratch(
-                tag, start, end, geographies, fetch_time
-            )
+            wave_df = pull_wave_from_scratch(tag, start, end, geographies, fetch_time)
         else:
             fetched = fetch_missing_rows(tag, missing_keys, geographies, fetch_time)
             wave_df = normalize_cached_window(

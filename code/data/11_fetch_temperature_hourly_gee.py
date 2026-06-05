@@ -66,8 +66,11 @@ from log import log
 # GEE's getInfo response limit is ~5,000 features, so BATCH_HOURS cannot
 # be raised without first splitting geographies into separate calls.
 BATCH_HOURS = 2
-MAX_WORKERS = 4  # Conservative: 4 concurrent getInfo() calls, well under GEE's ~3 req/s limit
+MAX_WORKERS = (
+    4  # Conservative: 4 concurrent getInfo() calls, well under GEE's ~3 req/s limit
+)
 KEY_COLUMNS = ["gadm_fullcode", "datetime_utc"]
+REPAIR_BUFFER_DEGREES = (0.03, 0.05, 0.10, 0.15)
 
 BANDS = [
     "temperature_2m",
@@ -96,7 +99,6 @@ def load_geographies() -> pd.DataFrame:
     if missing:
         raise ValueError(f"02_kabupaten_polygons.parquet missing columns: {missing}")
     geographies = geographies.dropna(subset=["geometry_wkt"]).copy()
-    geographies["gadm_fullcode"] = geographies["gadm_fullcode"].astype(str)
     return geographies[required].drop_duplicates("gadm_fullcode").reset_index(drop=True)
 
 
@@ -105,14 +107,30 @@ def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
     rows = geographies[
         ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
     ].itertuples(index=False, name=None)
-    for gadm_fullcode, geometry_wkt, province_code, match_level in tqdm(
-        rows,
-        total=len(geographies),
-        desc="ERA5 hourly polygons",
-        unit="polygon",
-        leave=False,
-    ):
+    for gadm_fullcode, geometry_wkt, province_code, match_level in rows:
         g = shapely.wkt.loads(geometry_wkt)
+        feats.append(
+            ee.Feature(
+                shapely_to_ee(g),
+                {
+                    "gadm_fullcode": str(gadm_fullcode),
+                    "province_code": int(province_code),
+                    "match_level": str(match_level),
+                },
+            )
+        )
+    return ee.FeatureCollection(feats)
+
+
+def build_buffered_feature_collection(
+    geographies: pd.DataFrame, buffer_degrees: float
+) -> ee.FeatureCollection:
+    feats = []
+    rows = geographies[
+        ["gadm_fullcode", "geometry_wkt", "province_code", "match_level"]
+    ].itertuples(index=False, name=None)
+    for gadm_fullcode, geometry_wkt, province_code, match_level in rows:
+        g = shapely.wkt.loads(geometry_wkt).buffer(buffer_degrees)
         feats.append(
             ee.Feature(
                 shapely_to_ee(g),
@@ -174,7 +192,9 @@ def pull_window(
 
 
 def pull_window_with_retry(
-    start: pd.Timestamp, end_excl: pd.Timestamp, fc: ee.FeatureCollection,
+    start: pd.Timestamp,
+    end_excl: pd.Timestamp,
+    fc: ee.FeatureCollection,
     max_retries: int = 3,
 ) -> pd.DataFrame:
     """pull_window with exponential-backoff retry, safe for threaded use."""
@@ -216,7 +236,6 @@ def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timest
 def normalize_cached_window(cached: pd.DataFrame) -> pd.DataFrame:
     """Normalize cache keys and keep fetch_time as tmp-only provenance."""
     cached = cached.copy()
-    cached["gadm_fullcode"] = cached["gadm_fullcode"].astype(str)
     cached["datetime_utc"] = pd.to_datetime(cached.datetime_utc, utc=True)
     if "fetch_time" not in cached.columns:
         cached["fetch_time"] = pd.NaT
@@ -257,9 +276,10 @@ def build_required_keys(
     hours = pd.date_range(start_t, end_excl_total, freq="h", inclusive="left")
     hours = pd.DatetimeIndex(pd.to_datetime(hours, utc=True))
     return pd.MultiIndex.from_product(
-        [geographies.gadm_fullcode.astype(str).unique(), hours],
+        [geographies.gadm_fullcode.unique(), hours],
         names=KEY_COLUMNS,
     )
+
 
 def missing_required_keys(
     required_keys: pd.MultiIndex, cached: pd.DataFrame | None
@@ -268,18 +288,18 @@ def missing_required_keys(
     if cached is None:
         return required_keys.to_frame(index=False)
     cached_keys = cached[KEY_COLUMNS].copy()
-    cached_keys["gadm_fullcode"] = cached_keys["gadm_fullcode"].astype(str)
     cached_keys["datetime_utc"] = pd.to_datetime(cached_keys.datetime_utc, utc=True)
     missing = required_keys.difference(pd.MultiIndex.from_frame(cached_keys))
     return missing.to_frame(index=False)
 
 
-def keep_missing_rows_only(df: pd.DataFrame, missing_keys: pd.DataFrame) -> pd.DataFrame:
+def keep_missing_rows_only(
+    df: pd.DataFrame, missing_keys: pd.DataFrame
+) -> pd.DataFrame:
     """Keep only rows returned by GEE that correspond to requested missing keys."""
     if df.empty:
         return df
     out = df.copy()
-    out["gadm_fullcode"] = out["gadm_fullcode"].astype(str)
     out["datetime_utc"] = pd.to_datetime(out.datetime_utc, utc=True)
     missing_index = pd.MultiIndex.from_frame(missing_keys[KEY_COLUMNS])
     out_index = pd.MultiIndex.from_frame(out[KEY_COLUMNS])
@@ -291,6 +311,8 @@ def fetch_missing_rows(
     missing_keys: pd.DataFrame,
     geographies: pd.DataFrame,
     fetch_time: pd.Timestamp,
+    feature_collection_builder=build_feature_collection,
+    description: str | None = None,
 ) -> pd.DataFrame:
     """Fetch missing hourly rows using only the geographies missing for each hour."""
     if missing_keys.empty:
@@ -301,10 +323,10 @@ def fetch_missing_rows(
     geo_lookup = geographies.set_index("gadm_fullcode", drop=False)
     tasks = []
     for dt, dt_keys in missing_keys.groupby("datetime_utc", sort=True):
-        dt_geographies = geo_lookup.loc[
-            dt_keys.gadm_fullcode.astype(str).unique()
-        ].reset_index(drop=True)
-        fc = build_feature_collection(dt_geographies)
+        dt_geographies = geo_lookup.loc[dt_keys.gadm_fullcode.unique()].reset_index(
+            drop=True
+        )
+        fc = feature_collection_builder(dt_geographies)
         start_candidate = pd.Timestamp(str(dt))
         if not isinstance(start_candidate, pd.Timestamp):
             raise ValueError(f"{tag}: invalid missing datetime {dt}")
@@ -321,7 +343,7 @@ def fetch_missing_rows(
         pbar = tqdm(
             as_completed(future_to_keys),
             total=len(future_to_keys),
-            desc=f"{tag} ERA5 hourly missing",
+            desc=description or f"{tag} ERA5 hourly missing",
             unit="hour",
         )
         for i, fut in enumerate(pbar, 1):
@@ -337,7 +359,70 @@ def fetch_missing_rows(
                 eta_min=f"{eta / 60:.1f}",
                 rows=f"{sum(len(frame) for frame in frames):,}",
             )
+    if not frames:
+        return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
+
+
+def repair_missing_rows(
+    tag: str,
+    required_keys: pd.MultiIndex,
+    wave_df: pd.DataFrame,
+    geographies: pd.DataFrame,
+    fetch_time: pd.Timestamp,
+) -> pd.DataFrame:
+    """Retry missing hourly keys with progressively buffered polygons."""
+    repaired = normalize_cached_window(wave_df)
+    missing_keys = missing_required_keys(required_keys, repaired)
+    if missing_keys.empty:
+        return repaired
+
+    log(
+        f"  {tag}: repairing {len(missing_keys):,} hourly keys with buffered ERA5 polygons",
+        "WARNING",
+    )
+    for buffer_degrees in tqdm(
+        REPAIR_BUFFER_DEGREES,
+        desc=f"{tag} ERA5 hourly repair buffers",
+        unit="buffer",
+    ):
+        missing_codes = sorted(missing_keys.gadm_fullcode.astype(str).unique())
+        log(
+            f"  {tag}: buffer={buffer_degrees:.2f} degrees for "
+            f"{len(missing_codes)} geographies"
+        )
+
+        def build_repair_feature_collection(
+            repair_geographies: pd.DataFrame,
+            buffer_degrees: float = buffer_degrees,
+        ) -> ee.FeatureCollection:
+            return build_buffered_feature_collection(
+                repair_geographies, buffer_degrees=buffer_degrees
+            )
+
+        fetched = fetch_missing_rows(
+            tag,
+            missing_keys,
+            geographies,
+            fetch_time,
+            feature_collection_builder=build_repair_feature_collection,
+            description=f"{tag} ERA5 hourly repair {buffer_degrees:.2f}",
+        )
+        if not fetched.empty:
+            repaired = normalize_cached_window(
+                pd.concat([repaired, fetched], ignore_index=True)
+            )
+        missing_keys = missing_required_keys(required_keys, repaired)
+        if missing_keys.empty:
+            return repaired
+
+    unresolved_codes = sorted(missing_keys.gadm_fullcode.astype(str).unique())
+    sample = ", ".join(unresolved_codes[:10])
+    raise RuntimeError(
+        f"{tag}: {len(missing_keys):,} hourly ERA5 keys remain missing after "
+        f"buffered repair across {len(unresolved_codes)} geographies. "
+        f"Sample gadm_fullcode values: {sample}"
+    )
 
 
 def pull_wave_from_scratch(
@@ -446,14 +531,15 @@ def main() -> None:
             f"{len(missing_keys):,} of {len(required_keys):,} keys need fetching"
         )
         if cached is None:
-            wave_df = pull_wave_from_scratch(
-                tag, start, end, geographies, fetch_time
-            )
+            wave_df = pull_wave_from_scratch(tag, start, end, geographies, fetch_time)
         else:
             fetched = fetch_missing_rows(tag, missing_keys, geographies, fetch_time)
             wave_df = normalize_cached_window(
                 pd.concat([cached, fetched], ignore_index=True)
             )
+        wave_df = repair_missing_rows(
+            tag, required_keys, wave_df, geographies, fetch_time
+        )
         wave_df.to_parquet(out_path, index=False)
         log(f"  {tag}: wrote {len(wave_df):,} rows to {out_path}")
         all_frames.append(wave_df)
