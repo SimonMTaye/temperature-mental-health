@@ -67,8 +67,8 @@ INDIVIDUALS_SCHEMA = pa.DataFrameSchema(
         "kecamatan_code": pa.Column(int, nullable=False, coerce=True),
         # Combined geo code converted to 2014 BPS codes compatible with GADM boundaries; may have more than 1 code for IFLS4 due boundary changes
         "gadm_fullcode": pa.Column(str, nullable=False, coerce=True),
-        # Flag indicating that boundaries were remapped to multiple new kecamatans and needed averaging over
-        "multiple_kec_remap": _binary_column(),
+        # Description of how 2007 BPS codes were mapped to 2014 ones
+        "kecamatan_code_map": pa.Column(str, nullable=False, coerce=True),
         # IFLS survey wave for the person record.
         "wave": _wave_column(),
     },
@@ -626,8 +626,12 @@ PROCESSED_TEMPERATURE_SCHEMA = pa.DataFrameSchema(
         "tmax_c": pa.Column(float, nullable=True, coerce=True),
         "tmin_c": pa.Column(float, nullable=True, coerce=True),
         "heat_idx_c": pa.Column(float, nullable=True, coerce=True),
-        "rh_pct": pa.Column(float, checks=pa.Check.between(0, 100), nullable=True, coerce=True),
-        "precip_mm": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
+        "rh_pct": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
+        "precip_mm": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         "tmean_lag1": pa.Column(float, nullable=True, coerce=True),
         "tmean_lag3": pa.Column(float, nullable=True, coerce=True),
         "tmean_lag7": pa.Column(float, nullable=True, coerce=True),
@@ -648,15 +652,27 @@ PROCESSED_TEMPERATURE_SCHEMA = pa.DataFrameSchema(
         "tmax_c_dev": pa.Column(float, nullable=True, coerce=True),
         "tmin_c_dev": pa.Column(float, nullable=True, coerce=True),
         "heat_c_dev": pa.Column(float, nullable=True, coerce=True),
-        "cdd_tmax30": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
-        "cdd_tmax32": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
-        "cdd_tmin23": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
-        "cdd_tmin24": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
+        "cdd_tmax30": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "cdd_tmax32": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "cdd_tmin23": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "cdd_tmin24": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         "tmean_7d": pa.Column(float, nullable=True, coerce=True),
         "tmean_7d_dev": pa.Column(float, nullable=True, coerce=True),
-        "hot30_7d": pa.Column(float, checks=pa.Check.between(0, 7), nullable=True, coerce=True),
+        "hot30_7d": pa.Column(
+            float, checks=pa.Check.between(0, 7), nullable=True, coerce=True
+        ),
         "hot30_7d_dev": pa.Column(float, nullable=True, coerce=True),
-        "heatwave_7d": pa.Column(float, checks=pa.Check.between(0, 7), nullable=True, coerce=True),
+        "heatwave_7d": pa.Column(
+            float, checks=pa.Check.between(0, 7), nullable=True, coerce=True
+        ),
         "heatwave_7d_dev": pa.Column(float, nullable=True, coerce=True),
         "tmean_c_hour": pa.Column(float, nullable=True, coerce=True),
         "heat_hr_dev": pa.Column(float, nullable=True, coerce=True),
@@ -673,14 +689,30 @@ INCOME_MECHANISM_INPUTS_SCHEMA = pa.DataFrameSchema(
     {
         "pidlink": _id_column(),
         "wave": _wave_column(),
-        "hh_labor_income_mo": pa.Column(float, checks=pa.Check.ge(0), nullable=False, coerce=True),
-        "hh_nonlabor_income_mo": pa.Column(float, checks=pa.Check.ge(0), nullable=False, coerce=True),
-        "labor_real": pa.Column(float, checks=pa.Check.ge(0), nullable=False, coerce=True),
-        "nonlabor_real": pa.Column(float, checks=pa.Check.ge(0), nullable=False, coerce=True),
-        "transport_real": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
-        "labor_real_w": pa.Column(float, checks=pa.Check.ge(0), nullable=False, coerce=True),
-        "nonlabor_real_w": pa.Column(float, checks=pa.Check.ge(0), nullable=False, coerce=True),
-        "transport_real_w": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
+        "hh_labor_income_mo": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=False, coerce=True
+        ),
+        "hh_nonlabor_income_mo": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=False, coerce=True
+        ),
+        "labor_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=False, coerce=True
+        ),
+        "nonlabor_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=False, coerce=True
+        ),
+        "transport_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "labor_real_w": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=False, coerce=True
+        ),
+        "nonlabor_real_w": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=False, coerce=True
+        ),
+        "transport_real_w": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         "transport_share_ihs": pa.Column(float, nullable=True, coerce=True),
     },
     strict=True,
@@ -788,7 +820,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
                 "transport_share_ihs",
             ],
         ),
-        "sleep_dur_h": pa.Column(float, checks=pa.Check.between(0.5, 16.0), nullable=True, coerce=True),
+        "sleep_dur_h": pa.Column(
+            float, checks=pa.Check.between(0.5, 16.0), nullable=True, coerce=True
+        ),
         # CES-D factor scores and within-wave standardized versions.
         **_schema_columns(
             CESD_SCORES_SCHEMA,
