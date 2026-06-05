@@ -39,7 +39,7 @@ PNG_OUTPUT = OUTPUT_DIR / "figure_a_temperature_descriptives.png"
 
 REQUIRED_COLUMNS = [
     "kabupaten_code",
-    "interview_date",
+    "interview_datetime",
     "wave",
     "month",
     "year",
@@ -61,15 +61,17 @@ FIGURE_THEME = theme_minimal(base_family="DejaVu Serif", base_size=8) + theme(
 
 
 if __name__ == "__main__":
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     df: pd.DataFrame = pd.read_parquet(ANALYSIS_INPUT)
     df = df[REQUIRED_COLUMNS].dropna(
-        subset=["kabupaten_code", "interview_date", "wave", "tmean_c"]
+        subset=["kabupaten_code", "interview_datetime", "wave", "tmean_c"]
     ).copy()
     df = df[df["tmean_c"] > 0].copy()
-    df["interview_date"] = pd.to_datetime(df["interview_date"])
+    df["interview_date"] = pd.to_datetime(df["interview_datetime"]).dt.normalize()
     df["month"] = df["month"].astype(int)
     df["year"] = df["year"].astype(int)
     df["kabupaten_code"] = df["kabupaten_code"].astype(int)
+    df = df.drop_duplicates(["kabupaten_code", "interview_date", "wave"])
 
     monthly = (
         df.groupby("month", observed=True)

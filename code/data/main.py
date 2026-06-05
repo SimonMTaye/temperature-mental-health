@@ -9,6 +9,7 @@ files, the archive is skipped. Run from anywhere:
 """
 
 import importlib
+import sys
 import zipfile
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,6 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tqdm.auto import tqdm
+
+DATA_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(DATA_DIR))
 
 from config import RAW_IFLS, RAW_IFLS_EXTRACTED
 from log import DEFAULT_LOG_FILE, configure_logging, log
