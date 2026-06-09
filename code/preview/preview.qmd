@@ -1,7 +1,8 @@
 ---
 title: "Preview of Table A: Heat Stress and Mental Health"
-format: html
-self-contained: true
+format:
+  html:
+    embed-resources: true
 echo: false
 ---
 

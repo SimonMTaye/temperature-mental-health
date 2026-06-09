@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+output="docs/preview.html"
+rendered="code/preview/preview.html"
+
+mkdir -p docs
+rm -f "$rendered"
+(
+  cd code/preview
+  uv run quarto render preview.qmd --to html --output preview.html
+)
+mv "$rendered" "$output"
+
+if [ ! -f "$output" ]; then
+  echo "error: expected $output to exist after rendering" >&2
+  exit 1
+fi
+
+if [ -n "$(git status --porcelain -- "$output")" ]; then
+  echo "error: $output changed after local preview render." >&2
+  echo "Commit the rendered preview before pushing:" >&2
+  echo "  git add $output && git commit --amend --no-edit" >&2
+  echo "or commit it in a new commit." >&2
+  exit 1
+fi
