@@ -11,6 +11,8 @@ LogOutput = Literal["file", "stdout", "both"]
 
 DEFAULT_LOG_FILE = OUTPUT / "logs" / "data_pipeline.log"
 LOGGER_NAME = "ifls_data_pipeline"
+# Choose between "file", "stdout", or "both" for default logging output
+DEFAULT_LOG_OUTPUT = "both"
 
 _LOGGER = logging.getLogger(LOGGER_NAME)
 _CONFIGURED = False
@@ -28,7 +30,7 @@ def _coerce_level(level: str | int) -> int:
 
 def configure_logging(
     *,
-    output: LogOutput = "file",
+    output: LogOutput = DEFAULT_LOG_OUTPUT,
     level: str | int = "INFO",
     log_file: str | Path | None = None,
 ) -> None:

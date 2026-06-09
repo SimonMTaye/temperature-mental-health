@@ -7,6 +7,8 @@ temperature data
 Output: data/generated/01_individuals.parquet
 """
 
+from enum import unique
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -132,6 +134,9 @@ def generate_mapping_data(original_col: str) -> pd.DataFrame:
 
 
 def unique_bps_mapping() -> pd.DataFrame:
+    """
+    Using the BPS mapping file, returns a list of 2007 kecamatan codes that map uniquely to a 2014 kecamatan code
+    """
     mapping = read_stata_df(
         Path(RAW_IFLS_EXTRACTED)
         / "IFLS5"
@@ -149,6 +154,55 @@ def unique_bps_mapping() -> pd.DataFrame:
     mapping["kecid07"] = mapping.kecid07.astype(int)
     mapping["kecid14"] = mapping.kecid14.astype(int)
     return mapping
+
+
+def community_kecamatan_mapping() -> pd.DataFrame:
+    """
+    Using the htrack, returns a list of 2007 Communities -> 2014 BPS code mappings
+
+    1. For all communities in the household tracking data
+    2. We keep all households who reported not moving in 2014
+    3. We check that the communities 2014 BPS code is consistent across all such observations
+        - This indicates that a community is consistently mapped to the same 2014 BPS code
+    4. Return all such communities
+        - Note: plenty of communities have inconsistent mapping
+        - Additionally, a stronger threshold could be to restrict loosely to households who report
+        moving within the same kecamatan. This would be a stronger test of consistent mapping
+    """
+    htrack_data = read_stata_df(
+        Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "htrack.dta",
+        convert_categoricals=False,
+    )
+    htrack_data = htrack_data[
+        ["commid07", "mover14", "sc01_14_14", "sc02_14_14", "sc03_14_14"]
+    ].copy()
+    htrack_data = htrack_data.dropna(
+        subset=["commid07", "mover14", "sc01_14_14", "sc02_14_14", "sc03_14_14"]
+    ).copy()
+    # Generate BPS code from province, kabupaten and kecamatan codes
+    htrack_data["kecid14"] = (
+        htrack_data.sc01_14_14.astype(int).astype(str).str.zfill(2)
+        + htrack_data.sc02_14_14.astype(int).astype(str).str.zfill(2)
+        + htrack_data.sc03_14_14.astype(int).astype(str).str.zfill(3)
+    ).astype(int)
+    htrack_data = htrack_data[["commid07", "mover14", "kecid14"]].copy()
+    htrack_data = (
+        htrack_data.query("mover14 == 0")  # Keep only non-movers for consistent mapping
+        .dropna(subset=["kecid14", "commid07"])
+        .groupby("commid07")
+        .agg(
+            # Store the first value
+            kecid14=("kecid14", "first"),
+            # Count the number of unique kecid14 codes each community maps to
+            unique_codes=("kecid14", "nunique"),
+        )
+        .reset_index()
+        .query(
+            "unique_codes == 1"
+        )  # Keep only communities that map to a unique kecid14 code
+        .drop(columns=["unique_codes"])
+    )
+    return htrack_data[["commid07", "kecid14"]].copy()
 
 
 def parse_geo_codes_ifls4() -> pd.DataFrame:
@@ -214,6 +268,46 @@ def parse_geo_codes_ifls4() -> pd.DataFrame:
         Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "htrack.dta",
         convert_categoricals=False,
     )
+    community_id = (
+        household_mapping[["commid07", "hhid07"]]
+        .drop_duplicates(subset=["hhid07"])
+        .copy()
+    )
+    unique_community_mapping = community_kecamatan_mapping()
+    # Find all households that have a unique 2014 BPS code based on their communities
+    community_based_geo_code = community_id.merge(
+        unique_community_mapping,
+        on="commid07",
+        how="left",
+        validate="many_to_one",
+        indicator="community_mapping",
+    ).query("community_mapping == 'both'")
+
+    # Merge in community id for
+    bad_matches = bad_matches.merge(
+        community_based_geo_code[["hhid07", "kecid14"]],
+        left_on="hhid",
+        right_on="hhid07",
+        how="left",
+        validate="1:1",
+        indicator="community_based_mapping",
+    )
+    community_matches = bad_matches[
+        bad_matches.community_based_mapping == "both"
+    ].copy()
+    community_matches["gadm_fullcode"] = community_matches.kecid14
+    community_matches["bps_mapping"] = "community_based"
+    bad_matches = (
+        bad_matches[bad_matches.community_based_mapping == "left_only"]
+        .copy()
+        .drop(columns=["hhid07", "kecid14"])
+    )
+
+    log(
+        f"{len(community_matches)} bad matches resolved by community-based mapping, {len(bad_matches)} bad matches with no community-based mapping",
+        "INFO",
+    )
+    good_matches = pd.concat([good_matches, community_matches], ignore_index=True)
 
     # Standardize the column names for geo codes (exclude hhid to keep hhid14 intact)
     # We use IFLS5 geo codes since we are using IFLS5 household tracking
