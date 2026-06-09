@@ -1,0 +1,34 @@
+---
+title: "Preview of Table A: Heat Stress and Mental Health"
+format: html
+self-contained: true
+echo: false
+---
+
+```{python}
+import sys
+from pathlib import Path
+import pandas as pd
+
+from render import make_regression_table
+from specs import tempearture_sepc, palm_shock, fuel_shock, jobloss, coal_shock, palm_shock_panel, fuel_shock_panel, coal_shock_panel
+```
+
+
+## Main Table
+
+```{python}
+make_regression_table(
+    specs=[palm_shock, fuel_shock, coal_shock, jobloss],
+)
+```
+
+### Panel Style
+
+The regressions below omit group effects and instead include invidiual fixed effects
+
+```{python}
+make_regression_table(
+    specs=[palm_shock_panel, fuel_shock_panel, coal_shock_panel],
+)
+```
