@@ -17,7 +17,10 @@ output
 data
 !code/data/
 !code/data/_schemas.py
-preview*
+~/preview.*
+code/preview/.cache
+code/preview/*.html
+*.quarto_ipynb
 code/analysis/exploratory/*
 code/analysis_began
 resources
