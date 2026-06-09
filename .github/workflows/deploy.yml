@@ -22,7 +22,7 @@ jobs:
 
       - name: Verify committed preview
         run: |
-          test -f docs/preview.html
+          test -f docs/index.html
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4

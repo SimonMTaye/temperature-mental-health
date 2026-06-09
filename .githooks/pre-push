@@ -4,7 +4,7 @@ set -eu
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-output="docs/preview.html"
+output="docs/index.html"
 rendered="code/preview/preview.html"
 
 mkdir -p docs

@@ -23,7 +23,7 @@ jobs:
       - name: Verify committed preview
         if: github.event.action != 'closed'
         run: |
-          test -f docs/preview.html
+          test -f docs/index.html
 
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
