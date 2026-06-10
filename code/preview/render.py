@@ -42,23 +42,41 @@ def search_replace_term(text: str, old_term: str, new_term: str) -> tuple[str, b
     return "".join(parts), found
 
 
-def make_regression_table(specs: list[RegressionSpec]) -> mt.ETable:
+def make_regression_table(
+    specs: list[RegressionSpec],
+    *,
+    titles: list[str] | None = None,
+    rename: dict[str, str] | list[dict[str, str]] | None = None,
+    keep: list[str] | None = None,
+    order: list[str] | None = None,
+) -> mt.ETable:
     """Run a set of regression specifications and combine results into a table."""
 
-    models = [run_regression_with_caching(spec) for spec in specs]
+    renames = _renames_by_spec(rename, specs)
+    models = [
+        rename_terms(run_regression_with_caching(spec), rename_map)
+        for spec, rename_map in zip(specs, renames, strict=True)
+    ]
 
-    terms = list(
-        set(
-            term
-            for spec in specs
-            if spec.show_terms is not None
-            for term in spec.show_terms
+    if titles and (len(titles) != len(specs)):
+        raise ValueError("Length of titles must match length of specs")
+    model_heads = titles if titles else [spec.title for spec in specs]
+
+    if keep is None:
+        keep = list(
+            set(
+                _replace_terms(term, rename_map)
+                for spec, rename_map in zip(specs, renames, strict=True)
+                if spec.show_terms is not None
+                for term in spec.show_terms
+            )
         )
-    )
     return mt.ETable(
         models,
-        model_heads=[spec.title for spec in specs],
-        keep=terms,
+        model_heads=model_heads,
+        keep=keep,
+        order=order,
+        exact_match=False,
         labels=VARIABLE_LABELS,
         felabels=VARIABLE_LABELS,
     )
@@ -73,63 +91,49 @@ def make_shock_regression_table(
 ) -> mt.ETable:
     """Run shock regressions and align group/post/heat terms across models."""
 
-    groups = _terms_by_spec(group, specs)
-    posts = _terms_by_spec(post, specs)
-    temperatures = _terms_by_spec(temperature, specs)
+    def _rename_to(
+        terms: str | Sequence[str],
+        new_term: str,
+    ) -> dict[str, str] | list[dict[str, str]]:
+        if isinstance(terms, str):
+            return {terms: new_term}
+        return [{term: new_term} for term in terms]
 
-    models = [
-        _canonicalize_shock_model(
-            run_regression_with_caching(spec),
-            group=group_term,
-            post=post_term,
-            temperature=temperature_term,
-        )
-        for spec, group_term, post_term, temperature_term in zip(
-            specs, groups, posts, temperatures, strict=True
+    group_renames = _renames_by_spec(_rename_to(group, "group"), specs)
+    post_renames = _renames_by_spec(_rename_to(post, "post"), specs)
+    temperature_renames = _renames_by_spec(_rename_to(temperature, "heat"), specs)
+    renames = [
+        {**group_rename, **post_rename, **temperature_rename}
+        for group_rename, post_rename, temperature_rename in zip(
+            group_renames, post_renames, temperature_renames, strict=True
         )
     ]
 
-    return mt.ETable(
-        models,
-        model_heads=[spec.title for spec in specs],
+    return make_regression_table(
+        specs,
+        rename=renames,
         keep=SHOCK_TABLE_TERMS,
         order=SHOCK_TABLE_TERMS,
-        exact_match=True,
-        labels={**VARIABLE_LABELS},
-        felabels=VARIABLE_LABELS,
     )
 
 
-def _terms_by_spec(
-    terms: str | Sequence[str],
+def _renames_by_spec(
+    rename: dict[str, str] | list[dict[str, str]] | None,
     specs: list[RegressionSpec],
-) -> list[str]:
-    """Return one canonicalization term per spec.
-
-    A single string is broadcast to every spec. A sequence must contain exactly
-    one value per spec, because otherwise per-spec term replacement would be
-    ambiguous.
-    """
-    if isinstance(terms, str):
-        return [terms] * len(specs)
-    if len(terms) != len(specs):
-        raise ValueError(f"{terms} must be a string or have one value per spec")
-    return list(terms)
+) -> list[dict[str, str]]:
+    """Return one term-renaming dictionary per spec."""
+    if rename is None:
+        return [{}] * len(specs)
+    if isinstance(rename, dict):
+        return [rename] * len(specs)
+    if len(rename) != len(specs):
+        raise ValueError("rename must be a dict or have one dict per spec")
+    return rename
 
 
-def _canonicalize_shock_model(
-    model,
-    *,
-    group: str,
-    post: str,
-    temperature: str,
-):
+def rename_terms(model, replacements: dict[str, str]):
+    """Return model with coefficient terms renamed by whole formula tokens."""
     coef_table = model.coef_table.copy()
-    replacements = [
-        (group, "group"),
-        (post, "post"),
-        (temperature, "heat"),
-    ]
     coef_table.index = pd.Index(
         [
             _replace_terms(coefficient, replacements)
@@ -140,7 +144,7 @@ def _canonicalize_shock_model(
     return replace(model, coef_table=coef_table)
 
 
-def _replace_terms(text: str, replacements: list[tuple[str, str]]) -> str:
-    for old_term, new_term in replacements:
+def _replace_terms(text: str, replacements: dict[str, str]) -> str:
+    for old_term, new_term in replacements.items():
         text = search_replace_term(text, old_term, new_term)[0]
     return text

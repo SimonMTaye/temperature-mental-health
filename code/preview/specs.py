@@ -8,6 +8,7 @@ ANALYSIS_INPUT = PROJECT / "data" / "generated" / "30_analysis_table_input.parqu
 CONTROLS = "age + female + edu_yrs + married + widowed"
 FE_WAVE = "month+year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month+year+gadm_fullcode"
+MAIN_TEMP_MEASURE = "tmean_c_dev"
 
 
 def update_formula_search_replace(
