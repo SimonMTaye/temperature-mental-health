@@ -1,0 +1,3 @@
+# Generated preview artifact. Keep the current branch copy during merges; the
+# pre-commit hook regenerates this file from code/preview/preview.qmd.
+docs/index.html merge=ours

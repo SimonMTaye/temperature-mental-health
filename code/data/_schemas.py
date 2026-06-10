@@ -671,6 +671,8 @@ PROCESSED_TEMPERATURE_SCHEMA = pa.DataFrameSchema(
         ),
         "tmean_7d": pa.Column(float, nullable=True, coerce=True),
         "tmean_7d_dev": pa.Column(float, nullable=True, coerce=True),
+        "tmin_7d": pa.Column(float, nullable=True, coerce=True),
+        "tmin_7d_dev": pa.Column(float, nullable=True, coerce=True),
         "wetbulb_c": pa.Column(float, nullable=True, coerce=True),
         "wetbulb_7d": pa.Column(float, nullable=True, coerce=True),
         "wetbulb_c_dev": pa.Column(float, nullable=True, coerce=True),
@@ -777,6 +779,8 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             [
                 "tmean_7d",
                 "tmean_7d_dev",
+                "tmin_7d",
+                "tmin_7d_dev",
                 "wetbulb_c",
                 "wetbulb_7d",
                 "wetbulb_c_dev",
