@@ -44,6 +44,26 @@ main_shock_7_day = [
 make_regression_table(main_shock_7_day)
 ```
 
+### Wet-bulb current
+
+```{python}
+main_shock_wetbulb = [
+    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_c_dev")
+    for spec in main_shock_specs
+]
+make_regression_table(main_shock_wetbulb)
+```
+
+### Wet-bulb 7-day
+
+```{python}
+main_shock_wetbulb_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_7d_dev")
+    for spec in main_shock_specs
+]
+make_regression_table(main_shock_wetbulb_7_day)
+```
+
 ### 7-day hot days
 
 ```{python}
@@ -79,6 +99,26 @@ panel_shock_7_day = [
     for spec in panel_shock_specs
 ]
 make_regression_table(panel_shock_7_day)
+```
+
+### Wet-bulb current
+
+```{python}
+panel_shock_wetbulb = [
+    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_c_dev")
+    for spec in panel_shock_specs
+]
+make_regression_table(panel_shock_wetbulb)
+```
+
+### Wet-bulb 7-day
+
+```{python}
+panel_shock_wetbulb_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_7d_dev")
+    for spec in panel_shock_specs
+]
+make_regression_table(panel_shock_wetbulb_7_day)
 ```
 
 ### 7-day hot days
