@@ -29,6 +29,76 @@ def _rolling_mean_excluding_today(s: pd.Series, window: int, min_periods: int) -
     return s.rolling(window, min_periods=min_periods).mean().shift(1)
 
 
+def saturation_vapor_pressure_pa(temp_c: pd.Series) -> pd.Series:
+    """Saturation vapor pressure over water from NPL's Magnus equation."""
+    # https://www.npl.co.uk/resources/q-a/dew-point-and-relative-humidity
+    return np.exp(np.log(611.2) + (17.62 * temp_c) / (243.12 + temp_c))
+
+
+def relative_humidity_from_dewpoint(
+    temp_c: pd.Series, dewpoint_c: pd.Series
+) -> pd.Series:
+    """Relative humidity from air temperature and dewpoint via NPL Eq. 1/2."""
+    actual_vapor_pressure = saturation_vapor_pressure_pa(dewpoint_c)
+    saturation_vapor_pressure = saturation_vapor_pressure_pa(temp_c)
+    return (100.0 * actual_vapor_pressure / saturation_vapor_pressure).clip(0, 100)
+
+
+def wetbulb_stull_c(temp_c: pd.Series, rh_pct: pd.Series) -> pd.Series:
+    """Stull (2011) wet-bulb approximation using temperature in C and RH percent."""
+    # Stull 2011, Journal of Applied Meteorology and Climatology.
+    # https://doi.org/10.1175/JAMC-D-11-0143.1
+    return (
+        temp_c * np.arctan(0.151977 * np.sqrt(rh_pct + 8.313659))
+        + np.arctan(temp_c + rh_pct)
+        - np.arctan(rh_pct - 1.676331)
+        + 0.00391838 * rh_pct ** (3 / 2) * np.arctan(0.023101 * rh_pct)
+        - 4.686035
+    )
+
+
+def load_hourly_temperature() -> pd.DataFrame:
+    hourly_path = GENERATED_DATA / "11_hourly_temperature_kab.parquet"
+    assert hourly_path.exists(), f"Missing hourly temperature file: {hourly_path}"
+
+    hourly = pd.read_parquet(hourly_path)
+    required = [
+        "gadm_fullcode",
+        "province_code",
+        "datetime_utc",
+        "tmean_c_hour",
+        "dewp_c_hour",
+    ]
+    missing = sorted(set(required).difference(hourly.columns))
+    assert not missing, f"11_hourly_temperature_kab.parquet missing columns: {missing}"
+    hourly = hourly[required].copy()
+    hourly["datetime_utc"] = pd.to_datetime(hourly.datetime_utc, utc=True)
+    return hourly
+
+
+def build_daily_wetbulb(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Compute local-day wet-bulb means from hourly temperature and dewpoint."""
+    hourly = hourly.copy()
+    rh_pct = relative_humidity_from_dewpoint(
+        hourly["tmean_c_hour"], hourly["dewp_c_hour"]
+    )
+    hourly["wetbulb_c_hour"] = wetbulb_stull_c(hourly["tmean_c_hour"], rh_pct)
+    utc_offset = hourly["province_code"].map(_utc_offset_hours)
+    hourly["date"] = (
+        hourly["datetime_utc"]
+        .add(pd.to_timedelta(utc_offset, unit="h"))
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
+    daily = (
+        hourly.groupby(["gadm_fullcode", "date"], as_index=False)["wetbulb_c_hour"]
+        .mean()
+        .rename(columns={"wetbulb_c_hour": "wetbulb_c"})
+    )
+    log(f"built daily wet-bulb means for {len(daily):,} geography-days")
+    return daily
+
+
 def add_daily_features(temp: pd.DataFrame) -> pd.DataFrame:
     """Add daily lag, lead, anomaly, and inclusive past-week features."""
     temp = temp.sort_values(["gadm_fullcode", "date"], kind="stable").copy()
@@ -50,6 +120,9 @@ def add_daily_features(temp: pd.DataFrame) -> pd.DataFrame:
     temp["tmean_lead7"] = grouped["tmean_c"].shift(-7)
 
     temp["tmean_7d"] = grouped["tmean_c"].transform(
+        lambda s: s.rolling(7, min_periods=4).mean()
+    )
+    temp["wetbulb_7d"] = grouped["wetbulb_c"].transform(
         lambda s: s.rolling(7, min_periods=4).mean()
     )
     temp["hot30_7d"] = (
@@ -90,6 +163,8 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         "tmean_base30",
         "tmean_lead7",
         "tmean_7d",
+        "wetbulb_c",
+        "wetbulb_7d",
         "hot30_7d",
         "heatwave_7d",
     ]
@@ -108,7 +183,16 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         bins=[-np.inf, 22, 24, 26, 28, np.inf],
         labels=["<22", "22-24", "24-26", "26-28", "28+"],
     )
-    for col in ["tmean_c", "tmax_c", "tmin_c", "tmean_7d", "hot30_7d", "heatwave_7d"]:
+    for col in [
+        "tmean_c",
+        "tmax_c",
+        "tmin_c",
+        "tmean_7d",
+        "wetbulb_c",
+        "wetbulb_7d",
+        "hot30_7d",
+        "heatwave_7d",
+    ]:
         out[f"{col}_dev"] = out[col] - out[col].mean()
     out["heat_c_dev"] = out["tmean_c_dev"]
     out["cdd_tmax30"] = (out.tmax_c - 30.0).clip(lower=0)
@@ -123,30 +207,15 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def add_hourly_temperature(df: pd.DataFrame) -> pd.DataFrame:
-    hourly_path = GENERATED_DATA / "11_hourly_temperature_kab.parquet"
+def add_hourly_temperature(df: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    assert hourly_path.exists(), f"Missing hourly temperature file: {hourly_path}"
-
-    hourly = pd.read_parquet(hourly_path)
-    has_gadm_key = {"gadm_fullcode", "datetime_utc", "tmean_c_hour"}.issubset(
-        hourly.columns
-    )
-    has_legacy_kab_key = {"kabupaten_code", "datetime_utc", "tmean_c_hour"}.issubset(
-        hourly.columns
-    )
-    assert has_gadm_key or has_legacy_kab_key, (
-        "11_hourly_temperature_kab.parquet must include either gadm_fullcode or "
-        "kabupaten_code, plus datetime_utc and tmean_c_hour"
-    )
     hourly = hourly[
         [
             col
-            for col in ["gadm_fullcode", "kabupaten_code", "datetime_utc", "tmean_c_hour"]
+            for col in ["gadm_fullcode", "datetime_utc", "tmean_c_hour"]
             if col in hourly.columns
         ]
     ]
-    hourly["datetime_utc"] = pd.to_datetime(hourly.datetime_utc, utc=True)
     # ERA5 hourly timestamps are UTC; IFLS interview hours are local Indonesian time.
     df["utc_offset"] = df.province_code.map(_utc_offset_hours)
     local_hour = df.hour_start.round().clip(lower=0, upper=23).astype(int)
@@ -154,22 +223,13 @@ def add_hourly_temperature(df: pd.DataFrame) -> pd.DataFrame:
         df["interview_date"].dt.tz_localize("UTC")
         + pd.to_timedelta(local_hour - df["utc_offset"], unit="h")
     )
-    if "gadm_fullcode" in hourly.columns:
-        df = df.merge(
-            hourly,
-            left_on=["gadm_fullcode", "interview_dt_utc"],
-            right_on=["gadm_fullcode", "datetime_utc"],
-            how="left",
-            validate="m:1",
-        )
-    else:
-        df = df.merge(
-            hourly,
-            left_on=["kabupaten_code", "interview_dt_utc"],
-            right_on=["kabupaten_code", "datetime_utc"],
-            how="left",
-            validate="m:1",
-        )
+    df = df.merge(
+        hourly,
+        left_on=["gadm_fullcode", "interview_dt_utc"],
+        right_on=["gadm_fullcode", "datetime_utc"],
+        how="left",
+        validate="m:1",
+    )
     df = df.drop(columns=["datetime_utc", "interview_dt_utc", "utc_offset"])
     matched = df.tmean_c_hour.notna().sum()
     log(f"matched hourly temperature for {matched:,} of {len(df):,} person-wave rows")
@@ -180,10 +240,15 @@ def add_hourly_temperature(df: pd.DataFrame) -> pd.DataFrame:
 def build_processed_temperature() -> pd.DataFrame:
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
     temp = pd.read_parquet(GENERATED_DATA / "10_daily_temperature_kab.parquet")
+    hourly = load_hourly_temperature()
+    wetbulb_daily = build_daily_wetbulb(hourly)
     temp["date"] = pd.to_datetime(temp.date)
+    temp = temp.merge(
+        wetbulb_daily, on=["gadm_fullcode", "date"], how="left", validate="1:1"
+    )
     temp = add_daily_features(temp)
     out = merge_daily(ind, temp)
-    out = add_hourly_temperature(out)
+    out = add_hourly_temperature(out, hourly)
     out = out[list(PROCESSED_TEMPERATURE_SCHEMA.columns)]
     return PROCESSED_TEMPERATURE_SCHEMA.validate(out)
 
