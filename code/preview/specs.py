@@ -62,7 +62,7 @@ temperature_spec = RegressionSpec(
 
 palm_shock = RegressionSpec(
     title="Palm Shock",
-    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["palm-shock", "mean-daily-temp"]),
     show_terms=frozenset(["palm_farmer_hh_ifls4:ifls5:tmean_c_dev"]),
@@ -79,7 +79,7 @@ fuel_shock = RegressionSpec(
 
 coal_shock = RegressionSpec(
     title="Coal Shock",
-    formula=f"cesd_z ~ coal_worker_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ coal_worker_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["coal-shock", "mean-daily-temp"]),
     show_terms=frozenset(["coal_worker_hh_ifls4:ifls5:tmean_c_dev"]),

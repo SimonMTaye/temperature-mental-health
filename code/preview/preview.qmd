@@ -10,6 +10,7 @@ echo: false
 ```{python}
 from render import make_regression_table, make_shock_regression_table
 from specs import (
+    jobloss,
     coal_shock,
     coal_shock_panel,
     fuel_shock,
@@ -21,14 +22,18 @@ from specs import (
 )
 
 temperature_spec = temperature_spec
-main_shock_specs = [palm_shock, fuel_shock, coal_shock]
+main_shock_specs = [palm_shock, fuel_shock, coal_shock, jobloss]
 panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
 shock_groups = [
     "palm_farmer_hh_ifls4",
     "urban_vehicle_hh_ifls4",
     "coal_worker_hh_ifls4",
+    "job_loss_1_yr",
 ]
-shock_posts = ["ifls5", "post_subsidy", "ifls5"]
+shock_posts = ["ifls5", "post_subsidy", "ifls5", None]
+
+shock_groups_panel = shock_groups[:-1]
+shock_posts_panel = shock_posts[:-1]
 ```
 
 # Main Effects
@@ -152,8 +157,8 @@ The regressions below omit group effects and instead include individual fixed ef
 ```{python}
 make_shock_regression_table(
     panel_shock_specs,
-    group=shock_groups,
-    post=shock_posts,
+    group=shock_groups_panel,
+    post=shock_posts_panel,
     temperature="tmean_c_dev",
 )
 ```
@@ -168,8 +173,8 @@ panel_shock_7_day = [
 ]
 make_shock_regression_table(
     panel_shock_7_day,
-    group=shock_groups,
-    post=shock_posts,
+    group=shock_groups_panel,
+    post=shock_posts_panel,
     temperature="tmean_7d_dev",
 )
 ```
@@ -183,8 +188,8 @@ panel_shock_wetbulb = [
 ]
 make_shock_regression_table(
     panel_shock_wetbulb,
-    group=shock_groups,
-    post=shock_posts,
+    group=shock_groups_panel,
+    post=shock_posts_panel,
     temperature="wetbulb_c_dev",
 )
 ```
@@ -198,8 +203,8 @@ panel_shock_wetbulb_7_day = [
 ]
 make_shock_regression_table(
     panel_shock_wetbulb_7_day,
-    group=shock_groups,
-    post=shock_posts,
+    group=shock_groups_panel,
+    post=shock_posts_panel,
     temperature="wetbulb_7d_dev",
 )
 ```
@@ -213,8 +218,8 @@ panel_shock_hot30_7_day = [
 ]
 make_shock_regression_table(
     panel_shock_hot30_7_day,
-    group=shock_groups,
-    post=shock_posts,
+    group=shock_groups_panel,
+    post=shock_posts_panel,
     temperature="hot30_7d_dev",
 )
 ```
