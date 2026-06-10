@@ -8,7 +8,7 @@ output="docs/index.html"
 rendered="code/preview/preview.html"
 
 mkdir -p docs
-rm -f "$rendered"
+rm -f "$output" "$rendered"
 (
   cd code/preview
   uv run quarto render preview.qmd --to html --output preview.html

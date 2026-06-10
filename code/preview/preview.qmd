@@ -7,29 +7,88 @@ echo: false
 ---
 
 ```{python}
-import sys
-from pathlib import Path
-import pandas as pd
-
 from render import make_regression_table
-from specs import tempearture_sepc, palm_shock, fuel_shock, jobloss, coal_shock, palm_shock_panel, fuel_shock_panel, coal_shock_panel
+from specs import (
+    coal_shock,
+    coal_shock_panel,
+    fuel_shock,
+    fuel_shock_panel,
+    jobloss,
+    palm_shock,
+    palm_shock_panel,
+    update_formula_search_replace,
+)
+
+main_shock_specs = [palm_shock, fuel_shock, coal_shock, jobloss]
+panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
 ```
 
 
 ## Main Table
 
-```{python}
-make_regression_table(
-    specs=[palm_shock, fuel_shock, coal_shock, jobloss],
-)
-```
+::: {.panel-tabset}
 
-### Panel Style
-
-The regressions below omit group effects and instead include invidiual fixed effects
+### Daily Mean
 
 ```{python}
-make_regression_table(
-    specs=[palm_shock_panel, fuel_shock_panel, coal_shock_panel],
-)
+make_regression_table(main_shock_specs)
 ```
+
+### 7-day mean
+
+```{python}
+main_shock_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
+    for spec in main_shock_specs
+]
+make_regression_table(main_shock_7_day)
+```
+
+### 7-day hot days
+
+```{python}
+main_shock_hot30_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
+    for spec in main_shock_specs
+]
+make_regression_table(main_shock_hot30_7_day)
+```
+
+
+:::
+
+## Panel Style
+
+The regressions below omit group effects and instead include individual fixed effects
+
+
+::: {.panel-tabset}
+
+### Daily Mean
+
+```{python}
+make_regression_table(panel_shock_specs)
+```
+
+
+### 7-day mean
+
+```{python}
+panel_shock_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
+    for spec in panel_shock_specs
+]
+make_regression_table(panel_shock_7_day)
+```
+
+### 7-day hot days
+
+```{python}
+panel_shock_hot30_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
+    for spec in panel_shock_specs
+]
+make_regression_table(panel_shock_hot30_7_day)
+```
+
+:::
