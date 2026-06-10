@@ -20,9 +20,4 @@ if [ ! -f "$output" ]; then
   exit 1
 fi
 
-if [ -n "$(git status --porcelain -- "$output")" ]; then
-  git add "$output"
-  git commit -m "[AUTO] Commit new preview"
-  echo "Created preview commit for $output. Re-run git push to include it." >&2
-  exit 1
-fi
+git add "$output"
