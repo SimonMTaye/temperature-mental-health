@@ -1,12 +1,38 @@
 from pathlib import Path
+
 import pandas as pd
-from render import RegressionSpec
+from render import RegressionSpec, search_replace_term
 
 PROJECT = Path(__file__).parent.parent.parent
 ANALYSIS_INPUT = PROJECT / "data" / "generated" / "30_analysis_table_input.parquet"
 CONTROLS = "age + female + edu_yrs + married + widowed"
 FE_WAVE = "month+year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month+year+gadm_fullcode"
+
+
+def update_formula_search_replace(
+    spec: RegressionSpec,
+    old_term: str,
+    new_term: str,
+) -> RegressionSpec:
+    """Return a spec with formula and displayed terms updated by whole-token replacement."""
+    formula, found = search_replace_term(spec.formula, old_term, new_term)
+    if not found:
+        raise ValueError(f"{old_term!r} not found in formula: {spec.formula}")
+
+    show_terms = None
+    if spec.show_terms is not None:
+        show_terms = frozenset(
+            search_replace_term(term, old_term, new_term)[0] for term in spec.show_terms
+        )
+
+    return RegressionSpec(
+        title=spec.title,
+        formula=formula,
+        df=spec.df,
+        tags=spec.tags,
+        show_terms=show_terms,
+    )
 
 
 def shock_triple_diff(outcome: str, measure: str, shock: str) -> str:
@@ -36,7 +62,7 @@ tempearture_sepc = RegressionSpec(
 
 palm_shock = RegressionSpec(
     title="Palm Shock",
-    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["palm-shock", "mean-daily-temp"]),
     show_terms=frozenset(["palm_farmer_hh_ifls4:ifls5:tmean_c_dev"]),
@@ -53,7 +79,7 @@ fuel_shock = RegressionSpec(
 
 coal_shock = RegressionSpec(
     title="Coal Shock",
-    formula=f"cesd_z ~ coal_worker_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ coal_worker_hh_ifls4 * ifls5 * tmean_c_dev + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["coal-shock", "mean-daily-temp"]),
     show_terms=frozenset(["coal_worker_hh_ifls4:ifls5:tmean_c_dev"]),

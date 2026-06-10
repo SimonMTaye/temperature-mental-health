@@ -30,6 +30,8 @@ VARIABLE_LABELS: dict[str, str] = {
     "tmean_7d_dev": "7-day mean temperature deviation",
     "hot30_7d_dev": "7-day hot-day count deviation",
     "heatwave_7d_dev": "7-day heatwave-day count deviation",
+    "wetbulb_c_dev": "Wet-bulb temperature deviation",
+    "wetbulb_7d_dev": "7-day wet-bulb temperature deviation",
     "tmean_c_hour": "Survey-hour temperature (deg C)",
     "heat_hr_dev": "Survey-hour temperature deviation",
     # Stressors and baseline groups
@@ -83,6 +85,9 @@ VARIABLE_LABELS: dict[str, str] = {
     "gadm_fullcode": "Kecamatan fixed effects",
     "pidlink": "Individual",
     "hhid": "Household identifier",
+    "group": "Group",
+    "post": "Post",
+    "heat": "Heat",
 }
 
 HEAT_TERMS = [
@@ -95,6 +100,8 @@ HEAT_TERMS = [
     "cdd_tmin23",
     "cdd_tmin24",
     "tmean_7d_dev",
+    "wetbulb_c_dev",
+    "wetbulb_7d_dev",
     "hot30_7d_dev",
     "heatwave_7d_dev",
     "heat_hr_dev",

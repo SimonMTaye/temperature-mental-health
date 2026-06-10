@@ -8,7 +8,7 @@ output="docs/index.html"
 rendered="code/preview/preview.html"
 
 mkdir -p docs
-rm -f "$rendered"
+rm -f "$output" "$rendered"
 (
   cd code/preview
   uv run quarto render preview.qmd --to html --output preview.html
@@ -20,10 +20,4 @@ if [ ! -f "$output" ]; then
   exit 1
 fi
 
-if [ -n "$(git status --porcelain -- "$output")" ]; then
-  echo "error: $output changed after local preview render." >&2
-  echo "Commit the rendered preview before pushing:" >&2
-  echo "  git add $output && git commit --amend --no-edit" >&2
-  echo "or commit it in a new commit." >&2
-  exit 1
-fi
+git add "$output"
