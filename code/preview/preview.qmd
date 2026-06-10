@@ -1,5 +1,6 @@
 ---
-title: "Preview of Table A: Heat Stress and Mental Health"
+title: "Results Preview"
+date: last-modified
 format:
   html:
     embed-resources: true
@@ -7,22 +8,28 @@ echo: false
 ---
 
 ```{python}
-from render import make_regression_table
+from render import make_shock_regression_table
 from specs import (
     coal_shock,
     coal_shock_panel,
     fuel_shock,
     fuel_shock_panel,
-    jobloss,
     palm_shock,
     palm_shock_panel,
     update_formula_search_replace,
 )
 
-main_shock_specs = [palm_shock, fuel_shock, coal_shock, jobloss]
+main_shock_specs = [palm_shock, fuel_shock, coal_shock]
 panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
+shock_groups = [
+    "palm_farmer_hh_ifls4",
+    "urban_vehicle_hh_ifls4",
+    "coal_worker_hh_ifls4",
+]
+shock_posts = ["ifls5", "post_subsidy", "ifls5"]
 ```
 
+# Main Effects
 
 ## Main Table
 
@@ -31,7 +38,12 @@ panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
 ### Daily Mean
 
 ```{python}
-make_regression_table(main_shock_specs)
+make_shock_regression_table(
+    main_shock_specs,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="tmean_c_dev",
+)
 ```
 
 ### 7-day mean
@@ -41,7 +53,12 @@ main_shock_7_day = [
     update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
     for spec in main_shock_specs
 ]
-make_regression_table(main_shock_7_day)
+make_shock_regression_table(
+    main_shock_7_day,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="tmean_7d_dev",
+)
 ```
 
 ### Wet-bulb current
@@ -51,7 +68,12 @@ main_shock_wetbulb = [
     update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_c_dev")
     for spec in main_shock_specs
 ]
-make_regression_table(main_shock_wetbulb)
+make_shock_regression_table(
+    main_shock_wetbulb,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="wetbulb_c_dev",
+)
 ```
 
 ### Wet-bulb 7-day
@@ -61,7 +83,12 @@ main_shock_wetbulb_7_day = [
     update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_7d_dev")
     for spec in main_shock_specs
 ]
-make_regression_table(main_shock_wetbulb_7_day)
+make_shock_regression_table(
+    main_shock_wetbulb_7_day,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="wetbulb_7d_dev",
+)
 ```
 
 ### 7-day hot days
@@ -71,7 +98,12 @@ main_shock_hot30_7_day = [
     update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
     for spec in main_shock_specs
 ]
-make_regression_table(main_shock_hot30_7_day)
+make_shock_regression_table(
+    main_shock_hot30_7_day,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="hot30_7d_dev",
+)
 ```
 
 
@@ -87,7 +119,12 @@ The regressions below omit group effects and instead include individual fixed ef
 ### Daily Mean
 
 ```{python}
-make_regression_table(panel_shock_specs)
+make_shock_regression_table(
+    panel_shock_specs,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="tmean_c_dev",
+)
 ```
 
 
@@ -98,7 +135,12 @@ panel_shock_7_day = [
     update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
     for spec in panel_shock_specs
 ]
-make_regression_table(panel_shock_7_day)
+make_shock_regression_table(
+    panel_shock_7_day,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="tmean_7d_dev",
+)
 ```
 
 ### Wet-bulb current
@@ -108,7 +150,12 @@ panel_shock_wetbulb = [
     update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_c_dev")
     for spec in panel_shock_specs
 ]
-make_regression_table(panel_shock_wetbulb)
+make_shock_regression_table(
+    panel_shock_wetbulb,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="wetbulb_c_dev",
+)
 ```
 
 ### Wet-bulb 7-day
@@ -118,7 +165,12 @@ panel_shock_wetbulb_7_day = [
     update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_7d_dev")
     for spec in panel_shock_specs
 ]
-make_regression_table(panel_shock_wetbulb_7_day)
+make_shock_regression_table(
+    panel_shock_wetbulb_7_day,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="wetbulb_7d_dev",
+)
 ```
 
 ### 7-day hot days
@@ -128,7 +180,12 @@ panel_shock_hot30_7_day = [
     update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
     for spec in panel_shock_specs
 ]
-make_regression_table(panel_shock_hot30_7_day)
+make_shock_regression_table(
+    panel_shock_hot30_7_day,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="hot30_7d_dev",
+)
 ```
 
 :::

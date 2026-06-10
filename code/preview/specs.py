@@ -1,26 +1,13 @@
 from pathlib import Path
-import re
 
 import pandas as pd
-from render import RegressionSpec
+from render import RegressionSpec, search_replace_term
 
 PROJECT = Path(__file__).parent.parent.parent
 ANALYSIS_INPUT = PROJECT / "data" / "generated" / "30_analysis_table_input.parquet"
 CONTROLS = "age + female + edu_yrs + married + widowed"
 FE_WAVE = "month+year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month+year+gadm_fullcode"
-FORMULA_SPLIT_PATTERN = re.compile(r"(\s+|[~+*:/|()])")
-
-
-def search_replace_term(text: str, old_term: str, new_term: str) -> tuple[str, bool]:
-    """Replace whole formula tokens in text, preserving separators."""
-    parts = FORMULA_SPLIT_PATTERN.split(text)
-    found = False
-    for index, part in enumerate(parts):
-        if part == old_term:
-            parts[index] = new_term
-            found = True
-    return "".join(parts), found
 
 
 def update_formula_search_replace(

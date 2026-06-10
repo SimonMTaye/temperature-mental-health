@@ -85,6 +85,9 @@ VARIABLE_LABELS: dict[str, str] = {
     "gadm_fullcode": "Kecamatan fixed effects",
     "pidlink": "Individual",
     "hhid": "Household identifier",
+    "group": "Group",
+    "post": "Post",
+    "heat": "Heat",
 }
 
 HEAT_TERMS = [
