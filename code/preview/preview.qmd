@@ -80,9 +80,22 @@ make_regression_table(
 ### Sleep Hours
 
 ```{python}
+sleep_temperature_measures = [
+    "tmean_c_dev",
+    "tmean_7d_dev",
+    "tmin_c_dev",
+    "tmin_7d_dev",
+    "wetbulb_c_dev",
+    "wetbulb_7d_dev",
+    "hot30_7d_dev",
+]
 sleep_temperature_specs = [
-    update_formula_search_replace(spec, "cesd_z", "sleep_dur_h")
-    for spec in alt_temperature_specs
+    update_formula_search_replace(
+        update_formula_search_replace(temperature_spec, "tmean_c_dev", measure),
+        "cesd_z",
+        "sleep_dur_h",
+    )
+    for measure in sleep_temperature_measures
 ]
 
 make_regression_table(
@@ -90,11 +103,13 @@ make_regression_table(
     titles=[
         "Daily Mean",
         "7-day Mean",
+        "Daily Min",
+        "7-day Min",
         "Wet-bulb Current",
         "Wet-bulb 7-day",
         "7-day Hot Days",
     ],
-    rename={k: "Heat" for k in temperature_measures},
+    rename={k: "Heat" for k in sleep_temperature_measures},
 )
 ```
 
