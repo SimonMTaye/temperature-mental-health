@@ -304,9 +304,9 @@ def make_temperature_balance_data(df, *, temperature):
     return out
 
 
-def make_balance_table(group):
+def make_balance_table(data, group):
     return TableOne(
-        balance_data.dropna(subset=[group]),
+        data.dropna(subset=[group]),
         columns=balance_variables,
         continuous=balance_variables,
         categorical=[],
@@ -333,13 +333,24 @@ balance_data = make_temperature_balance_data(
 
 
 ```{python}
-make_balance_table("temperature_median_split")
+make_balance_table(balance_data, "temperature_median_split")
 ```
 
 ### First and fourth quartiles
 
 ```{python}
-make_balance_table("temperature_high_low_quartile")
+make_balance_table(balance_data, "temperature_high_low_quartile")
+```
+
+
+### Median Wetbulb 7 day
+
+```{python}
+balance_data_wetbulb = make_temperature_balance_data(
+    analysis_df,
+    temperature="wetbulb_7d_dev",
+)
+make_balance_table(balance_data_wetbulb, "temperature_median_split")
 ```
 
 :::
