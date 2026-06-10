@@ -8,8 +8,14 @@ echo: false
 ---
 
 ```{python}
+import pandas as pd
+from scipy import stats
+from tableone import TableOne
+
+from dictionary import VARIABLE_LABELS
 from render import make_shock_regression_table, make_regression_table
 from specs import (
+    analysis_df,
     jobloss,
     coal_shock,
     coal_shock_panel,
@@ -237,6 +243,117 @@ make_shock_regression_table(
 
 :::
 
+# Descriptives
+
+## Temperature Balance
+
+
+```{python}
+balance_variables = [
+    "age",
+    "female",
+    "edu_yrs",
+    "married",
+    "widowed",
+    "palm_farmer_hh_ifls4",
+    "palm_shock_exposed",
+    "urban_vehicle_hh_ifls4",
+    "fuel_shock_exposed",
+    "job_loss_1_yr",
+    "job_loss_ifls5",
+]
+balance_labels = {
+    **VARIABLE_LABELS,
+    "palm_shock_exposed": "Palm farmer x IFLS5",
+    "fuel_shock_exposed": "Urban vehicle owner x post subsidy",
+    "job_loss_ifls5": "Job loss x IFLS5",
+}
+
+
+def welch_ttest(*groups):
+    return stats.ttest_ind(
+        groups[0],
+        groups[1],
+        equal_var=False,
+        nan_policy="omit",
+    ).pvalue
+
+
+def make_temperature_balance_data(df, *, temperature):
+    out = df.copy()
+    out["ifls5"] = out["wave"] == "IFLS5"
+    out["palm_shock_exposed"] = (
+        out["palm_farmer_hh_ifls4"].astype("Int64") * out["ifls5"]
+    )
+    out["fuel_shock_exposed"] = (
+        out["urban_vehicle_hh_ifls4"].astype("Int64") * out["post_subsidy"]
+    )
+    out["job_loss_ifls5"] = out["job_loss_1_yr"] * out["ifls5"]
+
+    median = out[temperature].median()
+    out["temperature_median_split"] = pd.NA
+    out.loc[out[temperature] < median, "temperature_median_split"] = "Low"
+    out.loc[out[temperature] > median, "temperature_median_split"] = "High"
+
+    low_cutoff = out[temperature].quantile(0.25)
+    high_cutoff = out[temperature].quantile(0.75)
+    out["temperature_high_low_quartile"] = pd.NA
+    out.loc[out[temperature] <= low_cutoff, "temperature_high_low_quartile"] = "Low"
+    out.loc[out[temperature] >= high_cutoff, "temperature_high_low_quartile"] = "High"
+
+    return out
+
+
+def make_balance_table(data, group):
+    return TableOne(
+        data.dropna(subset=[group]),
+        columns=balance_variables,
+        continuous=balance_variables,
+        categorical=[],
+        groupby=group,
+        pval=True,
+        overall=False,
+        htest={variable: welch_ttest for variable in balance_variables},
+        htest_name=False,
+        rename=balance_labels,
+        decimals=3,
+        pval_digits=3,
+    )
+
+
+balance_data = make_temperature_balance_data(
+    analysis_df,
+    temperature=MAIN_TEMP_MEASURE,
+)
+```
+
+::: {.panel-tabset}
+
+### Median split
+
+
+```{python}
+make_balance_table(balance_data, "temperature_median_split")
+```
+
+### First and fourth quartiles
+
+```{python}
+make_balance_table(balance_data, "temperature_high_low_quartile")
+```
+
+
+### Median Wetbulb 7 day
+
+```{python}
+balance_data_wetbulb = make_temperature_balance_data(
+    analysis_df,
+    temperature="wetbulb_7d_dev",
+)
+make_balance_table(balance_data_wetbulb, "temperature_median_split")
+```
+
+:::
 
 # Robustness
 
