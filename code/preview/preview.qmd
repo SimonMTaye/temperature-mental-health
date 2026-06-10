@@ -5,6 +5,7 @@ format:
   html:
     embed-resources: true
 echo: false
+warning: false
 ---
 
 ```{python}
@@ -119,6 +120,51 @@ make_regression_table(
 
 
 ## Main Table
+
+The main shock tables estimate heat amplification among baseline stressor groups.
+Let $Y_{ict}$ be respondent $i$'s CES-D z-score in community $c$ at interview
+date $t$, $H_{ict}$ be the temperature measure shown in the tab, $X_{ict}$
+be age, female, years of education, married, and widowed controls, and
+$\alpha_c$, $\lambda_m$, $\delta_y$, and $\pi_w$ be community, month,
+year, and wave fixed effects. Standard errors are clustered by kecamatan in the
+paper tables.
+
+For the baseline job-loss shock:
+
+$$
+Y_{ict} =
+\beta_1 H_{ict}
++ \beta_2 J_{ict}
++ \beta_3 (H_{ict} \times J_{ict})
++ X_{ict}'\Gamma
++ \alpha_c + \lambda_m + \delta_y + \pi_w
++ \varepsilon_{ict},
+$$
+
+where $J_{ict}$ indicates job loss within the past year while currently not
+working. The reported shock coefficient is $\beta_3$.
+
+For baseline-group shocks observed before the later exposure period:
+
+$$
+Y_{ict} =
+\beta_1 H_{ict}
++ \beta_2 G_i
++ \beta_3 P_t
++ \beta_4 (G_i \times P_t)
++ \beta_5 (H_{ict} \times G_i)
++ \beta_6 (H_{ict} \times P_t)
++ \beta_7 (H_{ict} \times G_i \times P_t)
++ X_{ict}'\Gamma
++ \alpha_c + \lambda_m + \delta_y
++ \varepsilon_{ict}.
+$$
+
+Here $G_i$ is the baseline group indicator and $P_t$ is the post indicator.
+The palm and coal columns use $P_t=\mathbf{1}\{\text{IFLS5}\}$; the fuel
+column is estimated within IFLS5 and uses
+$P_t=\mathbf{1}\{\text{interview date} \ge \text{2014-11-18}\}$. The reported
+shock coefficient is $\beta_7$.
 
 ::: {.panel-tabset}
 
@@ -426,3 +472,114 @@ make_regression_table(
     titles=[f"{label}" for label, _ in jobloss_windows],
 )
 ```
+
+# Glossary
+
+## Outcomes
+
+**CES-D z-score (`cesd_z`)**: standardized depressive-symptom score from the
+IFLS CES-D items. The raw CES-D score is standardized within survey wave, so
+coefficients are in wave-specific standard-deviation units.
+
+**CES-D raw score (`cesd_raw`)**: unstandardized depressive-symptom score.
+Higher values indicate more depressive symptoms.
+
+## Temperature Measures
+
+All main temperature variables are attached to the respondent's interview date
+and geography. Variables ending in `_dev` are centered deviations from the mean
+of that measure in the analysis file. Thus a one-unit change in a temperature
+deviation is one degree Celsius for temperature levels, or one day for hot-day
+counts.
+
+**Daily mean temperature (`tmean_c_dev`)**: mean air temperature on the interview
+date, in degrees Celsius, minus the analysis-sample mean of daily mean
+temperature.
+
+**7-day mean temperature (`tmean_7d_dev`)**: rolling 7-day mean of daily mean
+temperature ending on the interview date, with at least four observed days,
+minus the analysis-sample mean of that rolling measure.
+
+**Daily minimum temperature (`tmin_c_dev`)**: minimum air temperature on the
+interview date, in degrees Celsius, minus the analysis-sample mean of daily
+minimum temperature.
+
+**7-day minimum temperature (`tmin_7d_dev`)**: rolling 7-day mean of daily
+minimum temperature ending on the interview date, with at least four observed
+days, minus the analysis-sample mean of that rolling measure.
+
+**Wet-bulb temperature (`wetbulb_c_dev`)**: interview-date daily mean wet-bulb
+temperature, in degrees Celsius, minus the analysis-sample mean. Wet-bulb
+temperature is computed from hourly air temperature and dewpoint using relative
+humidity and the Stull wet-bulb approximation, then averaged to the local day.
+
+**7-day wet-bulb temperature (`wetbulb_7d_dev`)**: rolling 7-day mean of daily
+wet-bulb temperature ending on the interview date, with at least four observed
+days, minus the analysis-sample mean of that rolling measure.
+
+**7-day hot days (`hot30_7d_dev`)**: count of days in the rolling 7-day window
+ending on the interview date for which daily maximum temperature exceeds
+$30^\circ$C, minus the analysis-sample mean of that count.
+
+**Heat (`heat_c_dev`)**: alias for daily mean temperature deviation in the final
+analysis tables.
+
+## Shock And Group Status
+
+**Palm-farmer household (`palm_farmer_hh_ifls4`)**: baseline IFLS4 household
+indicator equal to one if any household member worked in agriculture and lived
+in a province classified as a palm-producing province. This is a region-by-sector
+proxy for palm exposure, not direct observation that the household produced oil
+palm.
+
+**Palm shock**: the main preview shock specification uses
+`palm_farmer_hh_ifls4 x ifls5 x heat`. It compares heat sensitivity for baseline
+palm-proxy households after the palm-price decline period relative to other
+households and the earlier wave.
+
+**Coal-worker household (`coal_worker_hh_ifls4`)**: baseline IFLS4 household
+indicator equal to one if any household member worked in mining and lived in a
+province classified as a coal-producing province. This is a region-by-sector
+proxy for coal exposure.
+
+**Coal shock**: the main preview shock specification uses
+`coal_worker_hh_ifls4 x ifls5 x heat`. It compares heat sensitivity for baseline
+coal-proxy households in IFLS5 relative to other households and the earlier wave.
+
+**Urban vehicle-owning household (`urban_vehicle_hh_ifls4`)**: baseline IFLS4
+household indicator equal to one if the household was urban and reported vehicle
+ownership. This group is used as the fuel-subsidy-cut exposure group.
+
+**Post-subsidy-cut interview (`post_subsidy`)**: indicator equal to one for
+interviews on or after November 18, 2014, the fuel-subsidy-cut date used in the
+pipeline.
+
+**Fuel shock**: the main preview shock specification uses
+`urban_vehicle_hh_ifls4 x post_subsidy x heat` within IFLS5. It compares heat
+sensitivity for baseline urban vehicle-owning households interviewed after the
+subsidy cut relative to comparable IFLS5 interviews before the cut.
+
+**Job loss within 1 year (`job_loss_1_yr`)**: indicator equal to one when the
+respondent reports a last job loss within 365 days of the interview and is not
+currently working. The job-loss columns interact this contemporaneous stressor
+with heat.
+
+## Fixed Effects And Controls
+
+**Community fixed effects**: fixed effects for the respondent's kecamatan-level
+location. These absorb time-invariant community differences.
+
+**Kecamatan**: Indonesian subdistrict. In this preview, kecamatan is the
+community-level geography used for fixed effects and clustered standard errors.
+
+**Kabupaten**: Indonesian district or regency, the administrative unit above
+kecamatan and below province.
+
+**Month and year fixed effects**: fixed effects for interview month-of-year and
+calendar year. The headline identifying variation is daily weather variation
+around interview timing within communities, months, and years.
+
+**Wave fixed effects**: IFLS4/IFLS5 survey-wave fixed effects used in pooled
+specifications when the sample includes both waves.
+
+**Controls**: age, female, years of education, married, and widowed.
