@@ -42,7 +42,9 @@ def search_replace_term(text: str, old_term: str, new_term: str) -> tuple[str, b
     return "".join(parts), found
 
 
-def make_regression_table(specs: list[RegressionSpec]) -> mt.ETable:
+def make_regression_table(
+    specs: list[RegressionSpec], *, titles: list[str] | None
+) -> mt.ETable:
     """Run a set of regression specifications and combine results into a table."""
 
     models = [run_regression_with_caching(spec) for spec in specs]
@@ -55,9 +57,14 @@ def make_regression_table(specs: list[RegressionSpec]) -> mt.ETable:
             for term in spec.show_terms
         )
     )
+
+    if not titles or (len(titles) != len(specs)):
+        raise ValueError("titles must be provided and have one value per spec")
+    model_heads = titles if titles else [spec.title for spec in specs]
+
     return mt.ETable(
         models,
-        model_heads=[spec.title for spec in specs],
+        model_heads=model_heads,
         keep=terms,
         labels=VARIABLE_LABELS,
         felabels=VARIABLE_LABELS,

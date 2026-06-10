@@ -8,7 +8,7 @@ echo: false
 ---
 
 ```{python}
-from render import make_shock_regression_table
+from render import make_regression_table, make_shock_regression_table
 from specs import (
     coal_shock,
     coal_shock_panel,
@@ -16,9 +16,11 @@ from specs import (
     fuel_shock_panel,
     palm_shock,
     palm_shock_panel,
+    temperature_spec,
     update_formula_search_replace,
 )
 
+temperature_spec = temperature_spec
 main_shock_specs = [palm_shock, fuel_shock, coal_shock]
 panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
 shock_groups = [
@@ -30,6 +32,35 @@ shock_posts = ["ifls5", "post_subsidy", "ifls5"]
 ```
 
 # Main Effects
+
+## Temperature Effects
+
+```{python}
+alt_temperature_specs = [
+    update_formula_search_replace(temperature_spec, "tmean_c_dev", measure)
+    for measure in [
+        "tmean_c_dev",
+        "tmean_7d_dev",
+        "wetbulb_c_dev",
+        "wetbulb_7d_dev",
+        "hot30_7d_dev",
+    ]
+]
+
+make_regression_table(
+    alt_temperature_specs,
+    titles=[
+        "Daily Mean",
+        "7-day Mean",
+        "Wet-bulb Current",
+        "Wet-bulb 7-day",
+        "7-day Hot Days",
+    ],
+)
+```
+
+
+
 
 ## Main Table
 
