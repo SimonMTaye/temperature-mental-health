@@ -12,6 +12,10 @@ correlates with geography (urban) -- the interaction could be a region-by-post a
     into urban vs vehicle.
   Panel B -- pre vs post-subsidy balance within IFLS5 on the treatment and on demographics,
     income, and heat (does post track who was interviewed?).
+  Panel C -- placebo-in-time. Fake cutoff dates inside the genuinely pre-hike window
+    (Sep 6 - Nov 17, 2014, before the real 2014-11-18 cut) should yield no triple. A
+    null here argues against the seasonal-confound story. The window is short (~10 weeks,
+    ~6k obs) so this bounds large confounds, not effects of the headline size.
 
 Heat = tmean_7d_dev; kabupaten-clustered SE.
 """
@@ -42,10 +46,11 @@ TRIPLE_TERMS = [f"{HEAT}:{UV}:{POST}", f"{HEAT}:{POST}:{UV}", f"{POST}:{UV}:{HEA
 
 def prepare() -> pd.DataFrame:
     df = restrict_panel(load_analysis())
-    require_columns(df, [HEAT, UV, POST, KECAMATAN_FE, CLUSTER, "province_code", "urban", "pce_log"])
-    df = df.dropna(subset=["cesd_z", HEAT, POST, KECAMATAN_FE, CLUSTER, "month", "year"]).copy()
+    require_columns(df, [HEAT, UV, POST, KECAMATAN_FE, CLUSTER, "province_code", "urban", "pce_log", "interview_datetime"])
+    df = df.dropna(subset=["cesd_z", HEAT, POST, KECAMATAN_FE, CLUSTER, "month", "year", "interview_datetime"]).copy()
     df[UV] = df[UV].fillna(0).astype(int)
     s5 = df[df["wave"] == "IFLS5"].copy()
+    s5["idate"] = pd.to_datetime(s5["interview_datetime"])
     s5["province_fe"] = pd.to_numeric(s5["province_code"], errors="coerce").astype("Int64").astype("string")
     s5["kab_post"] = s5[CLUSTER].astype(str) + "_" + s5[POST].astype(int).astype(str)
     s5["kec_post"] = s5[KECAMATAN_FE].astype(str) + "_" + s5[POST].astype(int).astype(str)
@@ -55,6 +60,28 @@ def prepare() -> pd.DataFrame:
 def fit_triple(s5: pd.DataFrame, fe: str) -> dict[str, float]:
     model = pf.feols(f"cesd_z ~ {HEAT}*{UV}*{POST} + {CONTROLS} | {fe}", s5, vcov={"CRV1": CLUSTER})
     term = next((t for t in TRIPLE_TERMS if t in model.coef().index), None)
+    return {
+        "n": int(model._N),
+        "b": float(model.coef().get(term, np.nan)),
+        "se": float(model.se().get(term, np.nan)),
+        "p": float(model.pvalue().get(term, np.nan)),
+    }
+
+
+REAL_CUTOFF = "2014-11-18"  # actual fuel-subsidy hike
+FAKE_CUTOFFS = ["2014-10-01", "2014-10-10", "2014-10-20"]  # inside the pre-hike window
+PLACEBO_TERMS = [f"{HEAT}:{UV}:fpost", f"{HEAT}:fpost:{UV}", f"fpost:{UV}:{HEAT}"]
+
+
+def fit_cutoff(s5: pd.DataFrame, cutoff: str, pre_window: bool) -> dict[str, float]:
+    """Triple at a date cutoff. pre_window restricts to interviews before the real hike
+    (so a fake cutoff carries no real policy change); kecamatan FE only given the short span."""
+    sub = s5[s5["idate"] < pd.Timestamp(REAL_CUTOFF)] if pre_window else s5
+    sub = sub.copy()
+    sub["fpost"] = (sub["idate"] >= pd.Timestamp(cutoff)).astype(int)
+    fe = KECAMATAN_FE if pre_window else f"month + year + {KECAMATAN_FE}"
+    model = pf.feols(f"cesd_z ~ {HEAT}*{UV}*fpost + {CONTROLS} | {fe}", sub, vcov={"CRV1": CLUSTER})
+    term = next((t for t in PLACEBO_TERMS if t in model.coef().index), None)
     return {
         "n": int(model._N),
         "b": float(model.coef().get(term, np.nan)),
@@ -134,6 +161,20 @@ def main() -> None:
         b = balance_row(s5, var)
         rows.append({"panel": "B", "var": var, "label": label, **b})
         body.append(rf"{label} & {b['pre']:.3f} & {b['post']:.3f} & ${b['nd']:+.3f}$ & {b['p']:.3f} \\")
+
+    body += [
+        r"\midrule",
+        r"\multicolumn{5}{l}{\textit{Panel C. Placebo-in-time: fake cutoff dates with no real hike}} \\",
+        r"Cutoff date & Triple coefficient & $N$ & & \\",
+        r"\midrule",
+    ]
+    real = fit_cutoff(s5, REAL_CUTOFF, pre_window=False)
+    rows.append({"panel": "C", "cutoff": f"{REAL_CUTOFF} (real)", **real})
+    body.append(rf"{REAL_CUTOFF} (real, full IFLS5) & {coef_cell(real)} & {real['n']:,} & & \\")
+    for fc in FAKE_CUTOFFS:
+        stats = fit_cutoff(s5, fc, pre_window=True)
+        rows.append({"panel": "C", "cutoff": f"{fc} (fake)", **stats})
+        body.append(rf"{fc} (fake, pre-hike window) & {coef_cell(stats)} & {stats['n']:,} & & \\")
 
     body += [
         r"\midrule",
