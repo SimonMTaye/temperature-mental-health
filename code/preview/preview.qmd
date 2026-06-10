@@ -84,7 +84,7 @@ Let $Y_{ict}$ be respondent $i$'s CES-D z-score in community $c$ at interview
 date $t$, $H_{ict}$ be the temperature measure shown in the tab, $X_{ict}$
 be age, female, years of education, married, and widowed controls, and
 $\alpha_c$, $\lambda_m$, $\delta_y$, and $\pi_w$ be community, month,
-year, and wave fixed effects. Standard errors are clustered by kabupaten in the
+year, and wave fixed effects. Standard errors are clustered by kecamatan in the
 paper tables.
 
 For the baseline job-loss shock:
@@ -518,6 +518,12 @@ with heat.
 
 **Community fixed effects**: fixed effects for the respondent's kecamatan-level
 location. These absorb time-invariant community differences.
+
+**Kecamatan**: Indonesian subdistrict. In this preview, kecamatan is the
+community-level geography used for fixed effects and clustered standard errors.
+
+**Kabupaten**: Indonesian district or regency, the administrative unit above
+kecamatan and below province.
 
 **Month and year fixed effects**: fixed effects for interview month-of-year and
 calendar year. The headline identifying variation is daily weather variation
