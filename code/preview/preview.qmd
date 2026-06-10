@@ -69,7 +69,7 @@ main_shock_wetbulb = [
     for spec in main_shock_specs
 ]
 make_shock_regression_table(
-    main_shock_wetbulb
+    main_shock_wetbulb,
     group=shock_groups,
     post=shock_posts,
     temperature="wetbulb_c_dev",
