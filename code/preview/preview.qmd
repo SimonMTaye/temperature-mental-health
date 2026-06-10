@@ -8,7 +8,7 @@ echo: false
 ---
 
 ```{python}
-from render import make_regression_table, make_shock_regression_table
+from render import make_shock_regression_table, make_regression_table
 from specs import (
     jobloss,
     coal_shock,
@@ -19,6 +19,7 @@ from specs import (
     palm_shock_panel,
     temperature_spec,
     update_formula_search_replace,
+    MAIN_TEMP_MEASURE,
 )
 
 temperature_spec = temperature_spec
@@ -41,15 +42,16 @@ shock_posts_panel = shock_posts[:-1]
 ## Temperature Effects
 
 ```{python}
+temperature_measures = [
+    "tmean_c_dev",
+    "tmean_7d_dev",
+    "wetbulb_c_dev",
+    "wetbulb_7d_dev",
+    "hot30_7d_dev",
+]
 alt_temperature_specs = [
     update_formula_search_replace(temperature_spec, "tmean_c_dev", measure)
-    for measure in [
-        "tmean_c_dev",
-        "tmean_7d_dev",
-        "wetbulb_c_dev",
-        "wetbulb_7d_dev",
-        "hot30_7d_dev",
-    ]
+    for measure in temperature_measures
 ]
 
 make_regression_table(
@@ -61,6 +63,7 @@ make_regression_table(
         "Wet-bulb 7-day",
         "7-day Hot Days",
     ],
+    rename={k: "Heat" for k in temperature_measures},
 )
 ```
 
@@ -74,6 +77,10 @@ make_regression_table(
 ### Daily Mean
 
 ```{python}
+main_shock_daily_mean = [
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmean_c_dev")
+    for spec in main_shock_specs
+]
 make_shock_regression_table(
     main_shock_specs,
     group=shock_groups,
@@ -86,7 +93,7 @@ make_shock_regression_table(
 
 ```{python}
 main_shock_7_day = [
-    update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmean_7d_dev")
     for spec in main_shock_specs
 ]
 make_shock_regression_table(
@@ -101,7 +108,7 @@ make_shock_regression_table(
 
 ```{python}
 main_shock_wetbulb = [
-    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_c_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "wetbulb_c_dev")
     for spec in main_shock_specs
 ]
 make_shock_regression_table(
@@ -116,7 +123,7 @@ make_shock_regression_table(
 
 ```{python}
 main_shock_wetbulb_7_day = [
-    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_7d_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "wetbulb_7d_dev")
     for spec in main_shock_specs
 ]
 make_shock_regression_table(
@@ -131,7 +138,7 @@ make_shock_regression_table(
 
 ```{python}
 main_shock_hot30_7_day = [
-    update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "hot30_7d_dev")
     for spec in main_shock_specs
 ]
 make_shock_regression_table(
@@ -155,6 +162,10 @@ The regressions below omit group effects and instead include individual fixed ef
 ### Daily Mean
 
 ```{python}
+panel_shock_daily_mean = [
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmean_c_dev")
+    for spec in panel_shock_specs
+]
 make_shock_regression_table(
     panel_shock_specs,
     group=shock_groups_panel,
@@ -168,7 +179,7 @@ make_shock_regression_table(
 
 ```{python}
 panel_shock_7_day = [
-    update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmean_7d_dev")
     for spec in panel_shock_specs
 ]
 make_shock_regression_table(
@@ -183,7 +194,7 @@ make_shock_regression_table(
 
 ```{python}
 panel_shock_wetbulb = [
-    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_c_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "wetbulb_c_dev")
     for spec in panel_shock_specs
 ]
 make_shock_regression_table(
@@ -198,7 +209,7 @@ make_shock_regression_table(
 
 ```{python}
 panel_shock_wetbulb_7_day = [
-    update_formula_search_replace(spec, "tmean_c_dev", "wetbulb_7d_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "wetbulb_7d_dev")
     for spec in panel_shock_specs
 ]
 make_shock_regression_table(
@@ -213,7 +224,7 @@ make_shock_regression_table(
 
 ```{python}
 panel_shock_hot30_7_day = [
-    update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "hot30_7d_dev")
     for spec in panel_shock_specs
 ]
 make_shock_regression_table(
@@ -225,3 +236,34 @@ make_shock_regression_table(
 ```
 
 :::
+
+
+# Robustness
+
+## Job Loss 
+
+```{python}
+jobloss_windows = [
+    ("3 mo", "job_loss_90d"),
+    ("6 mo", "job_loss_180d"),
+    ("9 mo", "job_loss_270d"),
+    ("1 yr", "job_loss_1_yr"),
+    ("18 mo", "job_loss_540d"),
+    ("2 yr", "job_loss_730d"),
+    ("36 mo", "job_loss_1095d"),
+    ("5 yr", "job_loss_1825d"),
+]
+jobloss_robustness_specs = [
+    update_formula_search_replace(jobloss, "job_loss_1_yr", job_loss_var)
+    for _, job_loss_var in jobloss_windows
+]
+rename_dict = {job_loss_var: f"Job Loss" for label, job_loss_var in jobloss_windows}
+# Append
+rename_dict[MAIN_TEMP_MEASURE] = "Heat"
+make_regression_table(
+    jobloss_robustness_specs,
+    rename=rename_dict,
+    keep=["Job Loss", "Heat", "Job Loss:Heat"],
+    titles=[f"{label}" for label, _ in jobloss_windows],
+)
+```
