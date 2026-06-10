@@ -1,4 +1,6 @@
 from pathlib import Path
+import re
+
 import pandas as pd
 from render import RegressionSpec
 
@@ -7,6 +9,44 @@ ANALYSIS_INPUT = PROJECT / "data" / "generated" / "30_analysis_table_input.parqu
 CONTROLS = "age + female + edu_yrs + married + widowed"
 FE_WAVE = "month+year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month+year+gadm_fullcode"
+FORMULA_SPLIT_PATTERN = re.compile(r"(\s+|[~+*:/|()])")
+
+
+def search_replace_term(text: str, old_term: str, new_term: str) -> tuple[str, bool]:
+    """Replace whole formula tokens in text, preserving separators."""
+    parts = FORMULA_SPLIT_PATTERN.split(text)
+    found = False
+    for index, part in enumerate(parts):
+        if part == old_term:
+            parts[index] = new_term
+            found = True
+    return "".join(parts), found
+
+
+def update_formula_search_replace(
+    spec: RegressionSpec,
+    old_term: str,
+    new_term: str,
+) -> RegressionSpec:
+    """Return a spec with formula and displayed terms updated by whole-token replacement."""
+    formula, found = search_replace_term(spec.formula, old_term, new_term)
+    if not found:
+        raise ValueError(f"{old_term!r} not found in formula: {spec.formula}")
+
+    show_terms = None
+    if spec.show_terms is not None:
+        show_terms = frozenset(
+            search_replace_term(term, old_term, new_term)[0]
+            for term in spec.show_terms
+        )
+
+    return RegressionSpec(
+        title=spec.title,
+        formula=formula,
+        df=spec.df,
+        tags=spec.tags,
+        show_terms=show_terms,
+    )
 
 
 def shock_triple_diff(outcome: str, measure: str, shock: str) -> str:

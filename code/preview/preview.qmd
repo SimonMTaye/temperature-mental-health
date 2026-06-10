@@ -7,29 +7,89 @@ echo: false
 ---
 
 ```{python}
-import sys
-from pathlib import Path
-import pandas as pd
-
 from render import make_regression_table
-from specs import tempearture_sepc, palm_shock, fuel_shock, jobloss, coal_shock, palm_shock_panel, fuel_shock_panel, coal_shock_panel
+from specs import (
+    coal_shock,
+    coal_shock_panel,
+    fuel_shock,
+    fuel_shock_panel,
+    jobloss,
+    palm_shock,
+    palm_shock_panel,
+    update_formula_search_replace,
+)
+
+temperature_measure_specs = [
+    ("tmean_7d_dev", "7-day mean temperature deviation"),
+    ("hot30_7d_dev", "7-day hot-day count deviation"),
+    ("heatwave_7d_dev", "7-day heatwave-day count deviation"),
+]
+
+main_shock_specs = [palm_shock, fuel_shock, coal_shock, jobloss]
+panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
+
+temperature_measure_previews = [
+    {
+        "measure": measure,
+        "label": label,
+        "main_specs": [
+            update_formula_search_replace(spec, "tmean_c_dev", measure)
+            for spec in main_shock_specs
+        ],
+        "panel_specs": [
+            update_formula_search_replace(spec, "tmean_c_dev", measure)
+            for spec in panel_shock_specs
+        ],
+    }
+    for measure, label in temperature_measure_specs
+]
 ```
 
 
 ## Main Table
 
-```{python}
-make_regression_table(
-    specs=[palm_shock, fuel_shock, coal_shock, jobloss],
-)
-```
+::: {.panel-tabset}
 
-### Panel Style
-
-The regressions below omit group effects and instead include invidiual fixed effects
+### 7-day mean temperature deviation
 
 ```{python}
-make_regression_table(
-    specs=[palm_shock_panel, fuel_shock_panel, coal_shock_panel],
-)
+make_regression_table(specs=temperature_measure_previews[0]["main_specs"])
 ```
+
+#### Panel Style
+
+The regressions below omit group effects and instead include individual fixed effects
+
+```{python}
+make_regression_table(specs=temperature_measure_previews[0]["panel_specs"])
+```
+
+### 7-day hot-day count deviation
+
+```{python}
+make_regression_table(specs=temperature_measure_previews[1]["main_specs"])
+```
+
+#### Panel Style
+
+The regressions below omit group effects and instead include individual fixed effects
+
+```{python}
+make_regression_table(specs=temperature_measure_previews[1]["panel_specs"])
+```
+
+### 7-day heatwave-day count deviation
+
+```{python}
+make_regression_table(specs=temperature_measure_previews[2]["main_specs"])
+```
+
+#### Panel Style
+
+The regressions below omit group effects and instead include individual fixed effects
+
+```{python}
+make_regression_table(specs=temperature_measure_previews[2]["panel_specs"])
+```
+
+:::
