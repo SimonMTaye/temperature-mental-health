@@ -8,10 +8,25 @@ echo: false
 ---
 
 ```{python}
+from dataclasses import replace
+
+import numpy as np
 import pandas as pd
+from plotnine import (
+    aes,
+    coord_flip,
+    element_text,
+    geom_col,
+    ggplot,
+    labs,
+    scale_fill_manual,
+    theme,
+    theme_minimal,
+)
 from scipy import stats
 from tableone import TableOne
 
+from caching import run_regression_with_caching
 from dictionary import VARIABLE_LABELS
 from render import make_shock_regression_table, make_regression_table
 from specs import (
@@ -382,5 +397,110 @@ make_regression_table(
     rename=rename_dict,
     keep=["Job Loss", "Heat", "Job Loss:Heat"],
     titles=[f"{label}" for label, _ in jobloss_windows],
+)
+```
+
+## Fuel Cut Placebo Dates
+
+```{python}
+fuel_placebo_rng = np.random.default_rng(20260610)
+fuel_placebo_df = analysis_df[analysis_df["wave"] == "IFLS5"].copy()
+fuel_placebo_df["interview_date"] = pd.to_datetime(
+    fuel_placebo_df["interview_datetime"]
+).dt.normalize()
+
+fuel_placebo_dates = sorted(
+    pd.Timestamp(date)
+    for date in fuel_placebo_rng.choice(
+        pd.date_range(
+            fuel_placebo_df["interview_date"].min() + pd.Timedelta(days=1),
+            fuel_placebo_df["interview_date"].max() - pd.Timedelta(days=1),
+            freq="D",
+        ).to_numpy(),
+        size=10,
+        replace=False,
+    )
+)
+fuel_cutoff_dates = [pd.Timestamp("2014-11-18"), *fuel_placebo_dates]
+fuel_cutoff_posts = [
+    "post_subsidy",
+    *[f"post_{cutoff_date:%Y%m%d}" for cutoff_date in fuel_placebo_dates],
+]
+
+for cutoff_date, post_var in zip(fuel_placebo_dates, fuel_cutoff_posts[1:], strict=True):
+    fuel_placebo_df[post_var] = (
+        fuel_placebo_df["interview_date"] >= cutoff_date
+    ).astype(int)
+
+fuel_cutoff_specs = [replace(fuel_shock, df=fuel_placebo_df, title="2014-11-18")]
+for cutoff_date, post_var in zip(fuel_placebo_dates, fuel_cutoff_posts[1:], strict=True):
+    cutoff_spec = update_formula_search_replace(fuel_shock, "post_subsidy", post_var)
+    fuel_cutoff_specs.append(
+        replace(cutoff_spec, df=fuel_placebo_df, title=cutoff_date.strftime("%Y-%m-%d"))
+    )
+
+make_shock_regression_table(
+    fuel_cutoff_specs,
+    group="urban_vehicle_hh_ifls4",
+    post=fuel_cutoff_posts,
+    temperature=MAIN_TEMP_MEASURE,
+)
+```
+
+## Fuel Cut Expenditure Placebos
+
+```{python}
+def fuel_expenditure_spec(spec, post_var):
+    expenditure_spec = update_formula_search_replace(spec, "cesd_z", "pce_log")
+    formula = expenditure_spec.formula.replace(f" * {MAIN_TEMP_MEASURE}", "")
+    term = f"urban_vehicle_hh_ifls4:{post_var}"
+    return replace(expenditure_spec, formula=formula, show_terms=frozenset([term]))
+
+
+fuel_expenditure_specs = [
+    fuel_expenditure_spec(spec, post_var)
+    for spec, post_var in zip(fuel_cutoff_specs, fuel_cutoff_posts, strict=True)
+]
+fuel_expenditure_rows = []
+for spec, post_var, cutoff_date in zip(
+    fuel_expenditure_specs,
+    fuel_cutoff_posts,
+    fuel_cutoff_dates,
+    strict=True,
+):
+    coef_table = run_regression_with_caching(spec).coef_table
+    term = f"urban_vehicle_hh_ifls4:{post_var}"
+    fuel_expenditure_rows.append(
+        {
+            "date": cutoff_date.strftime("%Y-%m-%d"),
+            "coefficient": coef_table.loc[term, "b"],
+            "cutoff": "True post date" if post_var == "post_subsidy" else "Placebo date",
+        }
+    )
+
+fuel_expenditure_coefs = pd.DataFrame(fuel_expenditure_rows).sort_values(
+    "coefficient",
+    key=lambda values: values.abs(),
+)
+fuel_expenditure_coefs["date"] = pd.Categorical(
+    fuel_expenditure_coefs["date"],
+    categories=fuel_expenditure_coefs["date"],
+    ordered=True,
+)
+
+(
+    ggplot(fuel_expenditure_coefs, aes(x="date", y="coefficient", fill="cutoff"))
+    + geom_col()
+    + coord_flip()
+    + scale_fill_manual(
+        values={"True post date": "#1b9e77", "Placebo date": "#7570b3"}
+    )
+    + labs(
+        x="Cutoff date",
+        y="Urban vehicle household x post cutoff coefficient",
+        fill="Cutoff",
+    )
+    + theme_minimal()
+    + theme(axis_text_y=element_text(size=8))
 )
 ```
