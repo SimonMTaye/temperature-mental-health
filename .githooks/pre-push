@@ -21,9 +21,8 @@ if [ ! -f "$output" ]; then
 fi
 
 if [ -n "$(git status --porcelain -- "$output")" ]; then
-  echo "error: $output changed after local preview render." >&2
-  echo "Commit the rendered preview before pushing:" >&2
-  echo "  git add $output && git commit --amend --no-edit" >&2
-  echo "or commit it in a new commit." >&2
+  git add "$output"
+  git commit -m "[AUTO] Commit new preview"
+  echo "Created preview commit for $output. Re-run git push to include it." >&2
   exit 1
 fi
