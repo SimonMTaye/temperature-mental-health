@@ -122,6 +122,9 @@ def add_daily_features(temp: pd.DataFrame) -> pd.DataFrame:
     temp["tmean_7d"] = grouped["tmean_c"].transform(
         lambda s: s.rolling(7, min_periods=4).mean()
     )
+    temp["tmin_7d"] = grouped["tmin_c"].transform(
+        lambda s: s.rolling(7, min_periods=4).mean()
+    )
     temp["wetbulb_7d"] = grouped["wetbulb_c"].transform(
         lambda s: s.rolling(7, min_periods=4).mean()
     )
@@ -163,6 +166,7 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         "tmean_base30",
         "tmean_lead7",
         "tmean_7d",
+        "tmin_7d",
         "wetbulb_c",
         "wetbulb_7d",
         "hot30_7d",
@@ -188,6 +192,7 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         "tmax_c",
         "tmin_c",
         "tmean_7d",
+        "tmin_7d",
         "wetbulb_c",
         "wetbulb_7d",
         "hot30_7d",
