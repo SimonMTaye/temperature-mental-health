@@ -19,30 +19,8 @@ from specs import (
     update_formula_search_replace,
 )
 
-temperature_measure_specs = [
-    ("tmean_7d_dev", "7-day mean temperature deviation"),
-    ("hot30_7d_dev", "7-day hot-day count deviation"),
-    ("heatwave_7d_dev", "7-day heatwave-day count deviation"),
-]
-
 main_shock_specs = [palm_shock, fuel_shock, coal_shock, jobloss]
 panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
-
-temperature_measure_previews = [
-    {
-        "measure": measure,
-        "label": label,
-        "main_specs": [
-            update_formula_search_replace(spec, "tmean_c_dev", measure)
-            for spec in main_shock_specs
-        ],
-        "panel_specs": [
-            update_formula_search_replace(spec, "tmean_c_dev", measure)
-            for spec in panel_shock_specs
-        ],
-    }
-    for measure, label in temperature_measure_specs
-]
 ```
 
 
@@ -50,46 +28,67 @@ temperature_measure_previews = [
 
 ::: {.panel-tabset}
 
-### 7-day mean temperature deviation
+### Daily Mean
 
 ```{python}
-make_regression_table(specs=temperature_measure_previews[0]["main_specs"])
+make_regression_table(main_shock_specs)
 ```
 
-#### Panel Style
+### 7-day mean
+
+```{python}
+main_shock_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
+    for spec in main_shock_specs
+]
+make_regression_table(main_shock_7_day)
+```
+
+### 7-day hot days
+
+```{python}
+main_shock_hot30_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
+    for spec in main_shock_specs
+]
+make_regression_table(main_shock_hot30_7_day)
+```
+
+
+:::
+
+## Panel Style
 
 The regressions below omit group effects and instead include individual fixed effects
 
+
+::: {.panel-tabset}
+
+### Daily Mean
+
 ```{python}
-make_regression_table(specs=temperature_measure_previews[0]["panel_specs"])
+make_regression_table(panel_shock_specs)
 ```
 
-### 7-day hot-day count deviation
+
+### 7-day mean
 
 ```{python}
-make_regression_table(specs=temperature_measure_previews[1]["main_specs"])
+panel_shock_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "tmean_7d_dev")
+    for spec in panel_shock_specs
+]
+make_regression_table(panel_shock_7_day)
 ```
 
-#### Panel Style
-
-The regressions below omit group effects and instead include individual fixed effects
+### 7-day hot days
 
 ```{python}
-make_regression_table(specs=temperature_measure_previews[1]["panel_specs"])
-```
-
-### 7-day heatwave-day count deviation
-
-```{python}
-make_regression_table(specs=temperature_measure_previews[2]["main_specs"])
-```
-
-#### Panel Style
-
-The regressions below omit group effects and instead include individual fixed effects
-
-```{python}
-make_regression_table(specs=temperature_measure_previews[2]["panel_specs"])
+panel_shock_hot30_7_day = [
+    update_formula_search_replace(spec, "tmean_c_dev", "hot30_7d_dev")
+    for spec in panel_shock_specs
+]
+make_regression_table(panel_shock_hot30_7_day)
 ```
 
 :::
