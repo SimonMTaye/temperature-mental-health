@@ -53,7 +53,7 @@ analysis_df["ifls5"] = analysis_df["wave"] == "IFLS5"
 wave5_df = analysis_df[analysis_df["ifls5"]].copy()
 
 
-tempearture_sepc = RegressionSpec(
+temperature_spec = RegressionSpec(
     title="Main Effects of Temperature",
     formula=f"cesd_z ~ tmean_c_dev + {CONTROLS} | {FE_WAVE}",
     df=analysis_df,
