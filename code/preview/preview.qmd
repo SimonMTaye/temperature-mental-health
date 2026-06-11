@@ -117,6 +117,12 @@ make_regression_table(
 )
 ```
 
+::: {.callout-note title="Non-linear Effects of Temperature" collapse=true}
+
+Following Fritz, 2026 I estimate the non-linear impacts of temperature on mental health. I found no effect for most bins except that cooler days  when using regular temperature improve mental health but warmer wet-bulb days also improve temperature. I am not sure how to reconcile this; I also want to flag that temperature, in our data, has a limited range
+
+::: {.panel-tabset}
+
 #### Past 30-Day Mean Temperature Bins
 
 ```{python}
@@ -199,6 +205,10 @@ make_past30_temperature_bin_plot(
     "Past 30-Day Wet-Bulb Temperature Effects",
 )
 ```
+
+:::
+
+:::
 
 ### Sleep Hours
 
