@@ -13,6 +13,7 @@ from log import log
 
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
+PAST30_TEMP_BIN_WIDTH = 1.5
 
 
 def _utc_offset_hours(province_code: int) -> int:
@@ -27,6 +28,51 @@ def _utc_offset_hours(province_code: int) -> int:
 
 def _rolling_mean_excluding_today(s: pd.Series, window: int, min_periods: int) -> pd.Series:
     return s.rolling(window, min_periods=min_periods).mean().shift(1)
+
+
+def add_past30_bin_counts(
+    temp: pd.DataFrame,
+    *,
+    source_col: str,
+) -> pd.DataFrame:
+    """Count prior-30-day local temperatures in percentile-aligned 1.5 C bins."""
+    p5, p95 = temp[source_col].dropna().quantile([0.05, 0.95])
+    last_edge = np.floor(p95 / PAST30_TEMP_BIN_WIDTH) * PAST30_TEMP_BIN_WIDTH
+    first_edge = last_edge - (
+        round((last_edge - p5) / PAST30_TEMP_BIN_WIDTH) * PAST30_TEMP_BIN_WIDTH
+    )
+    n_edges = int(round((last_edge - first_edge) / PAST30_TEMP_BIN_WIDTH)) + 1
+    edges = np.linspace(
+        first_edge,
+        last_edge,
+        n_edges,
+    )
+    ranges = list(zip(edges[:-1], edges[1:], strict=True))
+    ranges.append((edges[-1], np.inf))
+
+    bin_names = []
+    for lower, upper in ranges:
+        lower_sign = "m" if lower < 0 else ""
+        lower_suffix = f"{lower_sign}{abs(lower):.1f}".replace(".", "p")
+        if np.isposinf(upper):
+            suffix = f"gt_{lower_suffix}"
+        else:
+            upper_sign = "m" if upper < 0 else ""
+            upper_suffix = f"{upper_sign}{abs(upper):.1f}".replace(".", "p")
+            suffix = f"{lower_suffix}_{upper_suffix}"
+        name = f"{source_col}_past30_{suffix}"
+        bin_names.append(name)
+        in_bin = temp[source_col].ge(lower) & temp[source_col].lt(upper)
+        if np.isposinf(upper):
+            in_bin = temp[source_col].ge(lower)
+        temp[name] = (
+            in_bin.astype(float)
+            .where(temp[source_col].notna())
+            .groupby(temp["gadm_fullcode"])
+            .transform(lambda s: s.shift(1).rolling(30).sum())
+        )
+    log(f"built {len(bin_names)} past-30-day bins for {source_col}: {bin_names}")
+    return temp
 
 
 def saturation_vapor_pressure_pa(temp_c: pd.Series) -> pd.Series:
@@ -172,6 +218,14 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         "hot30_7d",
         "heatwave_7d",
     ]
+    keep.extend(
+        sorted(
+            col
+            for col in temp
+            if col.startswith("tmean_c_past30_")
+            or col.startswith("wetbulb_c_past30_")
+        )
+    )
     out = ind.merge(
         temp[keep],
         left_on=["gadm_fullcode", "interview_date"],
@@ -252,6 +306,8 @@ def build_processed_temperature() -> pd.DataFrame:
         wetbulb_daily, on=["gadm_fullcode", "date"], how="left", validate="1:1"
     )
     temp = add_daily_features(temp)
+    temp = add_past30_bin_counts(temp, source_col="tmean_c")
+    temp = add_past30_bin_counts(temp, source_col="wetbulb_c")
     out = merge_daily(ind, temp)
     out = add_hourly_temperature(out, hourly)
     out = out[list(PROCESSED_TEMPERATURE_SCHEMA.columns)]
