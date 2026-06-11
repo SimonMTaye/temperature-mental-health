@@ -70,6 +70,21 @@ Unless specified otherwise, temperature refers to the 7 day mean of temperature
 
 ## Temperature Effects
 
+Here, we estimate the impact of temperature on mental health directly, without the influence of shocks.
+
+In particular, we estimate
+
+$$
+Y_{ict} =
++ \beta_1 Temp_{ict}
++ X_{ict}'\Gamma
++ \alpha_c + \lambda_m + \delta_y + \pi_w
++ \varepsilon_{ict},
+$$
+
+where $Y_{ict}$ is respondent $i$'s CES-D z-score (or sleep hours) in community $c$ at interview date $t$, $Temp_{ict}$ is the temperature measure shown in the tab, and the remaining terms are demographic and fixed effects described in the main effects section
+
+
 ::: {.panel-tabset}
 
 ### CES-D
@@ -503,6 +518,8 @@ make_balance_table(balance_data_wetbulb, "temperature_median_split")
 
 ## Job Loss 
 
+In the job loss regressions above, job loss is defined as having lost your job in the past year and being currently unemployed. The regressions below vary the window in which job loss is defined (the model headers define the window)
+
 ```{python}
 jobloss_windows = [
     ("3 mo", "job_loss_90d"),
@@ -518,6 +535,43 @@ jobloss_robustness_specs = [
     update_formula_search_replace(jobloss, "job_loss_1_yr", job_loss_var)
     for _, job_loss_var in jobloss_windows
 ]
+jobloss_complete_case_columns = [
+    "pidlink",
+    "cesd_z",
+    MAIN_TEMP_MEASURE,
+    "age",
+    "female",
+    "edu_yrs",
+    "married",
+    "widowed",
+    "month",
+    "year",
+    "ifls5",
+    "gadm_fullcode",
+]
+jobloss_fixed_effect_columns = ["month", "year", "ifls5", "gadm_fullcode"]
+
+
+def jobloss_estimation_frame(job_loss_var):
+    frame = analysis_df.dropna(subset=[*jobloss_complete_case_columns, job_loss_var])
+    while True:
+        keep = pd.Series(True, index=frame.index)
+        for fixed_effect in jobloss_fixed_effect_columns:
+            keep &= frame.groupby(fixed_effect)[fixed_effect].transform("size") > 1
+        if keep.all():
+            return frame
+        frame = frame.loc[keep]
+
+
+def count_jobloss_treated_people(job_loss_var):
+    frame = jobloss_estimation_frame(job_loss_var)
+    return f"{frame.loc[frame[job_loss_var].eq(1), 'pidlink'].nunique():,}"
+
+
+jobloss_treated_people = [
+    count_jobloss_treated_people(job_loss_var)
+    for _, job_loss_var in jobloss_windows
+]
 rename_dict = {job_loss_var: f"Job Loss" for label, job_loss_var in jobloss_windows}
 # Append
 rename_dict[MAIN_TEMP_MEASURE] = "Heat"
@@ -526,10 +580,13 @@ make_regression_table(
     rename=rename_dict,
     keep=["Job Loss", "Heat", "Job Loss:Heat"],
     titles=[f"{label}" for label, _ in jobloss_windows],
+    custom_model_stats={"People with job loss": jobloss_treated_people},
 )
 ```
 
 ## Fuel Cut Placebo Dates
+
+The fuel shock specification uses the removal of the fuel subsidies as a shock. To test that this was indeed a shock whose interaction with mental health is causing impact, the figures report the main coefficient on the variable of interest, $(H_{ict} \times G_i \times P_t)$, where $P_t$ is arbitrarily chosen date (the true fuel subsidy cut date is November 18, 2014 and highlighted in the figure). 
 
 ```{python}
 fuel_placebo_rng = np.random.default_rng(20260610)
@@ -577,19 +634,18 @@ fuel_true_cutoff_row = pd.DataFrame(
         "cutoff_type": ["True post date"],
     }
 )
-fuel_cutoffs = (
-    pd.concat([fuel_true_cutoff_row, fuel_placebo_cutoffs], ignore_index=True)
-    .assign(
-        title=lambda df: df["cutoff_date"].dt.strftime("%Y-%m-%d"),
-        pre_n=lambda df: [
-            int((fuel_placebo_df["interview_date"] < cutoff_date).sum())
-            for cutoff_date in df["cutoff_date"]
-        ],
-        post_n=lambda df: [
-            int((fuel_placebo_df["interview_date"] >= cutoff_date).sum())
-            for cutoff_date in df["cutoff_date"]
-        ],
-    )
+fuel_cutoffs = pd.concat(
+    [fuel_true_cutoff_row, fuel_placebo_cutoffs], ignore_index=True
+).assign(
+    title=lambda df: df["cutoff_date"].dt.strftime("%Y-%m-%d"),
+    pre_n=lambda df: [
+        int((fuel_placebo_df["interview_date"] < cutoff_date).sum())
+        for cutoff_date in df["cutoff_date"]
+    ],
+    post_n=lambda df: [
+        int((fuel_placebo_df["interview_date"] >= cutoff_date).sum())
+        for cutoff_date in df["cutoff_date"]
+    ],
 )
 
 fuel_placebo_post_columns = {
@@ -617,24 +673,6 @@ def fuel_cutoff_spec(row):
         show_terms=frozenset([term]),
     )
 
-
-fuel_table_cutoffs = fuel_cutoffs.head(11)
-fuel_table_specs = [
-    fuel_cutoff_spec(row) for row in fuel_table_cutoffs.itertuples(index=False)
-]
-
-make_shock_regression_table(
-    fuel_table_specs,
-    group="urban_vehicle_hh_ifls4",
-    post=fuel_table_cutoffs["post_var"].tolist(),
-    temperature=MAIN_TEMP_MEASURE,
-)
-```
-
-## Fuel Cut Placebos
-
-```{python}
-#| fig-height: 12
 
 fuel_shock_rows = []
 fuel_plot_specs = [
