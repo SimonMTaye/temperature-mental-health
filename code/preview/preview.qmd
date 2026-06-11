@@ -31,8 +31,10 @@ from tableone import TableOne
 
 from caching import run_regression_with_caching
 from dictionary import VARIABLE_LABELS
-from render import make_shock_regression_table, make_regression_table
+from render import RegressionSpec, make_shock_regression_table, make_regression_table
 from specs import (
+    CONTROLS,
+    FE_WAVE,
     analysis_df,
     jobloss,
     coal_shock,
@@ -97,6 +99,89 @@ make_regression_table(
         "7-day Hot Days",
     ],
     rename={k: "Heat" for k in temperature_measures},
+)
+```
+
+#### Past 30-Day Mean Temperature Bins
+
+```{python}
+def make_past30_temperature_bin_plot(prefix, x_label, title):
+    rows = []
+    for col in [col for col in analysis_df.columns if col.startswith(prefix)]:
+        suffix = col.split("_past30_", maxsplit=1)[1]
+        if suffix.startswith("gt_"):
+            lower = float(suffix.removeprefix("gt_").replace("m", "-").replace("p", "."))
+            upper = np.inf
+            label = f">{lower:g}"
+        else:
+            lower_text, upper_text = suffix.split("_", maxsplit=1)
+            lower = float(lower_text.replace("m", "-").replace("p", "."))
+            upper = float(upper_text.replace("m", "-").replace("p", "."))
+            label = f"{lower:g}-{upper:g}"
+        rows.append(
+            {
+                "term": col,
+                "lower": lower,
+                "upper": upper,
+                "label": label,
+                "mean_days": analysis_df[col].mean(),
+            }
+        )
+    plot_data = pd.DataFrame(rows).sort_values(["lower", "upper"]).reset_index(drop=True)
+    reference = plot_data.loc[plot_data["upper"].lt(np.inf), "mean_days"].idxmax()
+    reference_term = plot_data.loc[reference, "term"]
+    included = [col for col in plot_data["term"] if col != reference_term]
+
+    # Identification follows the existing temperature spec: daily weather variation
+    # around interview timing, conditional on controls and community, month, year,
+    # and wave fixed effects.
+    spec = RegressionSpec(
+        title=title,
+        formula=f"cesd_z ~ {' + '.join(included)} + {CONTROLS} | {FE_WAVE}",
+        df=analysis_df,
+        tags=frozenset(["past30-temperature-bin-effect"]),
+        show_terms=frozenset(included),
+    )
+    coef_table = run_regression_with_caching(spec).coef_table
+    missing_terms = sorted(set(included).difference(coef_table.index.astype(str)))
+    assert not missing_terms, f"Missing past-30-day bin coefficients: {missing_terms}"
+
+    for row in plot_data.itertuples():
+        if row.term == reference_term:
+            plot_data.loc[row.Index, ["estimate", "ci95l", "ci95u"]] = [0.0, np.nan, np.nan]
+            continue
+        plot_data.loc[row.Index, ["estimate", "ci95l", "ci95u"]] = [
+            coef_table.loc[row.term, "b"],
+            coef_table.loc[row.term, "ci95l"],
+            coef_table.loc[row.term, "ci95u"],
+        ]
+    label_order = plot_data["label"].tolist()
+    return (
+        ggplot(plot_data, aes(x="label", y="estimate"))
+        + geom_hline(yintercept=0, color="#9ca3af", size=0.5)
+        + geom_errorbar(aes(ymin="ci95l", ymax="ci95u"), width=0.12, color="#2563eb")
+        + geom_point(color="#2563eb", size=2)
+        + scale_x_discrete(limits=label_order)
+        + labs(title=title, x=x_label, y="Effect on CES-D z-score")
+        + theme_minimal()
+        + theme(axis_text_x=element_text(rotation=45, hjust=1))
+    )
+
+
+make_past30_temperature_bin_plot(
+    "tmean_c_past30_",
+    "Mean temperature in past 30 days",
+    "Past 30-Day Mean Temperature Effects",
+)
+```
+
+#### Past 30-Day Wet-Bulb Temperature Bins
+
+```{python}
+make_past30_temperature_bin_plot(
+    "wetbulb_c_past30_",
+    "Wet-bulb temperature in past 30 days",
+    "Past 30-Day Wet-Bulb Temperature Effects",
 )
 ```
 

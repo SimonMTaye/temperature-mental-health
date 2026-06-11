@@ -70,6 +70,9 @@ collection so both projects benefit. See `../simon/resources/summary.md` and
   tooling expansion.
 - Code should made to read top-down. If the code requires decomposition for clarity then functions names should be clear
   and such that the final main funciton can be read like a set of instructions telling the reader what is being done
+- Keep Pandera schemas explicit and human-readable. Prefer listing concrete
+  generated columns directly, even with some duplication, and do not use regex
+  pattern-matching columns in schemas.
 - If you add dev tooling or workflows, document the exact commands in the
   relevant repo guide. Ask the user before doing so
 - **Identification framing:** within-individual variation across waves with
