@@ -49,6 +49,7 @@ def make_regression_table(
     rename: dict[str, str] | list[dict[str, str]] | None = None,
     keep: list[str] | None = None,
     order: list[str] | None = None,
+    **etable_kwargs: object,
 ) -> mt.ETable:
     """Run a set of regression specifications and combine results into a table."""
 
@@ -71,15 +72,15 @@ def make_regression_table(
                 for term in spec.show_terms
             )
         )
-    return mt.ETable(
-        models,
-        model_heads=model_heads,
-        keep=keep,
-        order=order,
-        exact_match=False,
-        labels=VARIABLE_LABELS,
-        felabels=VARIABLE_LABELS,
-    )
+    default_etable_kwargs = {
+        "model_heads": model_heads,
+        "keep": keep,
+        "order": order,
+        "exact_match": False,
+        "labels": VARIABLE_LABELS,
+        "felabels": VARIABLE_LABELS,
+    }
+    return mt.ETable(models, **{**default_etable_kwargs, **etable_kwargs})
 
 
 def make_shock_regression_table(
