@@ -9,10 +9,27 @@ warning: false
 ---
 
 ```{python}
+from dataclasses import replace
+
+import numpy as np
 import pandas as pd
+from plotnine import (
+    aes,
+    element_text,
+    geom_errorbar,
+    geom_hline,
+    geom_point,
+    ggplot,
+    labs,
+    scale_color_manual,
+    scale_x_discrete,
+    theme,
+    theme_minimal,
+)
 from scipy import stats
 from tableone import TableOne
 
+from caching import run_regression_with_caching
 from dictionary import VARIABLE_LABELS
 from render import make_shock_regression_table, make_regression_table
 from specs import (
@@ -44,6 +61,11 @@ shock_groups_panel = shock_groups[:-1]
 shock_posts_panel = shock_posts[:-1]
 ```
 
+::: {.callout-note}
+Unless specified otherwise, temperature refers to the 7 day mean of temperature
+:::
+
+
 # Main Effects
 
 ## Temperature Effects
@@ -61,7 +83,7 @@ temperature_measures = [
     "hot30_7d_dev",
 ]
 alt_temperature_specs = [
-    update_formula_search_replace(temperature_spec, "tmean_c_dev", measure)
+    update_formula_search_replace(temperature_spec, MAIN_TEMP_MEASURE, measure)
     for measure in temperature_measures
 ]
 
@@ -92,7 +114,7 @@ sleep_temperature_measures = [
 ]
 sleep_temperature_specs = [
     update_formula_search_replace(
-        update_formula_search_replace(temperature_spec, "tmean_c_dev", measure),
+        update_formula_search_replace(temperature_spec, MAIN_TEMP_MEASURE, measure),
         "cesd_z",
         "sleep_dur_h",
     )
@@ -176,7 +198,7 @@ main_shock_daily_mean = [
     for spec in main_shock_specs
 ]
 make_shock_regression_table(
-    main_shock_specs,
+    main_shock_daily_mean,
     group=shock_groups,
     post=shock_posts,
     temperature="tmean_c_dev",
@@ -261,7 +283,7 @@ panel_shock_daily_mean = [
     for spec in panel_shock_specs
 ]
 make_shock_regression_table(
-    panel_shock_specs,
+    panel_shock_daily_mean,
     group=shock_groups_panel,
     post=shock_posts_panel,
     temperature="tmean_c_dev",
@@ -471,6 +493,208 @@ make_regression_table(
     keep=["Job Loss", "Heat", "Job Loss:Heat"],
     titles=[f"{label}" for label, _ in jobloss_windows],
 )
+```
+
+## Fuel Cut Placebo Dates
+
+```{python}
+fuel_placebo_rng = np.random.default_rng(20260610)
+fuel_placebo_df = analysis_df[analysis_df["wave"] == "IFLS5"].copy()
+fuel_placebo_df["interview_date"] = pd.to_datetime(
+    fuel_placebo_df["interview_datetime"]
+).dt.normalize()
+
+fuel_true_cutoff = pd.Timestamp("2014-11-18")
+fuel_pre_placebo_candidate_dates = [
+    cutoff_date
+    for cutoff_date in pd.date_range(
+        fuel_placebo_df["interview_date"].min() + pd.Timedelta(days=1),
+        fuel_true_cutoff - pd.Timedelta(days=1),
+        freq="D",
+    )
+    if (fuel_placebo_df["interview_date"] < cutoff_date).sum() >= 100
+]
+fuel_n_pre_placebo_dates = min(100, len(fuel_pre_placebo_candidate_dates))
+fuel_pre_placebo_dates = sorted(
+    pd.Timestamp(date)
+    for date in fuel_placebo_rng.choice(
+        fuel_pre_placebo_candidate_dates,
+        size=fuel_n_pre_placebo_dates,
+        replace=False,
+    )
+)
+fuel_post_placebo_dates = list(
+    pd.date_range(
+        fuel_true_cutoff + pd.Timedelta(days=1),
+        fuel_true_cutoff + pd.Timedelta(days=30),
+        freq="D",
+    )
+)
+fuel_placebo_cutoffs = pd.DataFrame(
+    {"cutoff_date": sorted([*fuel_pre_placebo_dates, *fuel_post_placebo_dates])}
+).assign(
+    post_var=lambda df: df["cutoff_date"].dt.strftime("post_%Y%m%d"),
+    cutoff_type="Placebo date",
+)
+fuel_true_cutoff_row = pd.DataFrame(
+    {
+        "cutoff_date": [fuel_true_cutoff],
+        "post_var": ["post_subsidy"],
+        "cutoff_type": ["True post date"],
+    }
+)
+fuel_cutoffs = (
+    pd.concat([fuel_true_cutoff_row, fuel_placebo_cutoffs], ignore_index=True)
+    .assign(
+        title=lambda df: df["cutoff_date"].dt.strftime("%Y-%m-%d"),
+        pre_n=lambda df: [
+            int((fuel_placebo_df["interview_date"] < cutoff_date).sum())
+            for cutoff_date in df["cutoff_date"]
+        ],
+        post_n=lambda df: [
+            int((fuel_placebo_df["interview_date"] >= cutoff_date).sum())
+            for cutoff_date in df["cutoff_date"]
+        ],
+    )
+)
+
+fuel_placebo_post_columns = {
+    row.post_var: (fuel_placebo_df["interview_date"] >= row.cutoff_date).astype(int)
+    for row in fuel_cutoffs.query("post_var != 'post_subsidy'").itertuples(index=False)
+}
+fuel_placebo_df = pd.concat(
+    [
+        fuel_placebo_df,
+        pd.DataFrame(fuel_placebo_post_columns, index=fuel_placebo_df.index),
+    ],
+    axis=1,
+)
+
+
+def fuel_cutoff_spec(row):
+    spec = fuel_shock
+    if row.post_var != "post_subsidy":
+        spec = update_formula_search_replace(spec, "post_subsidy", row.post_var)
+    term = f"urban_vehicle_hh_ifls4:{row.post_var}:{MAIN_TEMP_MEASURE}"
+    return replace(
+        spec,
+        df=fuel_placebo_df,
+        title=row.title,
+        show_terms=frozenset([term]),
+    )
+
+
+fuel_table_cutoffs = fuel_cutoffs.head(11)
+fuel_table_specs = [
+    fuel_cutoff_spec(row) for row in fuel_table_cutoffs.itertuples(index=False)
+]
+
+make_shock_regression_table(
+    fuel_table_specs,
+    group="urban_vehicle_hh_ifls4",
+    post=fuel_table_cutoffs["post_var"].tolist(),
+    temperature=MAIN_TEMP_MEASURE,
+)
+```
+
+## Fuel Cut Placebos
+
+```{python}
+#| fig-height: 12
+
+fuel_shock_rows = []
+fuel_plot_specs = [
+    fuel_cutoff_spec(row) for row in fuel_cutoffs.itertuples(index=False)
+]
+for row, spec in zip(
+    fuel_cutoffs.itertuples(index=False), fuel_plot_specs, strict=True
+):
+    coef_table = run_regression_with_caching(spec).coef_table
+    term = f"urban_vehicle_hh_ifls4:{row.post_var}:{MAIN_TEMP_MEASURE}"
+    fuel_shock_rows.append(
+        {
+            "date": row.title,
+            "coefficient": coef_table.loc[term, "b"],
+            "ci95l": coef_table.loc[term, "ci95l"],
+            "ci95u": coef_table.loc[term, "ci95u"],
+            "pre_n": row.pre_n,
+            "post_n": row.post_n,
+            "cutoff": row.cutoff_type,
+        }
+    )
+
+fuel_shock_coefs = pd.DataFrame(fuel_shock_rows)
+fuel_shock_coef_sorted = fuel_shock_coefs.sort_values(
+    "coefficient",
+    key=lambda values: values.abs(),
+)
+fuel_shock_coef_sorted["date"] = pd.Categorical(
+    fuel_shock_coef_sorted["date"],
+    categories=fuel_shock_coef_sorted["date"].tolist(),
+    ordered=True,
+)
+fuel_shock_date_sorted = fuel_shock_coefs.sort_values("date")
+fuel_shock_date_sorted["date"] = pd.Categorical(
+    fuel_shock_date_sorted["date"],
+    categories=fuel_shock_date_sorted["date"].tolist(),
+    ordered=True,
+)
+fuel_label_every = 10
+fuel_true_label_offset = (
+    fuel_shock_date_sorted["cutoff"].tolist().index("True post date") % fuel_label_every
+)
+fuel_shock_blank_labels = {date: "" for date in fuel_shock_coef_sorted["date"]}
+fuel_shock_date_labels = {
+    row.date: f"{row.date}\nN=({row.pre_n:,} before - {row.post_n:,} after)"
+    if index % fuel_label_every == fuel_true_label_offset
+    else ""
+    for index, row in enumerate(fuel_shock_date_sorted.itertuples(index=False))
+}
+
+fuel_shock_coef_plot = (
+    ggplot(fuel_shock_coef_sorted, aes(x="date", y="coefficient", color="cutoff"))
+    + geom_hline(yintercept=0, color="red", linetype="dashed", size=0.5)
+    + geom_errorbar(aes(ymin="ci95l", ymax="ci95u"), width=0.15)
+    + geom_point(size=1.8)
+    + scale_color_manual(
+        values={"True post date": "#1b9e77", "Placebo date": "#7570b3"}
+    )
+    + scale_x_discrete(labels=fuel_shock_blank_labels)
+    + labs(
+        title="Sorted by coefficient magnitude",
+        x=None,
+        y="Fuel Shock x Heat Coefficient",
+    )
+    + theme_minimal()
+    + theme(
+        axis_text_y=element_text(size=8),
+        legend_position="none",
+    )
+)
+
+fuel_shock_date_plot = (
+    ggplot(fuel_shock_date_sorted, aes(x="date", y="coefficient", color="cutoff"))
+    + geom_hline(yintercept=0, color="red", linetype="dashed", size=0.5)
+    + geom_errorbar(aes(ymin="ci95l", ymax="ci95u"), width=0.15)
+    + geom_point(size=1.8)
+    + scale_color_manual(
+        values={"True post date": "#1b9e77", "Placebo date": "#7570b3"}
+    )
+    + scale_x_discrete(labels=fuel_shock_date_labels)
+    + labs(
+        title="Sorted by cutoff date",
+        x="Cutoff date",
+        y="Fuel Shock x Heat Coefficient",
+    )
+    + theme_minimal()
+    + theme(
+        axis_text_y=element_text(size=8),
+        axis_text_x=element_text(size=6, angle=45, hjust=1),
+        legend_position="none",
+    )
+)
+
+fuel_shock_coef_plot / fuel_shock_date_plot + theme(figure_size=(8, 12))
 ```
 
 # Glossary
