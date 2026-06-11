@@ -688,6 +688,9 @@ PROCESSED_TEMPERATURE_SCHEMA = pa.DataFrameSchema(
         "tmean_c_hour": pa.Column(float, nullable=True, coerce=True),
         "heat_hr_dev": pa.Column(float, nullable=True, coerce=True),
         "day_id": pa.Column(int, nullable=False, coerce=True),
+        "tmean_c_past30_lt_21p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
+        ),
         "tmean_c_past30_21p0_22p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
         ),
@@ -701,6 +704,9 @@ PROCESSED_TEMPERATURE_SCHEMA = pa.DataFrameSchema(
             float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
         ),
         "tmean_c_past30_gt_27p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
+        ),
+        "wetbulb_c_past30_lt_19p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
         ),
         "wetbulb_c_past30_19p5_21p0": pa.Column(
@@ -821,6 +827,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
                 "day_id",
             ],
         ),
+        "tmean_c_past30_lt_21p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
+        ),
         "tmean_c_past30_21p0_22p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
@@ -834,6 +843,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
         "tmean_c_past30_gt_27p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
+        ),
+        "wetbulb_c_past30_lt_19p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
         "wetbulb_c_past30_19p5_21p0": pa.Column(
