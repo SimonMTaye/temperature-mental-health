@@ -435,9 +435,43 @@ balance_data = make_temperature_balance_data(
     analysis_df,
     temperature=MAIN_TEMP_MEASURE,
 )
+
+
+def make_regression_balance_table(data):
+    fixed_effects = temperature_spec.formula.split("|", maxsplit=1)[1].strip()
+    rows = []
+    for variable in balance_variables:
+        spec = update_formula_search_replace(temperature_spec, "cesd_z", variable)
+        spec = replace(
+            spec,
+            df=data,
+            formula=f"{variable} ~ {MAIN_TEMP_MEASURE} | {fixed_effects}",
+            show_terms=frozenset([MAIN_TEMP_MEASURE]),
+        )
+        result = run_regression_with_caching(spec)
+        rows.append(
+            {
+                "Variable": balance_labels.get(variable, variable),
+                "Mean": data[variable].mean(),
+                "SD": data[variable].std(),
+                "P-value": result.coef_table.loc[MAIN_TEMP_MEASURE, "p"],
+            }
+        )
+    return pd.DataFrame(rows).round(3)
 ```
 
 ::: {.panel-tabset}
+
+### Regression p-values
+
+::: {.callout-note}
+Each row regresses the balance variable on the main temperature measure with the
+main CES-D fixed effects. The p-value is for the temperature coefficient.
+:::
+
+```{python}
+make_regression_balance_table(balance_data).style.hide(axis="index")
+```
 
 ### Median split
 
