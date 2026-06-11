@@ -359,12 +359,16 @@ make_shock_regression_table(
 
 
 ```{python}
-balance_variables = [
+balance_variables_demographic = [
     "age",
     "female",
     "edu_yrs",
     "married",
     "widowed",
+]
+
+balance_variables = [
+    *balance_variables_demographic,    
     "palm_farmer_hh_ifls4",
     "palm_shock_exposed",
     "urban_vehicle_hh_ifls4",
@@ -372,6 +376,7 @@ balance_variables = [
     "job_loss_1_yr",
     "job_loss_ifls5",
 ]
+
 balance_labels = {
     **VARIABLE_LABELS,
     "palm_shock_exposed": "Palm farmer x IFLS5",
@@ -458,6 +463,43 @@ def make_regression_balance_table(data):
             }
         )
     return pd.DataFrame(rows).round(3)
+
+
+def format_coef_pvalue(coefficient, p_value):
+    return f"{coefficient:.3f} [{p_value:.3f}]"
+
+
+def make_shock_balance_table(data, *, shock_variable, fixed_effects, base_spec):
+    rows = []
+    for variable in balance_variables_demographic:
+        if variable == shock_variable:
+            coefficient = 1.0
+            p_value = 0.0
+        else:
+            spec = replace(
+                base_spec,
+                df=data,
+                formula=f"{variable} ~ {shock_variable} | {fixed_effects}",
+                show_terms=frozenset([shock_variable]),
+            )
+            result = run_regression_with_caching(spec)
+            coef_row = result.coef_table.loc[shock_variable]
+            coefficient = coef_row["b"]
+            p_value = coef_row["p"]
+        rows.append(
+            {
+                "Variable": balance_labels.get(variable, variable),
+		"Mean": f"{data[variable].mean():.1f}",
+                "SD": f"{data[variable].std():.1f}",
+                "Coefficient [p-value]": format_coef_pvalue(
+                    coefficient,
+                    p_value,
+                ),
+            }
+        )
+    table = pd.DataFrame(rows)
+    table[["Mean", "SD"]] = table[["Mean", "SD"]].round(3)
+    return table
 ```
 
 ::: {.panel-tabset}
@@ -495,6 +537,57 @@ balance_data_wetbulb = make_temperature_balance_data(
     temperature="wetbulb_7d_dev",
 )
 make_balance_table(balance_data_wetbulb, "temperature_median_split")
+```
+
+:::
+
+## Shock Balances
+
+::: {.panel-tabset}
+
+### Fuel Shock
+
+```{python}
+fuel_balance_data = balance_data[
+    (balance_data["wave"] == "IFLS5")
+    & (balance_data["urban_vehicle_hh_ifls4"] == 1)
+].copy()
+fuel_balance_fixed_effects = fuel_shock.formula.split("|", maxsplit=1)[1].strip()
+make_shock_balance_table(
+    fuel_balance_data,
+    shock_variable="post_subsidy",
+    fixed_effects=fuel_balance_fixed_effects,
+    base_spec=fuel_shock,
+).style.hide(axis="index")
+```
+
+### Job Loss (1 yr)
+
+```{python}
+temperature_balance_fixed_effects = temperature_spec.formula.split("|", maxsplit=1)[
+    1
+].strip()
+make_shock_balance_table(
+    balance_data,
+    shock_variable="job_loss_1_yr",
+    fixed_effects=temperature_balance_fixed_effects,
+    base_spec=temperature_spec,
+).style.hide(axis="index")
+```
+
+### Unemployment
+
+::: {.callout-note}
+"unemployment" is not restricted to any window.
+:::
+
+```{python}
+make_shock_balance_table(
+    balance_data,
+    shock_variable="unemployed_since_then",
+    fixed_effects=temperature_balance_fixed_effects,
+    base_spec=temperature_spec,
+).style.hide(axis="index")
 ```
 
 :::
