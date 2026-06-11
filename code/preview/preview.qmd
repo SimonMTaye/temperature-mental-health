@@ -501,6 +501,43 @@ jobloss_robustness_specs = [
     update_formula_search_replace(jobloss, "job_loss_1_yr", job_loss_var)
     for _, job_loss_var in jobloss_windows
 ]
+jobloss_complete_case_columns = [
+    "pidlink",
+    "cesd_z",
+    MAIN_TEMP_MEASURE,
+    "age",
+    "female",
+    "edu_yrs",
+    "married",
+    "widowed",
+    "month",
+    "year",
+    "ifls5",
+    "gadm_fullcode",
+]
+jobloss_fixed_effect_columns = ["month", "year", "ifls5", "gadm_fullcode"]
+
+
+def jobloss_estimation_frame(job_loss_var):
+    frame = analysis_df.dropna(subset=[*jobloss_complete_case_columns, job_loss_var])
+    while True:
+        keep = pd.Series(True, index=frame.index)
+        for fixed_effect in jobloss_fixed_effect_columns:
+            keep &= frame.groupby(fixed_effect)[fixed_effect].transform("size") > 1
+        if keep.all():
+            return frame
+        frame = frame.loc[keep]
+
+
+def count_jobloss_treated_people(job_loss_var):
+    frame = jobloss_estimation_frame(job_loss_var)
+    return f"{frame.loc[frame[job_loss_var].eq(1), 'pidlink'].nunique():,}"
+
+
+jobloss_treated_people = [
+    count_jobloss_treated_people(job_loss_var)
+    for _, job_loss_var in jobloss_windows
+]
 rename_dict = {job_loss_var: f"Job Loss" for label, job_loss_var in jobloss_windows}
 # Append
 rename_dict[MAIN_TEMP_MEASURE] = "Heat"
@@ -509,6 +546,7 @@ make_regression_table(
     rename=rename_dict,
     keep=["Job Loss", "Heat", "Job Loss:Heat"],
     titles=[f"{label}" for label, _ in jobloss_windows],
+    custom_model_stats={"People with job loss": jobloss_treated_people},
 )
 ```
 
