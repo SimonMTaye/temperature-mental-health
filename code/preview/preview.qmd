@@ -119,7 +119,7 @@ make_regression_table(
 
 ::: {.callout-note title="Non-linear Effects of Temperature" collapse=true}
 
-Following Fritz, 2026 I estimate the non-linear impacts of temperature on mental health. I found no effect for most bins except that cooler days  when using regular temperature improve mental health but warmer wet-bulb days also improve temperature. I am not sure how to reconcile this; I also want to flag that temperature, in our data, has a limited range
+Following Fritz, 2026 I estimate the non-linear impacts of temperature on mental health. The effect of wetbulb is very linear with hotter days being better for mental health. For regular temperature, there is no clear pattern (most coeffs are close to null) with one coeff, days between 21-22.5 being an improvment over our reference temperature
 
 ::: {.panel-tabset}
 
@@ -130,7 +130,11 @@ def make_past30_temperature_bin_plot(prefix, x_label, title):
     rows = []
     for col in [col for col in analysis_df.columns if col.startswith(prefix)]:
         suffix = col.split("_past30_", maxsplit=1)[1]
-        if suffix.startswith("gt_"):
+        if suffix.startswith("lt_"):
+            lower = -np.inf
+            upper = float(suffix.removeprefix("lt_").replace("m", "-").replace("p", "."))
+            label = f"<{upper:g}"
+        elif suffix.startswith("gt_"):
             lower = float(suffix.removeprefix("gt_").replace("m", "-").replace("p", "."))
             upper = np.inf
             label = f">{lower:g}"
@@ -149,7 +153,10 @@ def make_past30_temperature_bin_plot(prefix, x_label, title):
             }
         )
     plot_data = pd.DataFrame(rows).sort_values(["lower", "upper"]).reset_index(drop=True)
-    reference = plot_data.loc[plot_data["upper"].lt(np.inf), "mean_days"].idxmax()
+    reference = plot_data.loc[
+        plot_data["lower"].gt(-np.inf) & plot_data["upper"].lt(np.inf),
+        "mean_days",
+    ].idxmax()
     reference_term = plot_data.loc[reference, "term"]
     included = [col for col in plot_data["term"] if col != reference_term]
 
