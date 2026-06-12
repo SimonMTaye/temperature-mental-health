@@ -369,9 +369,17 @@ ECONOMIC_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "job_loss_3_months": _binary_column(),
         # Most recent job-loss reason code, from TK46m.
         "job_loss_reason_code": pa.Column(float, nullable=True, coerce=True),
+        # Sector code for the last reported quit/fired job, from TK46G.
+        "job_loss_sector": pa.Column(
+            float, checks=pa.Check.between(1, 95), nullable=True, coerce=True
+        ),
         # One-year job-loss subtypes based on TK46m.
         "involuntary_loss_1_yr": _binary_column(),
         "family_loss_1_yr": _binary_column(),
+        # Current or primary job sector code from TK19AB.
+        "current_job_sector": pa.Column(
+            float, checks=pa.Check.between(1, 95), nullable=True, coerce=True
+        ),
         # Household owns a vehicle.
         "vehicle_owner": _binary_column(),
         # Household is in an urban area according to the screening file.

@@ -64,8 +64,10 @@ OUTPUT_COLUMNS = [
     "job_loss_6_months",
     "job_loss_3_months",
     "job_loss_reason_code",
+    "job_loss_sector",
     "involuntary_loss_1_yr",
     "family_loss_1_yr",
+    "current_job_sector",
     "vehicle_owner",
     "urban",
     "urban_vehicle_hh",
@@ -151,6 +153,8 @@ def _job_loss_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
     # 6 -> Prolonged sickness, 7, 8, 9 -> Family related (marriange, child, other) 95 -> Other
     out["job_loss_reason_code"] = pd.to_numeric(df.tk46m, errors="coerce")
     out.loc[~out.job_loss_reason_code.between(1, 95), "job_loss_reason_code"] = np.nan
+    out["job_loss_sector"] = pd.to_numeric(df.tk46g, errors="coerce")
+    out.loc[~out.job_loss_sector.between(1, 95), "job_loss_sector"] = np.nan
     out["involuntary_loss_5y"] = out.job_loss_reason_code.isin([1, 2, 3, 4, 5, 6])
     out["last_loss_year"] = clean_year(df.tk46dy)
     out["last_loss_month"] = clean_month(df.tk46dm)
@@ -180,6 +184,23 @@ def _unemployment(wave: str) -> pd.DataFrame:
         convert_categoricals=False,
     )
     return _unemployment_from_df(df, wave=wave)
+
+
+def _current_job_sector_from_df(df: pd.DataFrame, *, wave: str) -> pd.DataFrame:
+    """Preserve the current/primary job sector code from TK19AB."""
+    out = pd.DataFrame({"pidlink": df.pidlink})
+    out["current_job_sector"] = pd.to_numeric(df.tk19ab, errors="coerce")
+    out.loc[~out.current_job_sector.between(1, 95), "current_job_sector"] = np.nan
+    out["wave"] = wave
+    return out.drop_duplicates("pidlink")
+
+
+def _current_job_sector(wave: str) -> pd.DataFrame:
+    df = read_stata_df(
+        IFLS_FOLDERS[wave] / "b3a_tk2.dta",
+        convert_categoricals=False,
+    )
+    return _current_job_sector_from_df(df, wave=wave)
 
 
 def _vehicle_owner_from_df(
@@ -374,11 +395,15 @@ def main() -> pd.DataFrame:
     """Build and write the 20-prefixed financial shock sidecar."""
     jl = pd.concat([_job_loss("IFLS4"), _job_loss("IFLS5")], ignore_index=True)
     unemp = pd.concat([_unemployment("IFLS4"), _unemployment("IFLS5")])
+    current_job_sector = pd.concat(
+        [_current_job_sector("IFLS4"), _current_job_sector("IFLS5")]
+    )
     veh = pd.concat([_vehicle_owner("IFLS4"), _vehicle_owner("IFLS5")])
     urb = pd.concat([_urban("IFLS4"), _urban("IFLS5")])
     cash = pd.concat([_cash_transfer("IFLS4"), _cash_transfer("IFLS5")])
     log(
         f"job loss rows: {len(jl):,}; unemployment: {len(unemp):,}; "
+        f"current job sector: {len(current_job_sector):,}; "
         f"vehicle: {len(veh):,}; "
         f"urban: {len(urb):,}; cash: {len(cash):,}"
     )
@@ -394,6 +419,7 @@ def main() -> pd.DataFrame:
         .drop_duplicates(["pidlink", "wave"])
         .merge(jl, on=["pidlink", "wave"], how="left", validate="1:1")
         .merge(unemp, on=["pidlink", "wave"], how="left", validate="1:1")
+        .merge(current_job_sector, on=["pidlink", "wave"], how="left", validate="1:1")
         .merge(veh, on=["hhid", "wave"], how="left", validate="m:1")
         .merge(urb, on=["hhid", "wave"], how="left", validate="m:1")
         .merge(cash, on=["hhid", "wave"], how="left", validate="m:1")
