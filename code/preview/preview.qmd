@@ -139,10 +139,6 @@ def make_past30_temperature_bin_plot(prefix, x_label, title):
             lower = float(suffix.removeprefix("gt_").replace("m", "-").replace("p", "."))
             upper = np.inf
             label = f">{lower:g}"
-        elif suffix.startswith("lt_"):
-            lower = -np.inf
-            upper = float(suffix.removeprefix("lt_").replace("m", "-").replace("p", "."))
-            label = f"<{upper:g}"
         else:
             lower_text, upper_text = suffix.split("_", maxsplit=1)
             lower = float(lower_text.replace("m", "-").replace("p", "."))
@@ -716,7 +712,7 @@ make_shock_balance_table(
 
 # Robustness
 
-## Palm Farmer 
+## Palm Farmer
 
 ### Group Transitions
 
@@ -793,7 +789,7 @@ FARMER_PLACEBO_GROUPS = [
     ("Palm farmer in wave 5", "palm_farmer_hh_ifls5", FE_NO_WAVE),
     ("Farmer in non-palm region", "farmer_nonpalm_hh_ifls4", FE_NO_WAVE),
     (
-        "Farmer in parm region w/ non-palm main crop",
+        "Farmer in palm region w/ non-palm main crop",
         "palm_farmer_specific_main_crop_ifls4",
         FE_NO_WAVE,
     ),

@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pyfixest as pf
 
-CACHE_VERSION = "v1"
+CACHE_VERSION = "v2"
 CACHE_DIR = Path(".cache") / "regressions" / CACHE_VERSION
 DEFAULT_MODEL_STATS = ["N", "r2"]
 
@@ -16,6 +16,7 @@ DEFAULT_MODEL_STATS = ["N", "r2"]
 @dataclass(frozen=True)
 class CachedRegressionResult:
     coef_table: pd.DataFrame
+    vcov: pd.DataFrame
     depvar: str
     fixef: str | None
     stats: dict[str, Any]
@@ -94,14 +95,18 @@ def load_cached_result(cache_path: Path) -> CachedRegressionResult | None:
             cached_result = pickle.load(f)
     except (EOFError, pickle.UnpicklingError, AttributeError, ModuleNotFoundError):
         return None
-    if isinstance(cached_result, CachedRegressionResult):
+    if isinstance(cached_result, CachedRegressionResult) and hasattr(
+        cached_result, "vcov"
+    ):
         return cached_result
     return None
 
 
 def cached_result_from_model(model: Any) -> CachedRegressionResult:
+    coefficients = model.coef()
     return CachedRegressionResult(
         coef_table=coef_table_from_model(model),
+        vcov=pd.DataFrame(model._vcov, index=coefficients.index, columns=coefficients.index),
         depvar=getattr(model, "_depvar", "y"),
         fixef=getattr(model, "_fixef", None),
         stats=stats_from_model(model),

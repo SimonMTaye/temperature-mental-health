@@ -1,9 +1,11 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
+from math import erfc, sqrt
 import re
 
-import pandas as pd
 import maketables as mt
+import numpy as np
+import pandas as pd
 
 from caching import run_regression_with_caching
 from dictionary import VARIABLE_LABELS
@@ -18,6 +20,7 @@ SHOCK_TABLE_TERMS = [
     "post:heat",
     "post",
 ]
+MARGINAL_HEAT_EFFECT_TERMS = ["heat", "group:heat", "group:post:heat"]
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,29 @@ def make_regression_table(
         rename_terms(run_regression_with_caching(spec), rename_map)
         for spec, rename_map in zip(specs, renames, strict=True)
     ]
+
+    return _make_etable(
+        models,
+        specs,
+        renames,
+        titles=titles,
+        keep=keep,
+        order=order,
+        **etable_kwargs,
+    )
+
+
+def _make_etable(
+    models: list[object],
+    specs: list[RegressionSpec],
+    renames: list[dict[str, str]],
+    *,
+    titles: list[str] | None = None,
+    keep: list[str] | None = None,
+    order: list[str] | None = None,
+    **etable_kwargs: object,
+) -> mt.ETable:
+    """Combine fitted regression results into a table."""
 
     if titles and (len(titles) != len(specs)):
         raise ValueError("Length of titles must match length of specs")
@@ -110,12 +136,55 @@ def make_shock_regression_table(
             group_renames, post_renames, temperature_renames, strict=True
         )
     ]
+    models = [
+        rename_terms(run_regression_with_caching(spec), rename_map)
+        for spec, rename_map in zip(specs, renames, strict=True)
+    ]
 
-    return make_regression_table(
+    effects: list[object] = []
+    standard_errors: list[object] = []
+    for model in models:
+        coefs = model.coef_table["b"]
+        if any(term not in coefs.index for term in MARGINAL_HEAT_EFFECT_TERMS):
+            effects.append(np.nan)
+            standard_errors.append(np.nan)
+            continue
+
+        vcov = model.vcov.reindex(index=coefs.index, columns=coefs.index)
+        contrast = pd.Series(0.0, index=coefs.index)
+        contrast.loc[MARGINAL_HEAT_EFFECT_TERMS] = 1.0
+        variance = float(contrast @ vcov @ contrast)
+
+        effect = float(contrast @ coefs)
+        standard_error = float(np.sqrt(variance)) if variance >= 0 else np.nan
+        t_stat = effect / standard_error if standard_error > 0 else np.nan
+        p_value = erfc(abs(t_stat) / sqrt(2)) if not pd.isna(t_stat) else np.nan
+        stars = ""
+        if p_value < 0.01:
+            stars = "***"
+        elif p_value < 0.05:
+            stars = "**"
+        elif p_value < 0.10:
+            stars = "*"
+
+        effects.append(f"{effect:.3f}{stars}")
+        standard_errors.append(
+            f"{standard_error:.3f}" if not pd.isna(standard_error) else np.nan
+        )
+
+    custom_model_stats = {
+        "Heat effect on treated": effects,
+        "S.E.": standard_errors,
+        **etable_kwargs.pop("custom_model_stats", {}),
+    }
+
+    return _make_etable(
+        models,
         specs,
-        rename=renames,
+        renames,
         keep=SHOCK_TABLE_TERMS,
         order=SHOCK_TABLE_TERMS,
+        custom_model_stats=custom_model_stats,
         **etable_kwargs,
     )
 
@@ -144,7 +213,17 @@ def rename_terms(model, replacements: dict[str, str]):
         ],
         name=coef_table.index.name,
     )
-    return replace(model, coef_table=coef_table)
+
+    vcov = model.vcov.copy()
+    vcov.index = pd.Index(
+        [_replace_terms(term, replacements) for term in vcov.index.astype(str)],
+        name=vcov.index.name,
+    )
+    vcov.columns = pd.Index(
+        [_replace_terms(term, replacements) for term in vcov.columns.astype(str)],
+        name=vcov.columns.name,
+    )
+    return replace(model, coef_table=coef_table, vcov=vcov)
 
 
 def _replace_terms(text: str, replacements: dict[str, str]) -> str:
