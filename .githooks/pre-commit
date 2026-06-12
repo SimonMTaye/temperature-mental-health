@@ -4,20 +4,4 @@ set -eu
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-output="docs/index.html"
-rendered="code/preview/preview.html"
-
-mkdir -p docs
-rm -f "$output" "$rendered"
-(
-  cd code/preview
-  uv run quarto render preview.qmd --to html --output preview.html
-)
-mv "$rendered" "$output"
-
-if [ ! -f "$output" ]; then
-  echo "error: expected $output to exist after rendering" >&2
-  exit 1
-fi
-
-git add "$output"
+uv run preview --stage

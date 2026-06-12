@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 clean = "data.main:main"
+preview = "scripts.preview:main"
 
 [build-system]
 requires = ["setuptools>=69"]
