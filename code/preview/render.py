@@ -89,6 +89,7 @@ def make_shock_regression_table(
     group: str | Sequence[str],
     post: str | Sequence[str],
     temperature: str | Sequence[str],
+    **etable_kwargs: object,
 ) -> mt.ETable:
     """Run shock regressions and align group/post/heat terms across models."""
 
@@ -115,6 +116,7 @@ def make_shock_regression_table(
         rename=renames,
         keep=SHOCK_TABLE_TERMS,
         order=SHOCK_TABLE_TERMS,
+        **etable_kwargs,
     )
 
 
