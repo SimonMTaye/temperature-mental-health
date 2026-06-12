@@ -34,6 +34,7 @@ from dictionary import VARIABLE_LABELS
 from render import RegressionSpec, make_shock_regression_table, make_regression_table
 from specs import (
     CONTROLS,
+    FE_NO_WAVE,
     FE_WAVE,
     analysis_df,
     jobloss,
@@ -134,6 +135,10 @@ def make_past30_temperature_bin_plot(prefix, x_label, title):
             lower = float(suffix.removeprefix("gt_").replace("m", "-").replace("p", "."))
             upper = np.inf
             label = f">{lower:g}"
+        elif suffix.startswith("lt_"):
+            lower = -np.inf
+            upper = float(suffix.removeprefix("lt_").replace("m", "-").replace("p", "."))
+            label = f"<{upper:g}"
         else:
             lower_text, upper_text = suffix.split("_", maxsplit=1)
             lower = float(lower_text.replace("m", "-").replace("p", "."))
@@ -703,6 +708,113 @@ make_shock_balance_table(
 :::
 
 # Robustness
+
+## Palm Farmer Transitions
+
+```{python}
+palm_transition_ifls5 = analysis_df[analysis_df["wave"] == "IFLS5"].copy()
+palm_transition_table = pd.DataFrame(
+    [
+        {
+            "Group": "IFLS4 palm farmers still palm farmers in IFLS5",
+            "Respondents": palm_transition_ifls5.loc[
+                palm_transition_ifls5["palm_farmer_hh_ifls4"].eq(1)
+                & palm_transition_ifls5["palm_farmer_hh"].eq(1),
+                "pidlink",
+            ].nunique(),
+        },
+        {
+            "Group": "New IFLS5 palm farmers",
+            "Respondents": palm_transition_ifls5.loc[
+                palm_transition_ifls5["palm_farmer_hh_ifls4"].fillna(0).eq(0)
+                & palm_transition_ifls5["palm_farmer_hh"].eq(1),
+                "pidlink",
+            ].nunique(),
+        },
+    ]
+)
+palm_transition_table.style.hide(axis="index").format({"Respondents": "{:,}"})
+```
+
+## Farmer and Crop Placebos
+
+```{python}
+OTHER_MAIN_CROP_CODES = {2, 4, 22, 23, 95, 96}
+FARMER_PLACEBO_GROUPS = [
+    ("Palm farmer", "palm_farmer_hh_ifls4"),
+    ("Non-farmer in palm region", "nonfarmer_palm_region_ifls4"),
+    ("Farmer in non-palm region", "farmer_nonpalm_hh_ifls4"),
+    ("Palm-region farmer, non-other crop", "palm_farmer_nonother_main_crop_ifls4"),
+]
+
+
+def add_farmer_crop_placebo_variables(df):
+    out = df.copy()
+    baseline = (
+        out.loc[
+            out["wave"] == "IFLS4",
+            ["pidlink", "farmer_hh", "palm_region", "main_crop"],
+        ]
+        .rename(
+            columns={
+                "farmer_hh": "farmer_hh_ifls4",
+                "palm_region": "palm_region_ifls4",
+                "main_crop": "main_crop_ifls4",
+            }
+        )
+        .drop_duplicates("pidlink")
+    )
+    out = out.merge(baseline, on="pidlink", how="left", validate="m:1")
+    out["farmer_hh_ifls4"] = out["farmer_hh_ifls4"].fillna(0).astype(int)
+    out["palm_region_ifls4"] = out["palm_region_ifls4"].fillna(0).astype(int)
+    out["farmer_nonpalm_hh_ifls4"] = (
+        out["farmer_hh_ifls4"].eq(1) & out["palm_region_ifls4"].eq(0)
+    ).astype(int)
+    out["nonfarmer_palm_region_ifls4"] = (
+        out["farmer_hh_ifls4"].eq(0) & out["palm_region_ifls4"].eq(1)
+    ).astype(int)
+    main_crop = out["main_crop_ifls4"]
+    out["palm_farmer_nonother_main_crop_ifls4"] = (
+        out["farmer_hh_ifls4"].eq(1)
+        & out["palm_region_ifls4"].eq(1)
+        & main_crop.notna()
+        & ~main_crop.isin(OTHER_MAIN_CROP_CODES)
+    ).astype(int)
+    return out
+
+
+def make_farmer_placebo_specs(data):
+    specs = []
+    group_variables = []
+    group_members = []
+    pids = data.drop_duplicates("pidlink")
+    for title, group in FARMER_PLACEBO_GROUPS:
+        specs.append(
+            RegressionSpec(
+                title=title,
+                formula=f"cesd_z ~ {group} * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
+                df=data,
+                tags=frozenset(["farmer-crop-placebo"]),
+                show_terms=frozenset([f"{group}:ifls5:{MAIN_TEMP_MEASURE}"]),
+            )
+        )
+        group_variables.append(group)
+        group_members.append(f"{pids[group].sum():,}")
+    return specs, group_variables, group_members
+
+
+farmer_crop_placebo_df = add_farmer_crop_placebo_variables(analysis_df)
+farmer_placebo_specs, farmer_placebo_groups, farmer_placebo_members = (
+    make_farmer_placebo_specs(farmer_crop_placebo_df)
+)
+make_shock_regression_table(
+    farmer_placebo_specs,
+    group=farmer_placebo_groups,
+    post="ifls5",
+    temperature=MAIN_TEMP_MEASURE,
+    custom_model_stats={"Group members": farmer_placebo_members},
+)
+```
 
 ## Job Loss 
 

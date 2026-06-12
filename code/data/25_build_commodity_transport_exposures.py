@@ -47,6 +47,8 @@ OUTPUT_COLUMNS = [
     "pidlink",
     "wave",
     "agricultural",
+    "farmer_hh",
+    "main_crop",
     "palm_region",
     "palm_farmer_individual",
     "palm_farmer_individual_ifls4",
@@ -170,9 +172,25 @@ def _transport_share(wave: str) -> pd.DataFrame:
     )
 
 
+def _main_crop(wave: str) -> pd.DataFrame:
+    """Read the household's most valuable crop or livestock from IFLS b2_ut1."""
+    folder = IFLS_FOLDERS[wave]
+    hhid_column = HHID_COLUMNS[wave]
+    ut1 = read_stata_df(folder / "b2_ut1.dta", convert_categoricals=False)
+    out = ut1[[hhid_column, "ut07a"]].rename(
+        columns={hhid_column: "hhid", "ut07a": "main_crop"}
+    )
+    out["main_crop"] = pd.to_numeric(out["main_crop"], errors="coerce")
+    out["wave"] = wave
+    return out
+
+
 def _add_region_worker_flags(out: pd.DataFrame) -> pd.DataFrame:
     is_agricultural = out.agricultural == 1
     is_mining = out.mining == 1
+    out["farmer_hh"] = out.groupby(["hhid", "wave"])[
+        "agricultural"
+    ].transform(lambda s: (s == 1).max())
     out["palm_region"] = out.province_code.isin(PALM_PROVS)
     out["palm_farmer_individual"] = is_agricultural & out.palm_region
     out["palm_farmer_hh"] = out.groupby(["hhid", "wave"])[
@@ -208,6 +226,10 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         [_transport_share("IFLS4"), _transport_share("IFLS5")],
         ignore_index=True,
     )
+    main_crop = pd.concat(
+        [_main_crop("IFLS4"), _main_crop("IFLS5")],
+        ignore_index=True,
+    )
     log(
         f"sector rows: {len(agricultural):,}; transport rows: {len(transport):,}; "
         f"median transport share={transport.transport_share.median():.3f}"
@@ -224,6 +246,7 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
             how="left",
             validate="m:1",
         )
+        .merge(main_crop, on=["hhid", "wave"], how="left", validate="m:1")
         .pipe(_add_region_worker_flags)
         .pipe(_add_transport_quintile)
     )
