@@ -47,22 +47,31 @@ def add_past30_bin_counts(
         last_edge,
         n_edges,
     )
-    ranges = list(zip(edges[:-1], edges[1:], strict=True))
+    ranges = [(-np.inf, edges[0])]
+    ranges.extend(zip(edges[:-1], edges[1:], strict=True))
     ranges.append((edges[-1], np.inf))
 
     bin_names = []
     for lower, upper in ranges:
-        lower_sign = "m" if lower < 0 else ""
-        lower_suffix = f"{lower_sign}{abs(lower):.1f}".replace(".", "p")
-        if np.isposinf(upper):
+        if np.isneginf(lower):
+            upper_sign = "m" if upper < 0 else ""
+            upper_suffix = f"{upper_sign}{abs(upper):.1f}".replace(".", "p")
+            suffix = f"lt_{upper_suffix}"
+        elif np.isposinf(upper):
+            lower_sign = "m" if lower < 0 else ""
+            lower_suffix = f"{lower_sign}{abs(lower):.1f}".replace(".", "p")
             suffix = f"gt_{lower_suffix}"
         else:
+            lower_sign = "m" if lower < 0 else ""
+            lower_suffix = f"{lower_sign}{abs(lower):.1f}".replace(".", "p")
             upper_sign = "m" if upper < 0 else ""
             upper_suffix = f"{upper_sign}{abs(upper):.1f}".replace(".", "p")
             suffix = f"{lower_suffix}_{upper_suffix}"
         name = f"{source_col}_past30_{suffix}"
         bin_names.append(name)
         in_bin = temp[source_col].ge(lower) & temp[source_col].lt(upper)
+        if np.isneginf(lower):
+            in_bin = temp[source_col].lt(upper)
         if np.isposinf(upper):
             in_bin = temp[source_col].ge(lower)
         temp[name] = (
