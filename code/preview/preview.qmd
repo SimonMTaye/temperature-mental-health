@@ -706,7 +706,194 @@ make_shock_balance_table(
 
 ## Job Loss 
 
+The table below compares sector composition for two person groups. Respondents tell us what their current sector is (note: we have these variables for some who report not having worked in the past 7 days) and for the job loss group, we also have a variable reporting the sector for their lost job.
+
+Below, the table is a proxy for composition
+
+
+```{python}
+sector_labels = {
+    1: "Agriculture / forestry / fishing",
+    2: "Mining",
+    3: "Manufacturing",
+    4: "Utilities",
+    5: "Construction",
+    6: "Trade",
+    7: "Transport",
+    8: "Finance",
+    9: "Services",
+}
+
+
+def one_sector_per_person(data, sector_column):
+    sector_data = data.dropna(subset=[sector_column]).copy()
+    sector_data["wave_order"] = sector_data["wave"].map({"IFLS4": 4, "IFLS5": 5})
+    sector_data[sector_column] = pd.to_numeric(
+        sector_data[sector_column], errors="coerce"
+    ).astype(int)
+    return (
+        sector_data.sort_values(["pidlink", "wave_order"])
+        .drop_duplicates("pidlink", keep="last")
+        .loc[:, ["pidlink", sector_column]]
+    )
+
+
+def sector_distribution(data, sector_column):
+    out = (
+        data[sector_column]
+        .value_counts()
+        .rename_axis("sector_code")
+        .reset_index(name="n")
+    )
+    out["share"] = out["n"] / out["n"].sum()
+    return out
+
+
+lost_job_people = analysis_df.loc[analysis_df["job_loss_1_yr"].eq(1)].copy()
+lost_job_people["jobloss_sector_for_table"] = lost_job_people[
+    "current_job_sector"
+].combine_first(lost_job_people["job_loss_sector"])
+lost_job_people = one_sector_per_person(lost_job_people, "jobloss_sector_for_table")
+lost_job_sectors = sector_distribution(
+    lost_job_people,
+    "jobloss_sector_for_table",
+).rename(columns={"n": "Lost-job N", "share": "Lost-job share"})
+current_job_people = one_sector_per_person(
+    analysis_df.loc[analysis_df["unemployed_since_then"].eq(0)],
+    "current_job_sector",
+)
+current_job_sectors = sector_distribution(
+    current_job_people,
+    "current_job_sector",
+).rename(
+    columns={"n": "Current-job N", "share": "Current-job share"}
+)
+
+job_sector_total = pd.DataFrame(
+    [
+        {
+            "sector_code": "",
+            "Sector": "Total people",
+            "Lost-job N": lost_job_people["pidlink"].nunique(),
+            "Lost-job share": pd.NA,
+            "Current-job N": current_job_people["pidlink"].nunique(),
+            "Current-job share": pd.NA,
+        }
+    ]
+)
+
+job_sector_comparison_body = (
+    lost_job_sectors.merge(current_job_sectors, on="sector_code", how="outer")
+    .fillna({"Lost-job N": 0, "Lost-job share": 0, "Current-job N": 0, "Current-job share": 0})
+    .assign(
+        Sector=lambda df: df["sector_code"].map(sector_labels).fillna(
+            "Other code " + df["sector_code"].astype("Int64").astype(str)
+        )
+    )
+    .sort_values("sector_code")
+    .assign(sector_code=lambda df: df["sector_code"].astype("Int64").astype(str))
+    .loc[:, ["sector_code", "Sector", "Lost-job N", "Lost-job share", "Current-job N", "Current-job share"]]
+)
+job_sector_comparison = pd.concat(
+    [job_sector_total, job_sector_comparison_body],
+    ignore_index=True,
+)
+
+job_sector_comparison.style.hide(axis="index").format(
+    {
+        "Lost-job N": "{:,.0f}",
+        "Lost-job share": "{:.1%}",
+        "Current-job N": "{:,.0f}",
+        "Current-job share": "{:.1%}",
+    },
+    na_rep="",
+)
+```
+
+Column 1 of the table is the main job_loss regression. Columns (2)-(4) add:
+- Occupation Sector x Heat
+- Age x Heat
+- Education Years x Heat
+
+respectively. Job loss x Heat magnitudes seem unchanged but they are all insignificant
+
+
+```{python}
+jobloss_sector_df = analysis_df.copy()
+jobloss_sector_df["jobloss_occupation_sector"] = jobloss_sector_df[
+    "current_job_sector"
+].combine_first(jobloss_sector_df["job_loss_sector"])
+jobloss_sector_df = jobloss_sector_df.dropna(subset=["jobloss_occupation_sector"]).copy()
+jobloss_sector_df["jobloss_occupation_sector"] = (
+    pd.to_numeric(jobloss_sector_df["jobloss_occupation_sector"], errors="coerce")
+    .astype(int)
+)
+
+occupation_sector_codes = sorted(jobloss_sector_df["jobloss_occupation_sector"].unique())
+occupation_sector_terms = []
+for sector_code in occupation_sector_codes[1:]:
+    sector_column = f"jobloss_occ_sector_{sector_code}"
+    jobloss_sector_df[sector_column] = (
+        jobloss_sector_df["jobloss_occupation_sector"].eq(sector_code).astype(int)
+    )
+    occupation_sector_terms.append(sector_column)
+
+occupation_sector_slope_terms = " + ".join(
+    f"{sector_column} + {sector_column}:{MAIN_TEMP_MEASURE}"
+    for sector_column in occupation_sector_terms
+)
+
+jobloss_slope_specs = [
+    RegressionSpec(
+        title="Baseline",
+        formula=jobloss.formula,
+        df=analysis_df,
+        tags=frozenset(["job-loss", "slope-robustness"]),
+        show_terms=jobloss.show_terms,
+    ),
+    RegressionSpec(
+        title="+ sector x heat",
+        formula=(
+            f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} "
+            f"+ {occupation_sector_slope_terms} + {CONTROLS} | {FE_WAVE}"
+        ),
+        df=jobloss_sector_df,
+        tags=frozenset(["job-loss", "slope-robustness", "occupation-sector"]),
+        show_terms=jobloss.show_terms,
+    ),
+    RegressionSpec(
+        title="+ age x heat",
+        formula=(
+            f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} "
+            f"+ age:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
+        ),
+        df=analysis_df,
+        tags=frozenset(["job-loss", "slope-robustness", "age-slope"]),
+        show_terms=jobloss.show_terms,
+    ),
+    RegressionSpec(
+        title="+ education x heat",
+        formula=(
+            f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} "
+            f"+ edu_yrs:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
+        ),
+        df=analysis_df,
+        tags=frozenset(["job-loss", "slope-robustness", "education-slope"]),
+        show_terms=jobloss.show_terms,
+    ),
+]
+
+make_shock_regression_table(
+    jobloss_slope_specs,
+    group=["job_loss_1_yr"] * len(jobloss_slope_specs),
+    post=[None] * len(jobloss_slope_specs),
+    temperature=[MAIN_TEMP_MEASURE] * len(jobloss_slope_specs),
+)
+```
+
 In the job loss regressions above, job loss is defined as having lost your job in the past year and being currently unemployed. The regressions below vary the window in which job loss is defined (the model headers define the window)
+
+
 
 ```{python}
 jobloss_windows = [
