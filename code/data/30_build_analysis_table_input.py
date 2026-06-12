@@ -177,6 +177,7 @@ def main() -> None:
             "job_loss_1_yr",
             "palm_farmer_individual",
             "palm_farmer_individual_ifls4",
+            "farmer_hh",
             "palm_farmer_hh",
             "palm_farmer_hh_ifls4",
             "rubber_farmer_individual",
@@ -193,6 +194,7 @@ def main() -> None:
     int_cols = [
         "job_loss_1_yr",
         "palm_farmer_individual",
+        "farmer_hh",
         "palm_farmer_hh",
         "rubber_farmer_individual",
         "coffee_farmer_individual",

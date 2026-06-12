@@ -421,6 +421,10 @@ COMMODITY_TRANSPORT_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "wave": _wave_column(),
         # Respondent works in agriculture according to the 1-digit sector code.
         "agricultural": _binary_column(nullable=True),
+        # Any household member works in agriculture in that wave.
+        "farmer_hh": _binary_column(),
+        # Household's most valuable crop or livestock from b2_ut1/ut07a.
+        "main_crop": pa.Column("Int64", nullable=True, coerce=True),
         # Household province is in the Sumatra/Kalimantan palm-oil region.
         "palm_region": _binary_column(),
         # Respondent is agricultural and lives in a palm-oil region.
@@ -696,6 +700,9 @@ PROCESSED_TEMPERATURE_SCHEMA = pa.DataFrameSchema(
         "tmean_c_hour": pa.Column(float, nullable=True, coerce=True),
         "heat_hr_dev": pa.Column(float, nullable=True, coerce=True),
         "day_id": pa.Column(int, nullable=False, coerce=True),
+        "tmean_c_past30_lt_21p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
+        ),
         "tmean_c_past30_21p0_22p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
         ),
@@ -709,6 +716,9 @@ PROCESSED_TEMPERATURE_SCHEMA = pa.DataFrameSchema(
             float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
         ),
         "tmean_c_past30_gt_27p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
+        ),
+        "wetbulb_c_past30_lt_19p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=True, coerce=True
         ),
         "wetbulb_c_past30_19p5_21p0": pa.Column(
@@ -829,6 +839,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
                 "day_id",
             ],
         ),
+        "tmean_c_past30_lt_21p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
+        ),
         "tmean_c_past30_21p0_22p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
@@ -842,6 +855,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
         "tmean_c_past30_gt_27p0": pa.Column(
+            float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
+        ),
+        "wetbulb_c_past30_lt_19p5": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
         "wetbulb_c_past30_19p5_21p0": pa.Column(
@@ -870,6 +886,8 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             [
                 "palm_farmer_individual",
                 "palm_farmer_individual_ifls4",
+                "farmer_hh",
+                "main_crop",
                 "palm_farmer_hh",
                 "palm_farmer_hh_ifls4",
                 "rubber_farmer_individual",

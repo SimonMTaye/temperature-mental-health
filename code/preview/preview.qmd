@@ -34,6 +34,7 @@ from dictionary import VARIABLE_LABELS
 from render import RegressionSpec, make_shock_regression_table, make_regression_table
 from specs import (
     CONTROLS,
+    FE_NO_WAVE,
     FE_WAVE,
     analysis_df,
     jobloss,
@@ -119,7 +120,7 @@ make_regression_table(
 
 ::: {.callout-note title="Non-linear Effects of Temperature" collapse=true}
 
-Following Fritz, 2026 I estimate the non-linear impacts of temperature on mental health. I found no effect for most bins except that cooler days  when using regular temperature improve mental health but warmer wet-bulb days also improve temperature. I am not sure how to reconcile this; I also want to flag that temperature, in our data, has a limited range
+Following Fritz, 2026 I estimate the non-linear impacts of temperature on mental health. The effect of wetbulb is very linear with hotter days being better for mental health. For regular temperature, there is no clear pattern (most coeffs are close to null) with one coeff, days between 21-22.5 being an improvment over our reference temperature
 
 ::: {.panel-tabset}
 
@@ -130,10 +131,18 @@ def make_past30_temperature_bin_plot(prefix, x_label, title):
     rows = []
     for col in [col for col in analysis_df.columns if col.startswith(prefix)]:
         suffix = col.split("_past30_", maxsplit=1)[1]
-        if suffix.startswith("gt_"):
+        if suffix.startswith("lt_"):
+            lower = -np.inf
+            upper = float(suffix.removeprefix("lt_").replace("m", "-").replace("p", "."))
+            label = f"<{upper:g}"
+        elif suffix.startswith("gt_"):
             lower = float(suffix.removeprefix("gt_").replace("m", "-").replace("p", "."))
             upper = np.inf
             label = f">{lower:g}"
+        elif suffix.startswith("lt_"):
+            lower = -np.inf
+            upper = float(suffix.removeprefix("lt_").replace("m", "-").replace("p", "."))
+            label = f"<{upper:g}"
         else:
             lower_text, upper_text = suffix.split("_", maxsplit=1)
             lower = float(lower_text.replace("m", "-").replace("p", "."))
@@ -149,7 +158,10 @@ def make_past30_temperature_bin_plot(prefix, x_label, title):
             }
         )
     plot_data = pd.DataFrame(rows).sort_values(["lower", "upper"]).reset_index(drop=True)
-    reference = plot_data.loc[plot_data["upper"].lt(np.inf), "mean_days"].idxmax()
+    reference = plot_data.loc[
+        plot_data["lower"].gt(-np.inf) & plot_data["upper"].lt(np.inf),
+        "mean_days",
+    ].idxmax()
     reference_term = plot_data.loc[reference, "term"]
     included = [col for col in plot_data["term"] if col != reference_term]
 
@@ -703,6 +715,199 @@ make_shock_balance_table(
 :::
 
 # Robustness
+
+## Palm Farmer 
+
+### Group Transitions
+
+We mark anyone who was a farmer in a palm region in the IFLS as a palm farmer. We use their status in **Wave 4**. The table below plots the number of switchers (i.e. those who stopped being palm farmers due to moving or not being farmers anymore or those who are palm farmers in wave 5 but not 4).
+
+```{python}
+palm_transition_ifls5 = analysis_df[analysis_df["wave"] == "IFLS5"].copy()
+ifls4_palm_in_ifls5 = palm_transition_ifls5["palm_farmer_hh_ifls4"].eq(1)
+ifls5_palm = palm_transition_ifls5["palm_farmer_hh"].eq(1)
+ifls4_palm_total = palm_transition_ifls5.loc[
+    ifls4_palm_in_ifls5, "pidlink"
+].nunique()
+ifls4_palm_still_palm = palm_transition_ifls5.loc[
+    ifls4_palm_in_ifls5 & ifls5_palm, "pidlink"
+].nunique()
+ifls4_palm_no_longer_palm = palm_transition_ifls5.loc[
+    ifls4_palm_in_ifls5 & ~ifls5_palm, "pidlink"
+].nunique()
+new_ifls5_palm = palm_transition_ifls5.loc[
+    palm_transition_ifls5["palm_farmer_hh_ifls4"].fillna(0).eq(0) & ifls5_palm,
+    "pidlink",
+].nunique()
+
+palm_transition_table = pd.DataFrame(
+    [
+        {
+            "Group": "IFLS4 palm farmers in IFLS5 sample",
+            "Respondents": ifls4_palm_total,
+            "Share of IFLS4 palm farmers": 1,
+        },
+        {
+            "Group": "Still palm farmers in IFLS5",
+            "Respondents": ifls4_palm_still_palm,
+            "Share of IFLS4 palm farmers": ifls4_palm_still_palm / ifls4_palm_total,
+        },
+        {
+            "Group": "No longer palm farmers in IFLS5",
+            "Respondents": ifls4_palm_no_longer_palm,
+            "Share of IFLS4 palm farmers": ifls4_palm_no_longer_palm
+            / ifls4_palm_total,
+        },
+        {
+            "Group": "New IFLS5 palm farmers",
+            "Respondents": new_ifls5_palm,
+            "Share of IFLS4 palm farmers": np.nan,
+        },
+    ]
+)
+palm_transition_table.style.hide(axis="index").format(
+    {
+        "Respondents": "{:,}",
+        "Share of IFLS4 palm farmers": "{:.1%}",
+    },
+    na_rep="",
+)
+```
+
+### Alternate Specs
+
+- **Palm farmer**: Main Spec for comparison
+- **Palm farmer in both waves**: restricts the group to people who are palm farmers in both wave 4 and wave 5
+- **Palm farmer in wave 5**: restricts the group to people who are palm farmers in wave 5, regardless of wave 4 status
+- **Farmer in non-palm region**: tests whether farming alone, outside palm regions, drives the result.
+- **Farmer in palm-region with main crop that isn't palm**: restricts palm-region farmers to households reporting a named, non-other IFLS4 main crop.
+- **Non-farmer in palm region**: tests whether living in palm regions alone drives the result.
+- **IFLS4 palm x price gap**: replaces the binary palm group with the standardized IFLS4-to-IFLS5 palm price gap for IFLS4 palm farmers.
+- **Palm farmer, kec x post FE**: repeats the headline palm specification with kecamatan-by-IFLS5 fixed effects.
+
+```{python}
+OTHER_MAIN_CROP_CODES = {2, 4, 22, 23, 95, 96}
+FARMER_PLACEBO_GROUPS = [
+    ("Palm farmer", "palm_farmer_hh_ifls4", FE_NO_WAVE),
+    ("Palm farmer in both waves", "palm_farmer_hh_both_waves", FE_NO_WAVE),
+    ("Palm farmer in wave 5", "palm_farmer_hh_ifls5", FE_NO_WAVE),
+    ("Farmer in non-palm region", "farmer_nonpalm_hh_ifls4", FE_NO_WAVE),
+    (
+        "Farmer in parm region w/ non-palm main crop",
+        "palm_farmer_specific_main_crop_ifls4",
+        FE_NO_WAVE,
+    ),
+    ("Non-farmer in palm region", "nonfarmer_palm_region_ifls4", FE_NO_WAVE),
+    ("IFLS4 palm x price gap", "palm_price_gap_z_ifls4_palm", FE_NO_WAVE),
+    ("Palm farmer, kec x post FE", "palm_farmer_hh_ifls4", "month + year + kec_post"),
+]
+
+
+def add_farmer_crop_placebo_variables(df):
+    out = df.copy()
+    out["kec_post"] = out["gadm_fullcode"].astype("string") + "_" + out[
+        "ifls5"
+    ].astype(int).astype(str)
+    baseline = (
+        out.loc[
+            out["wave"] == "IFLS4",
+            ["pidlink", "farmer_hh", "palm_region", "main_crop"],
+        ]
+        .rename(
+            columns={
+                "farmer_hh": "farmer_hh_ifls4",
+                "palm_region": "palm_region_ifls4",
+                "main_crop": "main_crop_ifls4",
+            }
+        )
+        .drop_duplicates("pidlink")
+    )
+    out = out.merge(baseline, on="pidlink", how="left", validate="m:1")
+    out["farmer_hh_ifls4"] = out["farmer_hh_ifls4"].fillna(0).astype(int)
+    out["palm_region_ifls4"] = out["palm_region_ifls4"].fillna(0).astype(int)
+    out["farmer_nonpalm_hh_ifls4"] = (
+        out["farmer_hh_ifls4"].eq(1) & out["palm_region_ifls4"].eq(0)
+    ).astype(int)
+    out["nonfarmer_palm_region_ifls4"] = (
+        out["farmer_hh_ifls4"].eq(0) & out["palm_region_ifls4"].eq(1)
+    ).astype(int)
+    palm_in_ifls5 = (
+        out.loc[out["wave"] == "IFLS5", ["pidlink", "palm_farmer_hh"]]
+        .rename(columns={"palm_farmer_hh": "palm_farmer_hh_ifls5"})
+        .drop_duplicates("pidlink")
+    )
+    out = out.merge(palm_in_ifls5, on="pidlink", how="left", validate="m:1")
+    out["palm_farmer_hh_ifls5"] = out["palm_farmer_hh_ifls5"].fillna(0).astype(int)
+    out["palm_farmer_hh_both_waves"] = (
+        out["palm_farmer_hh_ifls4"].fillna(0).astype(int).eq(1)
+        & out["palm_farmer_hh_ifls5"].eq(1)
+    ).astype(int)
+    main_crop = out["main_crop_ifls4"]
+    out["palm_farmer_specific_main_crop_ifls4"] = (
+        out["farmer_hh_ifls4"].eq(1)
+        & out["palm_region_ifls4"].eq(1)
+        & main_crop.notna()
+        & ~main_crop.isin(OTHER_MAIN_CROP_CODES)
+    ).astype(int)
+    w4_price = (
+        out.loc[out["wave"] == "IFLS4"]
+        .groupby("pidlink")["palm_price_usd_mt"]
+        .first()
+    )
+    w5_price = (
+        out.loc[out["wave"] == "IFLS5"]
+        .groupby("pidlink")["palm_price_usd_mt"]
+        .first()
+    )
+    price_gap = (w4_price - w5_price).rename("price_gap")
+    price_gap_z = ((price_gap - price_gap.mean()) / price_gap.std()).rename(
+        "price_gap_z"
+    )
+    out = out.merge(price_gap_z, on="pidlink", how="left", validate="m:1")
+    out["palm_price_gap_z_ifls4_palm"] = out["price_gap_z"]
+    out.loc[
+        out["palm_farmer_hh_ifls4"].fillna(0).astype(int).eq(0),
+        "palm_price_gap_z_ifls4_palm",
+    ] = 0
+    return out
+
+
+def make_farmer_placebo_specs(data):
+    specs = []
+    group_variables = []
+    group_members = []
+    pids = data.drop_duplicates("pidlink")
+    for title, group, fixed_effects in FARMER_PLACEBO_GROUPS:
+        specs.append(
+            RegressionSpec(
+                title=title,
+                formula=f"cesd_z ~ {group} * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {fixed_effects}",
+                df=data,
+                tags=frozenset(["farmer-crop-placebo"]),
+                show_terms=frozenset([f"{group}:ifls5:{MAIN_TEMP_MEASURE}"]),
+            )
+        )
+        group_variables.append(group)
+        if group == "palm_price_gap_z_ifls4_palm":
+            members = pids[group].notna() & pids["palm_farmer_hh_ifls4"].eq(1)
+            group_members.append(f"{int(members.sum()):,}")
+        else:
+            group_members.append(f"{int(pids[group].sum()):,}")
+    return specs, group_variables, group_members
+
+
+farmer_crop_placebo_df = add_farmer_crop_placebo_variables(analysis_df)
+farmer_placebo_specs, farmer_placebo_groups, farmer_placebo_members = (
+    make_farmer_placebo_specs(farmer_crop_placebo_df)
+)
+make_shock_regression_table(
+    farmer_placebo_specs,
+    group=farmer_placebo_groups,
+    post="ifls5",
+    temperature=MAIN_TEMP_MEASURE,
+    custom_model_stats={"Group members": farmer_placebo_members},
+)
+```
 
 ## Job Loss 
 
