@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
+from math import erfc, sqrt
 import re
 
 import maketables as mt
@@ -140,8 +141,8 @@ def make_shock_regression_table(
         for spec, rename_map in zip(specs, renames, strict=True)
     ]
 
-    effects: list[float] = []
-    standard_errors: list[float] = []
+    effects: list[object] = []
+    standard_errors: list[object] = []
     for model in models:
         coefs = model.coef_table["b"]
         if any(term not in coefs.index for term in MARGINAL_HEAT_EFFECT_TERMS):
@@ -154,8 +155,22 @@ def make_shock_regression_table(
         contrast.loc[MARGINAL_HEAT_EFFECT_TERMS] = 1.0
         variance = float(contrast @ vcov @ contrast)
 
-        effects.append(float(contrast @ coefs))
-        standard_errors.append(float(np.sqrt(variance)) if variance >= 0 else np.nan)
+        effect = float(contrast @ coefs)
+        standard_error = float(np.sqrt(variance)) if variance >= 0 else np.nan
+        t_stat = effect / standard_error if standard_error > 0 else np.nan
+        p_value = erfc(abs(t_stat) / sqrt(2)) if not pd.isna(t_stat) else np.nan
+        stars = ""
+        if p_value < 0.01:
+            stars = "***"
+        elif p_value < 0.05:
+            stars = "**"
+        elif p_value < 0.10:
+            stars = "*"
+
+        effects.append(f"{effect:.3f}{stars}")
+        standard_errors.append(
+            f"{standard_error:.3f}" if not pd.isna(standard_error) else np.nan
+        )
 
     custom_model_stats = {
         "Heat effect on treated": effects,
