@@ -95,9 +95,15 @@ where $Y_{ict}$ is respondent $i$'s CES-D z-score (or sleep hours) in community 
 ```{python}
 temperature_measures = [
     "tmean_c_dev",
-    "tmean_7d_dev",
+    "tmax_c_dev",
+    "tmin_c_dev",
     "wetbulb_c_dev",
+    "tmean_7d_dev",
+    "tmin_7d_dev",
     "wetbulb_7d_dev",
+    "tmean_30d_dev",
+    "wetbulb_30d_dev",
+    "wetbulb_hr_dev",
     "hot30_7d_dev",
 ]
 alt_temperature_specs = [
@@ -109,9 +115,15 @@ make_regression_table(
     alt_temperature_specs,
     titles=[
         "Daily Mean",
-        "7-day Mean",
+        "Daily Max",
+        "Daily Min",
         "Wet-bulb Current",
+        "7-day Mean",
+        "7-day Min",
         "Wet-bulb 7-day",
+        "30-day Mean",
+        "Wet-bulb 30-day",
+        "Wet-bulb Hourly",
         "7-day Hot Days",
     ],
     rename={k: "Heat" for k in temperature_measures},
@@ -327,6 +339,21 @@ make_shock_regression_table(
 )
 ```
 
+### Daily Min
+
+```{python}
+main_shock_daily_min = [
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmin_c_dev")
+    for spec in main_shock_specs
+]
+make_shock_regression_table(
+    main_shock_daily_min,
+    group=shock_groups,
+    post=shock_posts,
+    temperature="tmin_c_dev",
+)
+```
+
 ### 7-day mean
 
 ```{python}
@@ -412,6 +439,20 @@ make_shock_regression_table(
 )
 ```
 
+### Daily Min
+
+```{python}
+panel_shock_daily_min = [
+    update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmin_c_dev")
+    for spec in panel_shock_specs
+]
+make_shock_regression_table(
+    panel_shock_daily_min,
+    group=shock_groups_panel,
+    post=shock_posts_panel,
+    temperature="tmin_c_dev",
+)
+```
 
 ### 7-day mean
 
@@ -1189,6 +1230,14 @@ temperature.
 temperature ending on the interview date, with at least four observed days,
 minus the analysis-sample mean of that rolling measure.
 
+**30-day mean temperature (`tmean_30d_dev`)**: rolling 30-day mean of daily mean
+temperature ending on the interview date, with at least 15 observed days, minus
+the analysis-sample mean of that rolling measure.
+
+**Daily maximum temperature (`tmax_c_dev`)**: maximum air temperature on the
+interview date, in degrees Celsius, minus the analysis-sample mean of daily
+maximum temperature.
+
 **Daily minimum temperature (`tmin_c_dev`)**: minimum air temperature on the
 interview date, in degrees Celsius, minus the analysis-sample mean of daily
 minimum temperature.
@@ -1205,6 +1254,14 @@ humidity and the Stull wet-bulb approximation, then averaged to the local day.
 **7-day wet-bulb temperature (`wetbulb_7d_dev`)**: rolling 7-day mean of daily
 wet-bulb temperature ending on the interview date, with at least four observed
 days, minus the analysis-sample mean of that rolling measure.
+
+**30-day wet-bulb temperature (`wetbulb_30d_dev`)**: rolling 30-day mean of
+daily wet-bulb temperature ending on the interview date, with at least 15
+observed days, minus the analysis-sample mean of that rolling measure.
+
+**Survey-hour wet-bulb temperature (`wetbulb_hr_dev`)**: wet-bulb temperature at
+the respondent's interview hour, in degrees Celsius, minus the analysis-sample
+mean of survey-hour wet-bulb temperature.
 
 **7-day hot days (`hot30_7d_dev`)**: count of days in the rolling 7-day window
 ending on the interview date for which daily maximum temperature exceeds

@@ -58,7 +58,7 @@ temperature_spec = RegressionSpec(
     formula=f"cesd_z ~ {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
     df=analysis_df,
     tags=frozenset(["mean-daily-temp", "temperature-effect"]),
-    show_terms=frozenset(["{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([MAIN_TEMP_MEASURE]),
 )
 
 palm_shock = RegressionSpec(
@@ -66,7 +66,7 @@ palm_shock = RegressionSpec(
     formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["palm-shock", "mean-daily-temp"]),
-    show_terms=frozenset(["palm_farmer_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"palm_farmer_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
 )
 
 
@@ -75,7 +75,7 @@ fuel_shock = RegressionSpec(
     formula=f"cesd_z ~ urban_vehicle_hh_ifls4 * post_subsidy * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=wave5_df,
     tags=frozenset(["fuel-shock", "mean-daily-temp"]),
-    show_terms=frozenset(["urban_vehicle_hh_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"urban_vehicle_hh_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]),
 )
 
 coal_shock = RegressionSpec(
@@ -83,7 +83,7 @@ coal_shock = RegressionSpec(
     formula=f"cesd_z ~ coal_worker_hh_ifls4 * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["coal-shock", "mean-daily-temp"]),
-    show_terms=frozenset(["coal_worker_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"coal_worker_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
 )
 
 jobloss = RegressionSpec(
@@ -91,7 +91,7 @@ jobloss = RegressionSpec(
     formula=f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
     df=analysis_df,
     tags=frozenset(["job-loss", "mean-daily-temp"]),
-    show_terms=frozenset(["job_loss_1_yr:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"job_loss_1_yr:{MAIN_TEMP_MEASURE}"]),
 )
 
 
@@ -105,7 +105,7 @@ palm_shock_panel = RegressionSpec(
     ),
     df=analysis_df,
     tags=frozenset(["palm-shock", "mean-daily-temp", "panel"]),
-    show_terms=frozenset(["palm_farmer_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"palm_farmer_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
 )
 
 fuel_shock_panel = RegressionSpec(
@@ -118,7 +118,7 @@ fuel_shock_panel = RegressionSpec(
     ),
     df=analysis_df,
     tags=frozenset(["fuel-shock", "mean-daily-temp", "panel"]),
-    show_terms=frozenset(["urban_vehicle_hh_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"urban_vehicle_hh_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]),
 )
 
 coal_shock_panel = RegressionSpec(
@@ -131,5 +131,5 @@ coal_shock_panel = RegressionSpec(
     ),
     df=analysis_df,
     tags=frozenset(["coal-shock", "mean-daily-temp", "panel"]),
-    show_terms=frozenset(["coal_worker_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"coal_worker_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
 )

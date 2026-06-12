@@ -131,13 +131,19 @@ def load_hourly_temperature() -> pd.DataFrame:
     return hourly
 
 
-def build_daily_wetbulb(hourly: pd.DataFrame) -> pd.DataFrame:
-    """Compute local-day wet-bulb means from hourly temperature and dewpoint."""
+def add_hourly_wetbulb(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Add hourly wet-bulb temperature from hourly air temperature and dewpoint."""
     hourly = hourly.copy()
     rh_pct = relative_humidity_from_dewpoint(
         hourly["tmean_c_hour"], hourly["dewp_c_hour"]
     )
     hourly["wetbulb_c_hour"] = wetbulb_stull_c(hourly["tmean_c_hour"], rh_pct)
+    return hourly
+
+
+def build_daily_wetbulb(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Compute local-day wet-bulb means from hourly temperature and dewpoint."""
+    hourly = hourly.copy()
     utc_offset = hourly["province_code"].map(_utc_offset_hours)
     hourly["date"] = (
         hourly["datetime_utc"]
@@ -177,11 +183,17 @@ def add_daily_features(temp: pd.DataFrame) -> pd.DataFrame:
     temp["tmean_7d"] = grouped["tmean_c"].transform(
         lambda s: s.rolling(7, min_periods=4).mean()
     )
+    temp["tmean_30d"] = grouped["tmean_c"].transform(
+        lambda s: s.rolling(30, min_periods=15).mean()
+    )
     temp["tmin_7d"] = grouped["tmin_c"].transform(
         lambda s: s.rolling(7, min_periods=4).mean()
     )
     temp["wetbulb_7d"] = grouped["wetbulb_c"].transform(
         lambda s: s.rolling(7, min_periods=4).mean()
+    )
+    temp["wetbulb_30d"] = grouped["wetbulb_c"].transform(
+        lambda s: s.rolling(30, min_periods=15).mean()
     )
     temp["hot30_7d"] = (
         temp["tmax_c"].gt(30.0)
@@ -221,9 +233,11 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         "tmean_base30",
         "tmean_lead7",
         "tmean_7d",
+        "tmean_30d",
         "tmin_7d",
         "wetbulb_c",
         "wetbulb_7d",
+        "wetbulb_30d",
         "hot30_7d",
         "heatwave_7d",
     ]
@@ -255,9 +269,11 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         "tmax_c",
         "tmin_c",
         "tmean_7d",
+        "tmean_30d",
         "tmin_7d",
         "wetbulb_c",
         "wetbulb_7d",
+        "wetbulb_30d",
         "hot30_7d",
         "heatwave_7d",
     ]:
@@ -280,7 +296,12 @@ def add_hourly_temperature(df: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFra
     hourly = hourly[
         [
             col
-            for col in ["gadm_fullcode", "datetime_utc", "tmean_c_hour"]
+            for col in [
+                "gadm_fullcode",
+                "datetime_utc",
+                "tmean_c_hour",
+                "wetbulb_c_hour",
+            ]
             if col in hourly.columns
         ]
     ]
@@ -302,13 +323,14 @@ def add_hourly_temperature(df: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFra
     matched = df.tmean_c_hour.notna().sum()
     log(f"matched hourly temperature for {matched:,} of {len(df):,} person-wave rows")
     df["heat_hr_dev"] = df.tmean_c_hour - df.tmean_c_hour.mean()
+    df["wetbulb_hr_dev"] = df.wetbulb_c_hour - df.wetbulb_c_hour.mean()
     return df
 
 
 def build_processed_temperature() -> pd.DataFrame:
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
     temp = pd.read_parquet(GENERATED_DATA / "10_daily_temperature_kab.parquet")
-    hourly = load_hourly_temperature()
+    hourly = add_hourly_wetbulb(load_hourly_temperature())
     wetbulb_daily = build_daily_wetbulb(hourly)
     temp["date"] = pd.to_datetime(temp.date)
     temp = temp.merge(
