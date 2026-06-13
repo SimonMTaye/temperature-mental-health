@@ -36,8 +36,10 @@ from specs import (
     CONTROLS,
     FE_NO_WAVE,
     FE_WAVE,
+    JOB_LOSS_MAIN,
     analysis_df,
     jobloss,
+    jobloss_panel,
     coal_shock,
     coal_shock_panel,
     fuel_shock,
@@ -51,17 +53,17 @@ from specs import (
 
 temperature_spec = temperature_spec
 main_shock_specs = [palm_shock, fuel_shock, coal_shock, jobloss]
-panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel]
 shock_groups = [
     "palm_farmer_hh_ifls4",
     "urban_vehicle_hh_ifls4",
     "coal_worker_hh_ifls4",
-    "job_loss_1_yr",
+    JOB_LOSS_MAIN,
 ]
 shock_posts = ["ifls5", "post_subsidy", "ifls5", None]
 
-shock_groups_panel = shock_groups[:-1]
-shock_posts_panel = shock_posts[:-1]
+panel_shock_specs = [palm_shock_panel, fuel_shock_panel, coal_shock_panel, jobloss_panel]
+shock_groups_panel = shock_groups
+shock_posts_panel = shock_posts
 ```
 
 ::: {.callout-note}
@@ -281,7 +283,7 @@ Y_{ict} =
 + \varepsilon_{ict},
 $$
 
-where $J_{ict}$ indicates job loss within the past year while currently not
+where $J_{ict}$ indicates job loss within the past six months while currently not
 working. The reported shock coefficient is $\beta_3$.
 
 For baseline-group shocks observed before the later exposure period:
@@ -491,7 +493,7 @@ balance_variables = [
     "palm_shock_exposed",
     "urban_vehicle_hh_ifls4",
     "fuel_shock_exposed",
-    "job_loss_1_yr",
+    JOB_LOSS_MAIN,
     "job_loss_ifls5",
 ]
 
@@ -521,7 +523,7 @@ def make_temperature_balance_data(df, *, temperature):
     out["fuel_shock_exposed"] = (
         out["urban_vehicle_hh_ifls4"].astype("Int64") * out["post_subsidy"]
     )
-    out["job_loss_ifls5"] = out["job_loss_1_yr"] * out["ifls5"]
+    out["job_loss_ifls5"] = out[JOB_LOSS_MAIN] * out["ifls5"]
 
     median = out[temperature].median()
     out["temperature_median_split"] = pd.NA
@@ -679,7 +681,7 @@ make_shock_balance_table(
 ).style.hide(axis="index")
 ```
 
-### Job Loss (1 yr)
+### Job Loss (6 mo)
 
 ```{python}
 temperature_balance_fixed_effects = temperature_spec.formula.split("|", maxsplit=1)[
@@ -687,7 +689,7 @@ temperature_balance_fixed_effects = temperature_spec.formula.split("|", maxsplit
 ].strip()
 make_shock_balance_table(
     balance_data,
-    shock_variable="job_loss_1_yr",
+    shock_variable=JOB_LOSS_MAIN,
     fixed_effects=temperature_balance_fixed_effects,
     base_spec=temperature_spec,
 ).style.hide(axis="index")
@@ -950,7 +952,7 @@ def sector_distribution(data, sector_column):
     return out
 
 
-lost_job_people = analysis_df.loc[analysis_df["job_loss_1_yr"].eq(1)].copy()
+lost_job_people = analysis_df.loc[analysis_df[JOB_LOSS_MAIN].eq(1)].copy()
 lost_job_people["jobloss_sector_for_table"] = lost_job_people[
     "current_job_sector"
 ].combine_first(lost_job_people["job_loss_sector"])
@@ -1011,6 +1013,55 @@ job_sector_comparison.style.hide(axis="index").format(
 )
 ```
 
+### Job-Loss Wave Transitions
+
+::: {.callout-caution}
+
+```{python}
+jobloss_ifls4 = analysis_df.loc[
+    analysis_df["wave"].eq("IFLS4") & analysis_df[JOB_LOSS_MAIN].eq(1),
+    "pidlink",
+].dropna()
+ifls5_people = analysis_df.loc[analysis_df["wave"].eq("IFLS5"), "pidlink"].dropna()
+ifls4_jobloss_not_in_ifls5 = jobloss_ifls4[~jobloss_ifls4.isin(ifls5_people)].nunique()
+print(
+    f"{ifls4_jobloss_not_in_ifls5:,} respondents with six-month job loss in "
+    "IFLS4 are not observed in IFLS5."
+)
+```
+
+:::
+
+```{python}
+jobloss_transition = (
+    analysis_df.loc[:, ["pidlink", "wave", JOB_LOSS_MAIN]]
+    .dropna(subset=["pidlink", "wave"])
+    .pivot_table(
+        index="pidlink",
+        columns="wave",
+        values=JOB_LOSS_MAIN,
+        aggfunc="max",
+    )
+)
+
+
+def format_jobloss_status(value):
+    if pd.isna(value):
+        return "Missing wave/status"
+    if value == 1:
+        return "Lost job"
+    return "No job loss"
+
+
+jobloss_transition_table = pd.crosstab(
+    jobloss_transition.get("IFLS4").map(format_jobloss_status),
+    jobloss_transition.get("IFLS5").map(format_jobloss_status),
+    dropna=False,
+).rename_axis(index="IFLS4 job-loss status", columns="IFLS5 job-loss status")
+
+jobloss_transition_table.style.format("{:,.0f}")
+```
+
 Column 1 of the table is the main job_loss regression. Columns (2)-(4) add:
 - Occupation Sector x Heat
 - Age x Heat
@@ -1045,17 +1096,11 @@ occupation_sector_slope_terms = " + ".join(
 )
 
 jobloss_slope_specs = [
-    RegressionSpec(
-        title="Baseline",
-        formula=jobloss.formula,
-        df=analysis_df,
-        tags=frozenset(["job-loss", "slope-robustness"]),
-        show_terms=jobloss.show_terms,
-    ),
+    jobloss,
     RegressionSpec(
         title="+ sector x heat",
         formula=(
-            f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} "
+            f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
             f"+ {occupation_sector_slope_terms} + {CONTROLS} | {FE_WAVE}"
         ),
         df=jobloss_sector_df,
@@ -1065,7 +1110,7 @@ jobloss_slope_specs = [
     RegressionSpec(
         title="+ age x heat",
         formula=(
-            f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} "
+            f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
             f"+ age:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
         ),
         df=analysis_df,
@@ -1075,7 +1120,7 @@ jobloss_slope_specs = [
     RegressionSpec(
         title="+ education x heat",
         formula=(
-            f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} "
+            f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
             f"+ edu_yrs:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
         ),
         df=analysis_df,
@@ -1086,13 +1131,13 @@ jobloss_slope_specs = [
 
 make_shock_regression_table(
     jobloss_slope_specs,
-    group=["job_loss_1_yr"] * len(jobloss_slope_specs),
+    group=[JOB_LOSS_MAIN] * len(jobloss_slope_specs),
     post=[None] * len(jobloss_slope_specs),
     temperature=[MAIN_TEMP_MEASURE] * len(jobloss_slope_specs),
 )
 ```
 
-In the job loss regressions above, job loss is defined as having lost your job in the past year and being currently unemployed. The regressions below vary the window in which job loss is defined (the model headers define the window)
+In the job loss regressions above, job loss is defined as having lost your job in the past six months and being currently unemployed. The regressions below vary the window in which job loss is defined (the model headers define the window)
 
 
 
@@ -1108,7 +1153,7 @@ jobloss_windows = [
     ("5 yr", "job_loss_1825d"),
 ]
 jobloss_robustness_specs = [
-    update_formula_search_replace(jobloss, "job_loss_1_yr", job_loss_var)
+    update_formula_search_replace(jobloss, JOB_LOSS_MAIN, job_loss_var)
     for _, job_loss_var in jobloss_windows
 ]
 jobloss_complete_case_columns = [
@@ -1431,8 +1476,8 @@ pipeline.
 sensitivity for baseline urban vehicle-owning households interviewed after the
 subsidy cut relative to comparable IFLS5 interviews before the cut.
 
-**Job loss within 1 year (`job_loss_1_yr`)**: indicator equal to one when the
-respondent reports a last job loss within 365 days of the interview and is not
+**Job loss within 6 months (`job_loss_180d`)**: indicator equal to one when the
+respondent reports a last job loss within 180 days of the interview and is not
 currently working. The job-loss columns interact this contemporaneous stressor
 with heat.
 
