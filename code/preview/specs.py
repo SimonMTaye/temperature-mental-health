@@ -9,6 +9,7 @@ CONTROLS = "age + female + edu_yrs + married + widowed"
 FE_WAVE = "month+year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month+year+gadm_fullcode"
 MAIN_TEMP_MEASURE = "tmean_7d_dev"
+JOB_LOSS_MAIN = "job_loss_180d"
 
 
 def update_formula_search_replace(
@@ -88,10 +89,10 @@ coal_shock = RegressionSpec(
 
 jobloss = RegressionSpec(
     title="Job Loss",
-    formula=f"cesd_z ~ job_loss_1_yr * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
     df=analysis_df,
     tags=frozenset(["job-loss", "mean-daily-temp"]),
-    show_terms=frozenset([f"job_loss_1_yr:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"{JOB_LOSS_MAIN}:{MAIN_TEMP_MEASURE}"]),
 )
 
 
@@ -132,4 +133,12 @@ coal_shock_panel = RegressionSpec(
     df=analysis_df,
     tags=frozenset(["coal-shock", "mean-daily-temp", "panel"]),
     show_terms=frozenset([f"coal_worker_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
+)
+
+jobloss_panel = RegressionSpec(
+    title="Job Loss - Panel",
+    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}+pidlink",
+    df=analysis_df,
+    tags=frozenset(["job-loss", "mean-daily-temp", "panel"]),
+    show_terms=frozenset([f"{JOB_LOSS_MAIN}:{MAIN_TEMP_MEASURE}"]),
 )
