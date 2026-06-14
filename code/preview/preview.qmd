@@ -1205,6 +1205,163 @@ make_regression_table(
 )
 ```
 
+## Fuel Cut
+
+### Group Transitions
+
+The main fuel-cut specification uses urban vehicle ownership in **Wave 4** as
+the exposure group. The transition matrix below compares Wave 4 and Wave 5
+urban vehicle ownership among respondents observed in both waves.
+
+```{python}
+def add_fuel_group_robustness_variables(df):
+    out = df.copy()
+    urban_vehicle_ifls5 = (
+        out.assign(
+            urban_vehicle_hh_ifls5=out["urban_vehicle_hh"].where(
+                out["wave"].eq("IFLS5")
+            )
+        )
+        .groupby("pidlink", as_index=False)["urban_vehicle_hh_ifls5"]
+        .max()
+    )
+    out = out.merge(urban_vehicle_ifls5, on="pidlink", how="left", validate="m:1")
+    known_vehicle_status = (
+        out["urban_vehicle_hh_ifls4"].notna() & out["urban_vehicle_hh_ifls5"].notna()
+    )
+    out["urban_vehicle_hh_both_waves"] = (
+        out["urban_vehicle_hh_ifls4"].eq(1) & out["urban_vehicle_hh_ifls5"].eq(1)
+    ).where(known_vehicle_status).astype("Int64")
+    return out
+
+
+fuel_robustness_df = add_fuel_group_robustness_variables(analysis_df)
+fuel_wave_presence = pd.crosstab(
+    fuel_robustness_df["pidlink"], fuel_robustness_df["wave"]
+).gt(0)
+fuel_transition_people = fuel_robustness_df.drop_duplicates("pidlink").join(
+    fuel_wave_presence, on="pidlink"
+)
+fuel_transition_both_waves = fuel_transition_people[
+    fuel_transition_people["IFLS4"] & fuel_transition_people["IFLS5"]
+]
+
+fuel_transition_matrix = pd.crosstab(
+    fuel_transition_both_waves["urban_vehicle_hh_ifls4"].map(
+        {0: "No IFLS4 urban vehicle", 1: "IFLS4 urban vehicle"}
+    ),
+    fuel_transition_both_waves["urban_vehicle_hh_ifls5"].map(
+        {0: "No IFLS5 urban vehicle", 1: "IFLS5 urban vehicle"}
+    ),
+).rename_axis(
+    index="IFLS4 urban-vehicle status",
+    columns="IFLS5 urban-vehicle status",
+)
+fuel_transition_matrix = fuel_transition_matrix.loc[
+    ["No IFLS4 urban vehicle", "IFLS4 urban vehicle"],
+    ["No IFLS5 urban vehicle", "IFLS5 urban vehicle"],
+]
+
+fuel_transition_matrix.style.format("{:,.0f}")
+```
+
+::: {.callout-note}
+
+```{python}
+new_ifls5_urban_vehicle = fuel_transition_people.loc[
+    ~fuel_transition_people["IFLS4"]
+    & fuel_transition_people["IFLS5"]
+    & fuel_transition_people["urban_vehicle_hh_ifls5"].eq(1),
+    "pidlink",
+].nunique()
+ifls4_urban_vehicle_not_in_ifls5 = fuel_transition_people.loc[
+    fuel_transition_people["IFLS4"]
+    & ~fuel_transition_people["IFLS5"]
+    & fuel_transition_people["urban_vehicle_hh_ifls4"].eq(1),
+    "pidlink",
+].nunique()
+print(
+    f"{new_ifls5_urban_vehicle:,} IFLS5-only respondents are urban-vehicle "
+    "households.\n"
+    f"{ifls4_urban_vehicle_not_in_ifls5:,} IFLS4 urban-vehicle households are "
+    "not observed in IFLS5."
+)
+```
+
+:::
+
+### Alternate Specs
+
+- **IFLS4 urban vehicle**: main fuel-cut group, defined by Wave 4 urban vehicle ownership.
+- **Urban vehicle in both waves**: restricts the group to respondents who are urban vehicle owners in both Wave 4 and Wave 5.
+- **IFLS5 urban vehicle**: defines the group using Wave 5 urban vehicle ownership.
+- **Panel versions**: repeat the same three group definitions without restricting the data to Wave 5, using wave fixed effects.
+
+```{python}
+FUEL_ROBUSTNESS_GROUPS = [
+    ("IFLS5: IFLS4 urban vehicle", "urban_vehicle_hh_ifls4", FE_NO_WAVE, "IFLS5"),
+    (
+        "IFLS5: urban vehicle both waves",
+        "urban_vehicle_hh_both_waves",
+        FE_NO_WAVE,
+        "IFLS5",
+    ),
+    ("IFLS5: IFLS5 urban vehicle", "urban_vehicle_hh_ifls5", FE_NO_WAVE, "IFLS5"),
+    ("Panel: IFLS4 urban vehicle", "urban_vehicle_hh_ifls4", FE_WAVE, "Panel"),
+    (
+        "Panel: urban vehicle both waves",
+        "urban_vehicle_hh_both_waves",
+        FE_WAVE,
+        "Panel",
+    ),
+    ("Panel: IFLS5 urban vehicle", "urban_vehicle_hh_ifls5", FE_WAVE, "Panel"),
+]
+
+
+def make_fuel_robustness_specs(data):
+    specs = []
+    group_variables = []
+    sample_labels = []
+    group_members = []
+    for title, group, fixed_effects, sample in FUEL_ROBUSTNESS_GROUPS:
+        spec_data = data if sample == "Panel" else data[data["wave"] == "IFLS5"].copy()
+        specs.append(
+            RegressionSpec(
+                title=title,
+                formula=(
+                    f"cesd_z ~ {group} * post_subsidy * {MAIN_TEMP_MEASURE} "
+                    f"+ {CONTROLS} | {fixed_effects}"
+                ),
+                df=spec_data,
+                tags=frozenset(["fuel-cut", "urban-vehicle-robustness"]),
+                show_terms=frozenset([f"{group}:post_subsidy:{MAIN_TEMP_MEASURE}"]),
+            )
+        )
+        group_variables.append(group)
+        sample_labels.append(sample)
+        people = spec_data.drop_duplicates("pidlink")
+        group_members.append(f"{int(people[group].sum()):,}")
+    return specs, group_variables, sample_labels, group_members
+
+
+(
+    fuel_robustness_specs,
+    fuel_robustness_groups,
+    fuel_robustness_samples,
+    fuel_robustness_members,
+) = make_fuel_robustness_specs(fuel_robustness_df)
+make_shock_regression_table(
+    fuel_robustness_specs,
+    group=fuel_robustness_groups,
+    post="post_subsidy",
+    temperature=MAIN_TEMP_MEASURE,
+    custom_model_stats={
+        "Sample": fuel_robustness_samples,
+        "Group members": fuel_robustness_members,
+    },
+)
+```
+
 ## Fuel Cut Placebo Dates
 
 The fuel shock specification uses the removal of the fuel subsidies as a shock. To test that this was indeed a shock whose interaction with mental health is causing impact, the figures report the main coefficient on the variable of interest, $(H_{ict} \times G_i \times P_t)$, where $P_t$ is arbitrarily chosen date (the true fuel subsidy cut date is November 18, 2014 and highlighted in the figure). 
