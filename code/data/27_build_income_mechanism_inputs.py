@@ -114,7 +114,7 @@ def build_income_mechanism_inputs() -> pd.DataFrame:
     labor = pd.concat([_labor_income("IFLS4"), _labor_income("IFLS5")], ignore_index=True)
     nonlabor = pd.concat([_nonlabor_income("IFLS4"), _nonlabor_income("IFLS5")], ignore_index=True)
     transport = pd.read_parquet(GENERATED_DATA / "25_commodity_transport_exposures.parquet")[
-        ["pidlink", "wave", "transport_spending_mo", "transport_share"]
+        ["pidlink", "wave", "transport_total", "transport_share"]
     ]
 
     out = (
@@ -127,7 +127,7 @@ def build_income_mechanism_inputs() -> pd.DataFrame:
     out["income_deflator"] = np.where(out.wave == "IFLS4", IDR_2007_TO_2014_DEFLATOR, 1.0)
     out["labor_real"] = out.hh_labor_income_mo * out.income_deflator
     out["nonlabor_real"] = out.hh_nonlabor_income_mo * out.income_deflator
-    out["transport_real"] = out.transport_spending_mo * out.income_deflator
+    out["transport_real"] = out.transport_total * out.income_deflator
     out["labor_real_w"] = _winsorize_within_wave(out.labor_real, out.wave)
     out["nonlabor_real_w"] = _winsorize_within_wave(out.nonlabor_real, out.wave)
     out["transport_real_w"] = _winsorize_within_wave(out.transport_real, out.wave)
