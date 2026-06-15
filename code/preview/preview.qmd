@@ -1327,15 +1327,33 @@ def add_fuel_group_robustness_variables(df):
     ifls4_spending = (
         out.loc[
             out["wave"].eq("IFLS4"),
-            ["pidlink", "fuel_share_quartile", "fuel_transport_share_quartile"],
+            [
+                "pidlink",
+                "vehicle_owner",
+                "urban",
+                "fuel_share",
+                "fuel_share_quartile",
+                "fuel_transport_share_quartile",
+            ],
         ]
         .rename(
             columns={
+                "vehicle_owner": "vehicle_owner_ifls4",
+                "urban": "urban_ifls4",
+                "fuel_share": "fuel_share_ifls4",
                 "fuel_share_quartile": "fuel_share_quartile_ifls4",
                 "fuel_transport_share_quartile": (
                     "fuel_transport_share_quartile_ifls4"
                 ),
             }
+        )
+        .assign(
+            urban_fuel_share_ifsl4=lambda df: (
+                df["urban_ifls4"] * df["fuel_share_ifls4"]
+            ),
+            rural_vehicle_hh_ifls4=lambda df: (
+                (1 - df["urban_ifls4"]) * df["vehicle_owner_ifls4"]
+            ),
         )
         .drop_duplicates("pidlink")
     )
@@ -1346,21 +1364,21 @@ def add_fuel_group_robustness_variables(df):
         out["urban_vehicle_hh_ifls4"].notna() & out["urban_vehicle_hh_ifls5"].notna()
     )
     out["urban_vehicle_hh_both_waves"] = (
-        out["urban_vehicle_hh_ifls4"].eq(1) & out["urban_vehicle_hh_ifls5"].eq(1)
-    ).where(known_vehicle_status).astype("Int64")
-    out["fuel_share_q4_ifls4"] = (
-        out["fuel_share_quartile_ifls4"].eq(4).astype(int)
+        (out["urban_vehicle_hh_ifls4"].eq(1) & out["urban_vehicle_hh_ifls5"].eq(1))
+        .where(known_vehicle_status)
+        .astype("Int64")
     )
+    out["fuel_share_q4_ifls4"] = out["fuel_share_quartile_ifls4"].eq(4).astype(int)
     out["fuel_transport_share_q4_ifls4"] = (
         out["fuel_transport_share_quartile_ifls4"].eq(4).astype(int)
     )
+    out["vehicle_owner_ifls4"] = out["vehicle_owner_ifls4"].fillna(0).astype(int)
+    out["urban_ifls4"] = out["urban_ifls4"].fillna(0).astype(int)
     out["urban_vehicle_transfer_recipient_ifls4"] = (
-        out["urban_vehicle_hh_ifls4"].eq(1)
-        & out["cash_transfer_recipient_ifls5"].eq(1)
+        out["urban_vehicle_hh_ifls4"].eq(1) & out["cash_transfer_recipient_ifls5"].eq(1)
     ).astype(int)
     out["urban_vehicle_transfer_nonrecipient_ifls4"] = (
-        out["urban_vehicle_hh_ifls4"].eq(1)
-        & out["cash_transfer_recipient_ifls5"].eq(0)
+        out["urban_vehicle_hh_ifls4"].eq(1) & out["cash_transfer_recipient_ifls5"].eq(0)
     ).astype(int)
     return out
 
@@ -1420,139 +1438,253 @@ print(
 
 :::
 
-### Alternate Specs
+### Fuel Exposure Summary
+
+Below are some summary stats on vehicle ownership and fuel share (defined as spending on fuel / total monthly spending). Note that we can't differentiate the kinds of vehicles people own.
+
+```{python}
+fuel_exposure_summary = fuel_robustness_df.copy()
+fuel_exposure_summary["Urban status"] = np.where(
+    fuel_exposure_summary["urban"].eq(1), "Urban", "Rural"
+)
+fuel_share_split = pd.crosstab(
+    [
+        fuel_exposure_summary["wave"],
+        fuel_exposure_summary["Urban status"],
+    ],
+    fuel_exposure_summary["fuel_share_quartile"],
+    normalize="index",
+).rename(
+    columns={
+        1: "Fuel share Q1",
+        2: "Fuel share Q2",
+        3: "Fuel share Q3",
+        4: "Fuel share Q4",
+    }
+)
+fuel_share_split = fuel_share_split.reindex(
+    columns=["Fuel share Q1", "Fuel share Q2", "Fuel share Q3", "Fuel share Q4"]
+)
+fuel_vehicle_summary = (
+    fuel_exposure_summary.groupby(["wave", "Urban status"])
+    .agg(
+        N=("pidlink", "nunique"),
+        fuel_share_mean=("fuel_share", "mean"),
+        fuel_share_median=("fuel_share", "median"),
+        vehicle_owner_share=("vehicle_owner", "mean"),
+        vehicle_owner_n=("vehicle_owner", "sum"),
+    )
+    .join(fuel_share_split)
+    .reset_index()
+    .rename(
+        columns={
+            "wave": "Wave",
+            "fuel_share_mean": "Mean fuel share",
+            "fuel_share_median": "Median fuel share",
+            "vehicle_owner_share": "Vehicle-owner share",
+            "vehicle_owner_n": "Vehicle-owner N",
+        }
+    )
+)
+fuel_vehicle_summary.style.format(
+    {
+        "N": "{:,.0f}",
+        "Mean fuel share": "{:.2%}",
+        "Median fuel share": "{:.2%}",
+        "Vehicle-owner share": "{:.1%}",
+        "Vehicle-owner N": "{:,.0f}",
+        "Fuel share Q1": "{:.1%}",
+        "Fuel share Q2": "{:.1%}",
+        "Fuel share Q3": "{:.1%}",
+        "Fuel share Q4": "{:.1%}",
+    }
+)
+```
+
+### Fuel Shock Exposure Definitions
+
+```{python}
+spec_rows = [
+    (
+        "Urban vehicle owner",
+        "urban_vehicle_hh_ifls4",
+    ),
+    (
+        "Rural vehicle owner",
+        "rural_vehicle_hh_ifls4",
+    ),
+    (
+        "Vehicle owner",
+        "vehicle_owner_ifls4",
+    ),
+    (
+        "IFLS4 fuel share",
+        "fuel_share_ifls4",
+    ),
+    (
+        "IFLS4 fuel share, urban",
+        "urban_fuel_share_ifsl4",
+    ),
+    (
+        "IFLS4 Fuel Share >= p75",
+        "fuel_share_q4_ifls4",
+    ),
+]
+
+
+def make_focused_fuel_definition_specs(data, spec_rows=spec_rows):
+    specs = []
+    groups = []
+    exposure_means = []
+    for (
+        title,
+        group,
+    ) in spec_rows:
+        specs.append(
+            RegressionSpec(
+                title=title,
+                formula=(
+                    f"cesd_z ~ {group} * post_subsidy * {MAIN_TEMP_MEASURE} "
+                    f"+ {CONTROLS} | {FE_NO_WAVE}"
+                ),
+                df=data,
+                tags=frozenset(["fuel-cut", "focused-exposure-definitions"]),
+                show_terms=frozenset([f"{group}:post_subsidy:{MAIN_TEMP_MEASURE}"]),
+            )
+        )
+        groups.append(group)
+        exposure = pd.to_numeric(data[group], errors="coerce")
+        exposure_means.append(f"{exposure.mean():.3f}")
+    return specs, groups, exposure_means
+
+
+(
+    focused_fuel_specs,
+    focused_fuel_groups,
+    focused_fuel_exposure_means,
+) = make_focused_fuel_definition_specs(fuel_robustness_df)
+
+(
+    focused_fuel_specs_w5,
+    focused_fuel_groups_w5,
+    focused_fuel_exposure_means_w5,
+) = make_focused_fuel_definition_specs(
+    fuel_robustness_df[fuel_robustness_df["wave"] == "IFLS5"].copy()
+)
+```
+
+:::{.panel-tabset}
+
+
+### Wave 5 only
+
+The regressions below restrict the data to wave 5 for the regression estimation. Group status is still based on vehicle ownership and fuel share in wave 4.
+
+```{python}
+make_shock_regression_table(
+    focused_fuel_specs_w5,
+    group=focused_fuel_groups_w5,
+    post="post_subsidy",
+    temperature=MAIN_TEMP_MEASURE,
+    custom_model_stats={
+        "Sample": ["IFLS5 Only"] * len(focused_fuel_specs),
+        "Exposure mean": focused_fuel_exposure_means_w5,
+    },
+)
+```
+
+### All Data
+
+```{python}
+make_shock_regression_table(
+    focused_fuel_specs,
+    group=focused_fuel_groups,
+    post="post_subsidy",
+    temperature=MAIN_TEMP_MEASURE,
+    custom_model_stats={
+        "Sample": ["Both Waves"] * len(focused_fuel_specs),
+        "Exposure mean": focused_fuel_exposure_means,
+    },
+)
+```
+
+:::{.callout-note title="Ownership Robustness" collapse="true"}
+
+
+### Alternate Specs - Vehicle Ownership
 
 - **IFLS4 urban vehicle**: main fuel-cut group, defined by Wave 4 urban vehicle ownership.
 - **Urban vehicle in both waves**: restricts the group to respondents who are urban vehicle owners in both Wave 4 and Wave 5.
 - **IFLS5 urban vehicle**: defines the group using Wave 5 urban vehicle ownership.
 - **Panel versions**: repeat the same three group definitions without restricting the data to Wave 5, using wave fixed effects.
 
+:::{.panel-tabset}
+
 ```{python}
 FUEL_ROBUSTNESS_GROUPS = [
-    ("IFLS5: IFLS4 urban vehicle", "urban_vehicle_hh_ifls4", FE_NO_WAVE, "IFLS5"),
+    ("Urban vehicle - IFLS4", "urban_vehicle_hh_ifls4"),
     (
-        "IFLS5: urban vehicle both waves",
+        "Urban vehicle - both waves",
         "urban_vehicle_hh_both_waves",
-        FE_NO_WAVE,
-        "IFLS5",
     ),
-    ("IFLS5: IFLS5 urban vehicle", "urban_vehicle_hh_ifls5", FE_NO_WAVE, "IFLS5"),
-    ("Panel: IFLS4 urban vehicle", "urban_vehicle_hh_ifls4", FE_WAVE, "Panel"),
+    ("Urban vehicle - IFLS5", "urban_vehicle_hh_ifls5"),
     (
-        "Panel: urban vehicle both waves",
-        "urban_vehicle_hh_both_waves",
-        FE_WAVE,
-        "Panel",
+        "Urban vehicle (IFLS4) & transfer recipients",
+        "urban_vehicle_transfer_recipient_ifls4",
     ),
-    ("Panel: IFLS5 urban vehicle", "urban_vehicle_hh_ifls5", FE_WAVE, "Panel"),
+    (
+        "Urban vehicle (IFLS4) & not transfer recipients",
+        "urban_vehicle_transfer_nonrecipient_ifls4",
+    ),
 ]
-
-
-def make_fuel_robustness_specs(
-    data,
-    robustness_groups=FUEL_ROBUSTNESS_GROUPS,
-    tag="urban-vehicle-robustness",
-):
-    specs = []
-    group_variables = []
-    sample_labels = []
-    group_members = []
-    for title, group, fixed_effects, sample in robustness_groups:
-        spec_data = data if sample == "Panel" else data[data["wave"] == "IFLS5"].copy()
-        specs.append(
-            RegressionSpec(
-                title=title,
-                formula=(
-                    f"cesd_z ~ {group} * post_subsidy * {MAIN_TEMP_MEASURE} "
-                    f"+ {CONTROLS} | {fixed_effects}"
-                ),
-                df=spec_data,
-                tags=frozenset(["fuel-cut", tag]),
-                show_terms=frozenset([f"{group}:post_subsidy:{MAIN_TEMP_MEASURE}"]),
-            )
-        )
-        group_variables.append(group)
-        sample_labels.append(sample)
-        people = spec_data.drop_duplicates("pidlink")
-        group_members.append(f"{int(pd.to_numeric(people[group]).sum()):,}")
-    return specs, group_variables, sample_labels, group_members
-
-
-(
-    fuel_robustness_specs,
-    fuel_robustness_groups,
-    fuel_robustness_samples,
-    fuel_robustness_members,
-) = make_fuel_robustness_specs(fuel_robustness_df)
-make_shock_regression_table(
-    fuel_robustness_specs,
-    group=fuel_robustness_groups,
-    post="post_subsidy",
-    temperature=MAIN_TEMP_MEASURE,
-    custom_model_stats={
-        "Sample": fuel_robustness_samples,
-        "Group members": fuel_robustness_members,
-    },
-)
 ```
 
-### Fuel Spending Exposure Specs
-
-- **IFLS4 fuel-share Q4**: group equals one for respondents in the top quartile of the Wave 4 fuel budget-share distribution.
-- **IFLS4 fuel + transport-share Q4**: group equals one for respondents in the top quartile of the Wave 4 combined fuel and transport budget-share distribution.
-- **Cash-transfer group definitions**: group equals one for Wave 4 urban-vehicle owners who do, or do not, receive an IFLS5 cash transfer. The sample is unchanged within the IFLS5-only and panel blocks.
+#### Wave 5 Only
 
 ```{python}
-FUEL_SPENDING_ROBUSTNESS_GROUPS = [
-    ("IFLS5: IFLS4 fuel share Q4", "fuel_share_q4_ifls4", FE_NO_WAVE, "IFLS5"),
-    (
-        "IFLS5: urban vehicle, transfer recipients",
-        "urban_vehicle_transfer_recipient_ifls4",
-        FE_NO_WAVE,
-        "IFLS5",
-    ),
-    (
-        "IFLS5: urban vehicle, transfer nonrecipients",
-        "urban_vehicle_transfer_nonrecipient_ifls4",
-        FE_NO_WAVE,
-        "IFLS5",
-    ),
-    ("Panel: IFLS4 fuel share Q4", "fuel_share_q4_ifls4", FE_WAVE, "Panel"),
-    (
-        "Panel: IFLS4 fuel + transport share Q4",
-        "fuel_transport_share_q4_ifls4",
-        FE_WAVE,
-        "Panel",
-    ),
-    (
-        "Panel: urban vehicle, transfer nonrecipients",
-        "urban_vehicle_transfer_nonrecipient_ifls4",
-        FE_WAVE,
-        "Panel",
-    ),
-]
-
 (
-    fuel_spending_robustness_specs,
-    fuel_spending_robustness_groups,
-    fuel_spending_robustness_samples,
-    fuel_spending_robustness_members,
-) = make_fuel_robustness_specs(
-    fuel_robustness_df,
-    FUEL_SPENDING_ROBUSTNESS_GROUPS,
-    tag="fuel-spending-share-robustness",
+    specs,
+    groups,
+    members,
+) = make_focused_fuel_definition_specs(
+    fuel_robustness_df[fuel_robustness_df["wave"] == "IFLS5"], FUEL_ROBUSTNESS_GROUPS
 )
 make_shock_regression_table(
-    fuel_spending_robustness_specs,
-    group=fuel_spending_robustness_groups,
+    specs,
+    group=groups,
     post="post_subsidy",
     temperature=MAIN_TEMP_MEASURE,
     custom_model_stats={
-        "Sample": fuel_spending_robustness_samples,
-        "Group members": fuel_spending_robustness_members,
+        "Sample": ["IFLS5"] * len(FUEL_ROBUSTNESS_GROUPS),
+        "Group members": members,
     },
 )
 ```
+
+#### All Data
+
+```{python}
+(
+    specs,
+    groups,
+    members,
+) = make_focused_fuel_definition_specs(fuel_robustness_df, FUEL_ROBUSTNESS_GROUPS)
+make_shock_regression_table(
+    specs,
+    group=groups,
+    post="post_subsidy",
+    temperature=MAIN_TEMP_MEASURE,
+    custom_model_stats={
+        "Sample": ["Both waves"] * len(FUEL_ROBUSTNESS_GROUPS),
+        "Group members": members,
+    },
+)
+```
+
+:::
+
+:::
+
 
 ## Fuel Cut Placebo Dates
 
