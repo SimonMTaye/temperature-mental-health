@@ -1608,6 +1608,8 @@ make_shock_regression_table(
 )
 ```
 
+:::
+
 :::{.callout-note title="Ownership Robustness" collapse="true"}
 
 
