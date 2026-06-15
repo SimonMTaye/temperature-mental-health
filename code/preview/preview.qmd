@@ -419,6 +419,60 @@ make_shock_regression_table(
 
 The regressions below omit group effects and instead include individual fixed effects
 
+```{python}
+panel_fuel_share_q4_data = analysis_df.merge(
+    (
+        analysis_df.loc[
+            analysis_df["wave"].eq("IFLS4"),
+            ["pidlink", "fuel_share_quartile"],
+        ]
+        .rename(columns={"fuel_share_quartile": "fuel_share_quartile_ifls4"})
+        .drop_duplicates("pidlink")
+    ),
+    on="pidlink",
+    how="left",
+    validate="m:1",
+)
+panel_fuel_share_q4_data["fuel_share_q4_ifls4"] = (
+    panel_fuel_share_q4_data["fuel_share_quartile_ifls4"].eq(4).astype(int)
+)
+panel_fuel_share_q4_pidlink = RegressionSpec(
+    title="Fuel Share Q4 - Panel",
+    formula=(
+        f"cesd_z ~ post_subsidy * {MAIN_TEMP_MEASURE} "
+        f"+ fuel_share_q4_ifls4:post_subsidy "
+        f"+ fuel_share_q4_ifls4:{MAIN_TEMP_MEASURE} "
+        f"+ fuel_share_q4_ifls4:post_subsidy:{MAIN_TEMP_MEASURE} "
+        f"+ {CONTROLS} | {FE_WAVE}+pidlink"
+    ),
+    df=panel_fuel_share_q4_data,
+    tags=frozenset(["fuel-cut", "fuel-share-q4-panel-pidlink"]),
+    show_terms=frozenset(
+        [f"fuel_share_q4_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]
+    ),
+)
+panel_shock_specs_with_fuel_share = [
+    palm_shock_panel,
+    fuel_shock_panel,
+    panel_fuel_share_q4_pidlink,
+    coal_shock_panel,
+    jobloss_panel,
+]
+shock_groups_panel_with_fuel_share = [
+    "palm_farmer_hh_ifls4",
+    "urban_vehicle_hh_ifls4",
+    "fuel_share_q4_ifls4",
+    "coal_worker_hh_ifls4",
+    JOB_LOSS_MAIN,
+]
+shock_posts_panel_with_fuel_share = [
+    "ifls5",
+    "post_subsidy",
+    "post_subsidy",
+    "ifls5",
+    None,
+]
+```
 
 ::: {.panel-tabset}
 
@@ -427,12 +481,12 @@ The regressions below omit group effects and instead include individual fixed ef
 ```{python}
 panel_shock_daily_mean = [
     update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmean_c_dev")
-    for spec in panel_shock_specs
+    for spec in panel_shock_specs_with_fuel_share
 ]
 make_shock_regression_table(
     panel_shock_daily_mean,
-    group=shock_groups_panel,
-    post=shock_posts_panel,
+    group=shock_groups_panel_with_fuel_share,
+    post=shock_posts_panel_with_fuel_share,
     temperature="tmean_c_dev",
 )
 ```
@@ -442,12 +496,12 @@ make_shock_regression_table(
 ```{python}
 panel_shock_daily_min = [
     update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmin_c_dev")
-    for spec in panel_shock_specs
+    for spec in panel_shock_specs_with_fuel_share
 ]
 make_shock_regression_table(
     panel_shock_daily_min,
-    group=shock_groups_panel,
-    post=shock_posts_panel,
+    group=shock_groups_panel_with_fuel_share,
+    post=shock_posts_panel_with_fuel_share,
     temperature="tmin_c_dev",
 )
 ```
@@ -457,12 +511,12 @@ make_shock_regression_table(
 ```{python}
 panel_shock_7_day = [
     update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "tmean_7d_dev")
-    for spec in panel_shock_specs
+    for spec in panel_shock_specs_with_fuel_share
 ]
 make_shock_regression_table(
     panel_shock_7_day,
-    group=shock_groups_panel,
-    post=shock_posts_panel,
+    group=shock_groups_panel_with_fuel_share,
+    post=shock_posts_panel_with_fuel_share,
     temperature="tmean_7d_dev",
 )
 ```
@@ -472,12 +526,12 @@ make_shock_regression_table(
 ```{python}
 panel_shock_wetbulb = [
     update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "wetbulb_c_dev")
-    for spec in panel_shock_specs
+    for spec in panel_shock_specs_with_fuel_share
 ]
 make_shock_regression_table(
     panel_shock_wetbulb,
-    group=shock_groups_panel,
-    post=shock_posts_panel,
+    group=shock_groups_panel_with_fuel_share,
+    post=shock_posts_panel_with_fuel_share,
     temperature="wetbulb_c_dev",
 )
 ```
@@ -487,12 +541,12 @@ make_shock_regression_table(
 ```{python}
 panel_shock_wetbulb_7_day = [
     update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "wetbulb_7d_dev")
-    for spec in panel_shock_specs
+    for spec in panel_shock_specs_with_fuel_share
 ]
 make_shock_regression_table(
     panel_shock_wetbulb_7_day,
-    group=shock_groups_panel,
-    post=shock_posts_panel,
+    group=shock_groups_panel_with_fuel_share,
+    post=shock_posts_panel_with_fuel_share,
     temperature="wetbulb_7d_dev",
 )
 ```
@@ -502,12 +556,12 @@ make_shock_regression_table(
 ```{python}
 panel_shock_hot30_7_day = [
     update_formula_search_replace(spec, MAIN_TEMP_MEASURE, "hot30_7d_dev")
-    for spec in panel_shock_specs
+    for spec in panel_shock_specs_with_fuel_share
 ]
 make_shock_regression_table(
     panel_shock_hot30_7_day,
-    group=shock_groups_panel,
-    post=shock_posts_panel,
+    group=shock_groups_panel_with_fuel_share,
+    post=shock_posts_panel_with_fuel_share,
     temperature="hot30_7d_dev",
 )
 ```
@@ -1257,22 +1311,57 @@ urban vehicle ownership among respondents observed in both waves.
 ```{python}
 def add_fuel_group_robustness_variables(df):
     out = df.copy()
-    urban_vehicle_ifls5 = (
-        out.assign(
-            urban_vehicle_hh_ifls5=out["urban_vehicle_hh"].where(
-                out["wave"].eq("IFLS5")
-            )
+    ifls5_status = (
+        out.loc[
+            out["wave"].eq("IFLS5"),
+            ["pidlink", "urban_vehicle_hh", "cash_transfer_recipient"],
+        ]
+        .rename(
+            columns={
+                "urban_vehicle_hh": "urban_vehicle_hh_ifls5",
+                "cash_transfer_recipient": "cash_transfer_recipient_ifls5",
+            }
         )
-        .groupby("pidlink", as_index=False)["urban_vehicle_hh_ifls5"]
-        .max()
+        .drop_duplicates("pidlink")
     )
-    out = out.merge(urban_vehicle_ifls5, on="pidlink", how="left", validate="m:1")
+    ifls4_spending = (
+        out.loc[
+            out["wave"].eq("IFLS4"),
+            ["pidlink", "fuel_share_quartile", "fuel_transport_share_quartile"],
+        ]
+        .rename(
+            columns={
+                "fuel_share_quartile": "fuel_share_quartile_ifls4",
+                "fuel_transport_share_quartile": (
+                    "fuel_transport_share_quartile_ifls4"
+                ),
+            }
+        )
+        .drop_duplicates("pidlink")
+    )
+    out = out.merge(ifls5_status, on="pidlink", how="left", validate="m:1")
+    out = out.merge(ifls4_spending, on="pidlink", how="left", validate="m:1")
+
     known_vehicle_status = (
         out["urban_vehicle_hh_ifls4"].notna() & out["urban_vehicle_hh_ifls5"].notna()
     )
     out["urban_vehicle_hh_both_waves"] = (
         out["urban_vehicle_hh_ifls4"].eq(1) & out["urban_vehicle_hh_ifls5"].eq(1)
     ).where(known_vehicle_status).astype("Int64")
+    out["fuel_share_q4_ifls4"] = (
+        out["fuel_share_quartile_ifls4"].eq(4).astype(int)
+    )
+    out["fuel_transport_share_q4_ifls4"] = (
+        out["fuel_transport_share_quartile_ifls4"].eq(4).astype(int)
+    )
+    out["urban_vehicle_transfer_recipient_ifls4"] = (
+        out["urban_vehicle_hh_ifls4"].eq(1)
+        & out["cash_transfer_recipient_ifls5"].eq(1)
+    ).astype(int)
+    out["urban_vehicle_transfer_nonrecipient_ifls4"] = (
+        out["urban_vehicle_hh_ifls4"].eq(1)
+        & out["cash_transfer_recipient_ifls5"].eq(0)
+    ).astype(int)
     return out
 
 
@@ -1359,12 +1448,16 @@ FUEL_ROBUSTNESS_GROUPS = [
 ]
 
 
-def make_fuel_robustness_specs(data):
+def make_fuel_robustness_specs(
+    data,
+    robustness_groups=FUEL_ROBUSTNESS_GROUPS,
+    tag="urban-vehicle-robustness",
+):
     specs = []
     group_variables = []
     sample_labels = []
     group_members = []
-    for title, group, fixed_effects, sample in FUEL_ROBUSTNESS_GROUPS:
+    for title, group, fixed_effects, sample in robustness_groups:
         spec_data = data if sample == "Panel" else data[data["wave"] == "IFLS5"].copy()
         specs.append(
             RegressionSpec(
@@ -1374,14 +1467,14 @@ def make_fuel_robustness_specs(data):
                     f"+ {CONTROLS} | {fixed_effects}"
                 ),
                 df=spec_data,
-                tags=frozenset(["fuel-cut", "urban-vehicle-robustness"]),
+                tags=frozenset(["fuel-cut", tag]),
                 show_terms=frozenset([f"{group}:post_subsidy:{MAIN_TEMP_MEASURE}"]),
             )
         )
         group_variables.append(group)
         sample_labels.append(sample)
         people = spec_data.drop_duplicates("pidlink")
-        group_members.append(f"{int(people[group].sum()):,}")
+        group_members.append(f"{int(pd.to_numeric(people[group]).sum()):,}")
     return specs, group_variables, sample_labels, group_members
 
 
@@ -1399,6 +1492,64 @@ make_shock_regression_table(
     custom_model_stats={
         "Sample": fuel_robustness_samples,
         "Group members": fuel_robustness_members,
+    },
+)
+```
+
+### Fuel Spending Exposure Specs
+
+- **IFLS4 fuel-share Q4**: group equals one for respondents in the top quartile of the Wave 4 fuel budget-share distribution.
+- **IFLS4 fuel + transport-share Q4**: group equals one for respondents in the top quartile of the Wave 4 combined fuel and transport budget-share distribution.
+- **Cash-transfer group definitions**: group equals one for Wave 4 urban-vehicle owners who do, or do not, receive an IFLS5 cash transfer. The sample is unchanged within the IFLS5-only and panel blocks.
+
+```{python}
+FUEL_SPENDING_ROBUSTNESS_GROUPS = [
+    ("IFLS5: IFLS4 fuel share Q4", "fuel_share_q4_ifls4", FE_NO_WAVE, "IFLS5"),
+    (
+        "IFLS5: urban vehicle, transfer recipients",
+        "urban_vehicle_transfer_recipient_ifls4",
+        FE_NO_WAVE,
+        "IFLS5",
+    ),
+    (
+        "IFLS5: urban vehicle, transfer nonrecipients",
+        "urban_vehicle_transfer_nonrecipient_ifls4",
+        FE_NO_WAVE,
+        "IFLS5",
+    ),
+    ("Panel: IFLS4 fuel share Q4", "fuel_share_q4_ifls4", FE_WAVE, "Panel"),
+    (
+        "Panel: IFLS4 fuel + transport share Q4",
+        "fuel_transport_share_q4_ifls4",
+        FE_WAVE,
+        "Panel",
+    ),
+    (
+        "Panel: urban vehicle, transfer nonrecipients",
+        "urban_vehicle_transfer_nonrecipient_ifls4",
+        FE_WAVE,
+        "Panel",
+    ),
+]
+
+(
+    fuel_spending_robustness_specs,
+    fuel_spending_robustness_groups,
+    fuel_spending_robustness_samples,
+    fuel_spending_robustness_members,
+) = make_fuel_robustness_specs(
+    fuel_robustness_df,
+    FUEL_SPENDING_ROBUSTNESS_GROUPS,
+    tag="fuel-spending-share-robustness",
+)
+make_shock_regression_table(
+    fuel_spending_robustness_specs,
+    group=fuel_spending_robustness_groups,
+    post="post_subsidy",
+    temperature=MAIN_TEMP_MEASURE,
+    custom_model_stats={
+        "Sample": fuel_spending_robustness_samples,
+        "Group members": fuel_spending_robustness_members,
     },
 )
 ```

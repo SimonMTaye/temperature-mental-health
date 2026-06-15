@@ -63,11 +63,37 @@ OUTPUT_COLUMNS = [
     "coal_worker_individual_ifls4",
     "coal_worker_hh",
     "coal_worker_hh_ifls4",
+    "fuel_total",
+    "transport_total",
     "transport_spending_mo",
+    "fuel_transport_total",
     "total_mo",
+    "fuel_share",
     "transport_share",
+    "fuel_transport_share",
+    "fuel_total_quartile",
+    "fuel_total_quintile",
+    "transport_total_quartile",
+    "transport_total_quintile",
+    "fuel_transport_total_quartile",
+    "fuel_transport_total_quintile",
+    "fuel_share_quartile",
+    "fuel_share_quintile",
+    "transport_share_quartile",
+    "transport_share_quintile",
     "transport_share_q5",
+    "fuel_transport_share_quartile",
+    "fuel_transport_share_quintile",
     "high_transport_share",
+]
+
+SPENDING_QUANTILE_COLUMNS = [
+    "fuel_total",
+    "transport_total",
+    "fuel_transport_total",
+    "fuel_share",
+    "transport_share",
+    "fuel_transport_share",
 ]
 
 IFLS_FOLDERS = {
@@ -108,7 +134,7 @@ def _monthly_food_spending(ks0: pd.DataFrame, *, hhid_col_name: str) -> pd.DataF
     return ks0[[hhid_col_name, "food_mo"]]
 
 
-def _transport_share_from_frames(
+def _fuel_transport_share_from_frames(
     ks2: pd.DataFrame,
     ks3: pd.DataFrame,
     ks0: pd.DataFrame,
@@ -116,13 +142,22 @@ def _transport_share_from_frames(
     hhid_col_name: str,
     wave: str,
 ) -> pd.DataFrame:
-    """Compute transportation share of monthly household spending."""
+    """Compute household fuel and transportation shares of monthly spending."""
     ks2 = ks2.copy()
     ks3 = ks3.copy()
     ks2["ks06"] = clean_money(ks2.ks06)
     ks3["ks08"] = clean_money(ks3.ks08)
-    transport = ks2[ks2.ks2type == "E"][[hhid_col_name, "ks06"]].rename(
-        columns={"ks06": "transport_spending_mo"}
+
+    spending = (
+        ks2[ks2.ks2type.isin(["A3", "E"])]
+        .pivot_table(
+            index=hhid_col_name,
+            columns="ks2type",
+            values="ks06",
+            aggfunc="first",
+        )
+        .rename(columns={"A3": "fuel_total", "E": "transport_total"})
+        .reset_index()
     )
 
     total_ks2 = (
@@ -139,7 +174,7 @@ def _transport_share_from_frames(
     )
     food = _monthly_food_spending(ks0, hhid_col_name=hhid_col_name)
 
-    out = transport.drop_duplicates(hhid_col_name).merge(
+    out = spending.merge(
         total_ks2, on=hhid_col_name, validate="1:1"
     )
     out = out.merge(total_ks3, on=hhid_col_name, validate="1:1").merge(
@@ -149,21 +184,46 @@ def _transport_share_from_frames(
         validate="1:1",
     )
     if wave == "IFLS5":
-        for col in ["transport_spending_mo", "total_ks2_mo", "total_ks3_mo", "food_mo"]:
+        for col in [
+            "fuel_total",
+            "transport_total",
+            "total_ks2_mo",
+            "total_ks3_mo",
+            "food_mo",
+        ]:
             out[col] = out[col].fillna(0)
     out["total_mo"] = out.total_ks2_mo + out.total_ks3_mo + out.food_mo
-    out["transport_share"] = out.transport_spending_mo / out.total_mo.replace(0, np.nan)
-    out = out[(out.transport_share >= 0) & (out.transport_share <= 1)]
+    out["transport_spending_mo"] = out["transport_total"]
+    out["fuel_transport_total"] = out.fuel_total + out.transport_total
+    denominator = out.total_mo.replace(0, np.nan)
+    out["fuel_share"] = out.fuel_total / denominator
+    out["transport_share"] = out.transport_total / denominator
+    out["fuel_transport_share"] = out.fuel_transport_total / denominator
+    out = out[
+        out.fuel_share.between(0, 1)
+        & out.transport_share.between(0, 1)
+        & out.fuel_transport_share.between(0, 1)
+    ]
     out = out.rename(columns={hhid_col_name: "hhid"})[
-        ["hhid", "transport_spending_mo", "total_mo", "transport_share"]
+        [
+            "hhid",
+            "fuel_total",
+            "transport_total",
+            "transport_spending_mo",
+            "fuel_transport_total",
+            "total_mo",
+            "fuel_share",
+            "transport_share",
+            "fuel_transport_share",
+        ]
     ]
     out["wave"] = wave
     return out
 
 
-def _transport_share(wave: str) -> pd.DataFrame:
+def _fuel_transport_share(wave: str) -> pd.DataFrame:
     folder = IFLS_FOLDERS[wave]
-    return _transport_share_from_frames(
+    return _fuel_transport_share_from_frames(
         read_stata_df(folder / "b1_ks2.dta", convert_categoricals=False),
         read_stata_df(folder / "b1_ks3.dta", convert_categoricals=False),
         read_stata_df(folder / "b1_ks0.dta", convert_categoricals=False),
@@ -208,11 +268,23 @@ def _add_region_worker_flags(out: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _add_transport_quintile(out: pd.DataFrame) -> pd.DataFrame:
-    out["transport_share_q5"] = out.groupby("wave")["transport_share"].transform(
-        lambda s: pd.qcut(s.rank(method="first"), 5, labels=False) + 1
-    )
-    out["high_transport_share"] = out.transport_share_q5 == 5
+def _quantile_codes(series: pd.Series, bins: int) -> pd.Series:
+    """Return deterministic within-series quantile codes, preserving missing values."""
+    return pd.qcut(series.rank(method="first"), bins, labels=False) + 1
+
+
+def _add_spending_quantiles(out: pd.DataFrame) -> pd.DataFrame:
+    for column in SPENDING_QUANTILE_COLUMNS:
+        out[f"{column}_quartile"] = out.groupby("wave")[column].transform(
+            _quantile_codes,
+            bins=4,
+        )
+        out[f"{column}_quintile"] = out.groupby("wave")[column].transform(
+            _quantile_codes,
+            bins=5,
+        )
+    out["transport_share_q5"] = out["transport_share_quintile"]
+    out["high_transport_share"] = out.transport_share_quintile == 5
     return out
 
 
@@ -223,7 +295,7 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         ignore_index=True,
     )
     transport = pd.concat(
-        [_transport_share("IFLS4"), _transport_share("IFLS5")],
+        [_fuel_transport_share("IFLS4"), _fuel_transport_share("IFLS5")],
         ignore_index=True,
     )
     main_crop = pd.concat(
@@ -248,7 +320,7 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         )
         .merge(main_crop, on=["hhid", "wave"], how="left", validate="m:1")
         .pipe(_add_region_worker_flags)
-        .pipe(_add_transport_quintile)
+        .pipe(_add_spending_quantiles)
     )
     worker_dummy_ifls4 = (
         out_final

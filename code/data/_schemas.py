@@ -453,18 +453,76 @@ COMMODITY_TRANSPORT_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "coal_worker_hh": _binary_column(),
         # IFLS4 household-level coal worker baseline, carried to later waves.
         "coal_worker_hh_ifls4": _binary_column(nullable=True),
+        # Monthly household fuel spending from IFLS KS2 item A3.
+        "fuel_total": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        # Monthly household transportation spending from IFLS KS2 item E.
+        "transport_total": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         # Monthly household transportation spending.
         "transport_spending_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
+        # Sum of monthly household fuel and transportation spending.
+        "fuel_transport_total": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         # Total monthly household spending used as the transport-share denominator.
         "total_mo": pa.Column(float, checks=pa.Check.ge(0), nullable=True, coerce=True),
+        # Fuel spending divided by total monthly household spending.
+        "fuel_share": pa.Column(
+            float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
         # Transportation spending divided by total monthly household spending.
         "transport_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
-        # Within-wave quintile of transport_share.
+        # Fuel plus transportation spending divided by total monthly household spending.
+        "fuel_transport_share": pa.Column(
+            float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
+        # Within-wave quartile/quintile codes for spending totals.
+        "fuel_total_quartile": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
+        "fuel_total_quintile": pa.Column(
+            float, checks=pa.Check.between(1, 5), nullable=True, coerce=True
+        ),
+        "transport_total_quartile": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
+        "transport_total_quintile": pa.Column(
+            float, checks=pa.Check.between(1, 5), nullable=True, coerce=True
+        ),
+        "fuel_transport_total_quartile": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
+        "fuel_transport_total_quintile": pa.Column(
+            float, checks=pa.Check.between(1, 5), nullable=True, coerce=True
+        ),
+        # Within-wave quartile/quintile codes for spending shares.
+        "fuel_share_quartile": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
+        "fuel_share_quintile": pa.Column(
+            float, checks=pa.Check.between(1, 5), nullable=True, coerce=True
+        ),
+        "transport_share_quartile": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
+        "transport_share_quintile": pa.Column(
+            float, checks=pa.Check.between(1, 5), nullable=True, coerce=True
+        ),
+        # Legacy alias for within-wave quintile of transport_share.
         "transport_share_q5": pa.Column(
+            float, checks=pa.Check.between(1, 5), nullable=True, coerce=True
+        ),
+        "fuel_transport_share_quartile": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
+        "fuel_transport_share_quintile": pa.Column(
             float, checks=pa.Check.between(1, 5), nullable=True, coerce=True
         ),
         # Indicator for the top within-wave quintile of transport_share.
@@ -909,9 +967,27 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
                 "coal_worker_individual_ifls4",
                 "coal_worker_hh",
                 "coal_worker_hh_ifls4",
+                "fuel_total",
+                "transport_total",
                 "transport_spending_mo",
+                "fuel_transport_total",
                 "total_mo",
+                "fuel_share",
                 "transport_share",
+                "fuel_transport_share",
+                "fuel_total_quartile",
+                "fuel_total_quintile",
+                "transport_total_quartile",
+                "transport_total_quintile",
+                "fuel_transport_total_quartile",
+                "fuel_transport_total_quintile",
+                "fuel_share_quartile",
+                "fuel_share_quintile",
+                "transport_share_quartile",
+                "transport_share_quintile",
+                "transport_share_q5",
+                "fuel_transport_share_quartile",
+                "fuel_transport_share_quintile",
                 "high_transport_share",
             ],
         ),
