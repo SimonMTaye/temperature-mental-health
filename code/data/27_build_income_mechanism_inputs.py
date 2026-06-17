@@ -7,11 +7,16 @@ Row level: one person-wave record, keyed by pidlink + wave.
 import numpy as np
 import pandas as pd
 
-from _schemas import INCOME_MECHANISM_INPUTS_SCHEMA
-from _sentinels import clean_money
-from _stata import read_stata_df
-from config import GENERATED_DATA, IDR_2007_TO_2014_DEFLATOR, IFLS4_FOLDER, IFLS5_FOLDER
-from log import log
+from data._schemas import INCOME_MECHANISM_INPUTS_SCHEMA
+from data._sentinels import clean_money
+from data._stata import read_stata_df
+from data.config import (
+    GENERATED_DATA,
+    IDR_2007_TO_2014_DEFLATOR,
+    IFLS4_FOLDER,
+    IFLS5_FOLDER,
+)
+from data.log import log
 
 
 IFLS_FOLDERS = {
@@ -26,9 +31,9 @@ HHID_COLUMNS = {
 
 
 def _labor_income(wave: str) -> pd.DataFrame:
-    tk = read_stata_df(
-        IFLS_FOLDERS[wave] / "b3a_tk2.dta", convert_categoricals=False
-    )[["pidlink", "tk25a1", "tk25b1", "tk26a1", "tk26b1"]].copy()
+    tk = read_stata_df(IFLS_FOLDERS[wave] / "b3a_tk2.dta", convert_categoricals=False)[
+        ["pidlink", "tk25a1", "tk25b1", "tk26a1", "tk26b1"]
+    ].copy()
     out = (
         tk.assign(
             wage_job1=clean_money(tk.tk25a1),
@@ -38,11 +43,11 @@ def _labor_income(wave: str) -> pd.DataFrame:
             wave=wave,
         )
         .assign(
-            person_labor_income_mo=lambda df: df[
-                ["wage_job1", "wage_job2", "profit_job1", "profit_job2"]
-            ]
-            .sum(axis=1, min_count=1)
-            .fillna(0)
+            person_labor_income_mo=lambda df: (
+                df[["wage_job1", "wage_job2", "profit_job1", "profit_job2"]]
+                .sum(axis=1, min_count=1)
+                .fillna(0)
+            )
         )
         .groupby(["pidlink", "wave"], as_index=False)
         .agg(person_labor_income_mo=("person_labor_income_mo", "sum"))
@@ -61,9 +66,9 @@ def _labor_income(wave: str) -> pd.DataFrame:
 
 def _farm_profit(wave: str) -> pd.DataFrame:
     hhid_col = HHID_COLUMNS[wave]
-    df = read_stata_df(
-        IFLS_FOLDERS[wave] / "b2_ut1.dta", convert_categoricals=False
-    )[[hhid_col, "ut09"]].copy()
+    df = read_stata_df(IFLS_FOLDERS[wave] / "b2_ut1.dta", convert_categoricals=False)[
+        [hhid_col, "ut09"]
+    ].copy()
     return (
         df.assign(hhid=df[hhid_col], annual_profit=clean_money(df.ut09), wave=wave)
         .groupby(["hhid", "wave"], as_index=False)
@@ -73,9 +78,9 @@ def _farm_profit(wave: str) -> pd.DataFrame:
 
 def _nonfarm_profit(wave: str) -> pd.DataFrame:
     hhid_col = HHID_COLUMNS[wave]
-    df = read_stata_df(
-        IFLS_FOLDERS[wave] / "b2_nt2.dta", convert_categoricals=False
-    )[[hhid_col, "nt09", "nt26"]].copy()
+    df = read_stata_df(IFLS_FOLDERS[wave] / "b2_nt2.dta", convert_categoricals=False)[
+        [hhid_col, "nt09", "nt26"]
+    ].copy()
     return (
         df.assign(
             hhid=df[hhid_col],
@@ -84,9 +89,11 @@ def _nonfarm_profit(wave: str) -> pd.DataFrame:
             wave=wave,
         )
         .assign(
-            annual_profit=lambda x: x[["business_profit", "rental_income"]]
-            .sum(axis=1, min_count=1)
-            .fillna(0)
+            annual_profit=lambda x: (
+                x[["business_profit", "rental_income"]]
+                .sum(axis=1, min_count=1)
+                .fillna(0)
+            )
         )
         .groupby(["hhid", "wave"], as_index=False)
         .agg(annual_profit=("annual_profit", "sum"))
@@ -111,11 +118,15 @@ def build_income_mechanism_inputs() -> pd.DataFrame:
     skeleton = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")[
         ["pidlink", "hhid", "wave"]
     ].drop_duplicates(["pidlink", "wave"])
-    labor = pd.concat([_labor_income("IFLS4"), _labor_income("IFLS5")], ignore_index=True)
-    nonlabor = pd.concat([_nonlabor_income("IFLS4"), _nonlabor_income("IFLS5")], ignore_index=True)
-    transport = pd.read_parquet(GENERATED_DATA / "25_commodity_transport_exposures.parquet")[
-        ["pidlink", "wave", "transport_total", "transport_share"]
-    ]
+    labor = pd.concat(
+        [_labor_income("IFLS4"), _labor_income("IFLS5")], ignore_index=True
+    )
+    nonlabor = pd.concat(
+        [_nonlabor_income("IFLS4"), _nonlabor_income("IFLS5")], ignore_index=True
+    )
+    transport = pd.read_parquet(
+        GENERATED_DATA / "25_commodity_transport_exposures.parquet"
+    )[["pidlink", "wave", "transport_total", "transport_share"]]
 
     out = (
         skeleton.merge(labor, on=["hhid", "wave"], how="left", validate="m:1")
@@ -124,7 +135,9 @@ def build_income_mechanism_inputs() -> pd.DataFrame:
     )
     out["hh_labor_income_mo"] = out.hh_labor_income_mo.fillna(0)
     out["hh_nonlabor_income_mo"] = out.hh_nonlabor_income_mo.fillna(0)
-    out["income_deflator"] = np.where(out.wave == "IFLS4", IDR_2007_TO_2014_DEFLATOR, 1.0)
+    out["income_deflator"] = np.where(
+        out.wave == "IFLS4", IDR_2007_TO_2014_DEFLATOR, 1.0
+    )
     out["labor_real"] = out.hh_labor_income_mo * out.income_deflator
     out["nonlabor_real"] = out.hh_nonlabor_income_mo * out.income_deflator
     out["transport_real"] = out.transport_total * out.income_deflator

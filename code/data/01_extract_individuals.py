@@ -7,17 +7,15 @@ temperature data
 Output: data/generated/01_individuals.parquet
 """
 
-from enum import unique
-
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
 
-from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
-from _stata import read_stata_df
-from _schemas import INDIVIDUALS_SCHEMA
-from log import log
+from data.config import GENERATED_DATA, RAW_IFLS_EXTRACTED
+from data._stata import read_stata_df
+from data._schemas import INDIVIDUALS_SCHEMA
+from data.log import log
 
 # Below are dicitonaries that store variable names for easier / cleaner code below
 IFLS4 = {

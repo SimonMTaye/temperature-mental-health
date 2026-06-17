@@ -14,10 +14,10 @@ Output: data/generated/21_health_bereavement_shocks.parquet
 import numpy as np
 import pandas as pd
 
-from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER
-from _schemas import HEALTH_BEREAVEMENT_SHOCKS_SCHEMA
-from _stata import read_stata_df
-from log import log
+from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER
+from data._schemas import HEALTH_BEREAVEMENT_SHOCKS_SCHEMA
+from data._stata import read_stata_df
+from data.log import log
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,

@@ -8,12 +8,12 @@ from 01_individuals.parquet.
 import numpy as np
 import pandas as pd
 
-from _commodity_prices import PALM_PRICE_FULL  # noqa: E402
-from _schemas import ECONOMIC_EXPOSURES_SCHEMA  # noqa: E402
-from _sentinels import clean_count, clean_month, clean_year  # noqa: E402
-from _stata import read_stata_df  # noqa: E402
-from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
-from log import log  # noqa: E402
+from data._commodity_prices import PALM_PRICE_FULL  # noqa: E402
+from data._schemas import ECONOMIC_EXPOSURES_SCHEMA  # noqa: E402
+from data._sentinels import clean_count, clean_month, clean_year  # noqa: E402
+from data._stata import read_stata_df  # noqa: E402
+from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
+from data.log import log  # noqa: E402
 
 
 PALM_PROVS = {
@@ -380,9 +380,9 @@ def _finalize_output(out: pd.DataFrame) -> pd.DataFrame:
 
 def _add_urban_vehicle_baseline(out: pd.DataFrame) -> pd.DataFrame:
     out = out.copy()
-    out["urban_vehicle_hh"] = (
-        out.urban.fillna(0).astype(int) * out.vehicle_owner.fillna(0).astype(int)
-    )
+    out["urban_vehicle_hh"] = out.urban.fillna(0).astype(
+        int
+    ) * out.vehicle_owner.fillna(0).astype(int)
     baseline = (
         out.query("wave == 'IFLS4'")[["pidlink", "urban_vehicle_hh"]]
         .drop_duplicates("pidlink")
