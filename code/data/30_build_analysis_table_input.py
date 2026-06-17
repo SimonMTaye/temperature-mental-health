@@ -134,6 +134,7 @@ def main() -> None:
             "palm_farmer_hh",
             "palm_farmer_individual",
             "fuel_share",
+            "fuel_share_quartile",
         ],
     ).assign(
         female=lambda df: df["sex"].eq("F").astype(int),

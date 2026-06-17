@@ -61,7 +61,6 @@ OUTPUT_COLUMNS = [
     "fuel_transport_total",
     "total_mo",
     "fuel_share",
-    "fuel_share_ifls4",
     "transport_share",
     "fuel_transport_share",
     "fuel_total_quartile",

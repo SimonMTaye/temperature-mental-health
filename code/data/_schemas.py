@@ -16,7 +16,7 @@ def _id_column() -> pa.Column:
 
 def _binary_column(*, nullable: bool = False) -> pa.Column:
     return pa.Column(
-        "Int64" if nullable else int,
+        "Int32" if nullable else int,
         checks=pa.Check.isin(BINARY),
         nullable=nullable,
         coerce=True,
@@ -65,6 +65,12 @@ INDIVIDUALS_SCHEMA = pa.DataFrameSchema(
         "kabupaten_code": pa.Column(int, nullable=False, coerce=True),
         # BPS seven-digit kecamatan code, computed from kabupaten_code and within-kabupaten kecamatan.
         "kecamatan_code": pa.Column(int, nullable=False, coerce=True),
+        # BPS two-digit province code from the household screening file.
+        "province_full_code": pa.Column(int, nullable=False, coerce=True),
+        # BPS four-digit kabupaten code, computed as province*100 plus within-province kabupaten.
+        "kabupaten_full_code": pa.Column(int, nullable=False, coerce=True),
+        # BPS seven-digit kecamatan code, computed from kabupaten_code and within-kabupaten kecamatan.
+        "kecamatan_full_code": pa.Column(int, nullable=False, coerce=True),
         # Combined geo code converted to 2014 BPS codes compatible with GADM boundaries; may have more than 1 code for IFLS4 due boundary changes
         "gadm_fullcode": pa.Column(
             str,
@@ -386,8 +392,6 @@ ECONOMIC_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "urban": _binary_column(),
         # Household is urban and owns a vehicle in the current wave.
         "urban_vehicle_hh": _binary_column(),
-        # IFLS4 urban-vehicle household baseline, carried to later waves.
-        "urban_vehicle_hh_ifls4": _binary_column(nullable=True),
         # Household received a cash-transfer benefit or held a BLT card.
         "cash_transfer_recipient": _binary_column(),
         # Household held a BLT cash-transfer card.
@@ -430,11 +434,7 @@ COMMODITY_TRANSPORT_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         # Respondent is agricultural and lives in a palm-oil region.
         "palm_farmer_individual": _binary_column(),
         # IFLS4 respondent-level palm farmer baseline, carried to later waves.
-        "palm_farmer_individual_ifls4": _binary_column(nullable=True),
-        # Any household member is flagged as a palm farmer in that wave.
         "palm_farmer_hh": _binary_column(),
-        # IFLS4 household-level palm farmer baseline, carried to later waves.
-        "palm_farmer_hh_ifls4": _binary_column(nullable=True),
         # Household province is in a major rubber-producing region.
         "rubber_region": _binary_column(),
         # Respondent is agricultural and lives in a rubber-producing region.
@@ -447,12 +447,8 @@ COMMODITY_TRANSPORT_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         "coal_region": _binary_column(),
         # Respondent works in mining and lives in a coal-producing region.
         "coal_worker_individual": _binary_column(),
-        # IFLS4 respondent-level coal worker baseline, carried to later waves.
-        "coal_worker_individual_ifls4": _binary_column(nullable=True),
         # Any household member is flagged as a coal worker in that wave.
         "coal_worker_hh": _binary_column(),
-        # IFLS4 household-level coal worker baseline, carried to later waves.
-        "coal_worker_hh_ifls4": _binary_column(nullable=True),
         # Monthly household fuel spending from IFLS KS2 item A3.
         "fuel_total": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
@@ -955,18 +951,14 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             COMMODITY_TRANSPORT_EXPOSURES_SCHEMA,
             [
                 "palm_farmer_individual",
-                "palm_farmer_individual_ifls4",
                 "farmer_hh",
                 "main_crop",
                 "palm_farmer_hh",
-                "palm_farmer_hh_ifls4",
                 "rubber_farmer_individual",
                 "coffee_farmer_individual",
                 "coal_region",
                 "coal_worker_individual",
-                "coal_worker_individual_ifls4",
                 "coal_worker_hh",
-                "coal_worker_hh_ifls4",
                 "fuel_total",
                 "transport_total",
                 "transport_spending_mo",
@@ -1028,7 +1020,18 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "recently_widowed_5y": _binary_column(nullable=True),
         "debt_q4": _binary_column(nullable=True),
         "high_med_oop": _binary_column(nullable=True),
-        "pce_decline_q4": _binary_column(),
+        # Add IFLS4 indicators
+        "urban_vehicle_hh_ifls4": _binary_column(nullable=True),
+        "coal_worker_hh_ifls4": _binary_column(nullable=True),
+        "coal_worker_individual_ifls4": _binary_column(nullable=True),
+        "palm_farmer_hh_ifls4": _binary_column(nullable=True),
+        "palm_farmer_individual_ifls4": _binary_column(nullable=True),
+        "fuel_share_ifls4": pa.Column(
+            float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
+        "fuel_share_quartile_ifls4": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
     },
     strict=True,
     unique=["pidlink", "wave"],
