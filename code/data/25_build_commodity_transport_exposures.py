@@ -5,13 +5,9 @@ Row level: one record per (pidlink, wave), using the individual panel skeleton
 from 01_individuals.parquet.
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
 from data._schemas import COMMODITY_TRANSPORT_EXPOSURES_SCHEMA  # noqa: E402
 from data._sentinels import clean_money  # noqa: E402
 from data._stata import read_stata_df  # noqa: E402

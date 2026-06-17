@@ -48,10 +48,10 @@ Outputs:
 
 import pandas as pd
 
-from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
-from _schemas import CESD_SCORES_SCHEMA
-from _stata import read_stata_df
-from log import log
+from data.config import GENERATED_DATA, RAW_IFLS_EXTRACTED
+from data._schemas import CESD_SCORES_SCHEMA
+from data._stata import read_stata_df
+from data.log import log
 
 REVERSE_ITEMS = {"E", "H"}
 CESD_ITEMS = set("ABCDEFGHIJ")

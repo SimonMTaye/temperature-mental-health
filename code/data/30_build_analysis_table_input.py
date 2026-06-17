@@ -140,14 +140,18 @@ def main() -> None:
         cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
             lambda s: (s - s.mean()) / s.std()
         ),
-        palm_price_wave5=lambda df: df["palm_price_usd_mt"]
-        .where(df["wave"] == "IFLS5")
-        .groupby(df["pidlink"])
-        .transform("max"),
-        palm_price_wave4=lambda df: df["palm_price_usd_mt"]
-        .where(df["wave"] == "IFLS4")
-        .groupby(df["pidlink"])
-        .transform("max"),
+        palm_price_wave5=lambda df: (
+            df["palm_price_usd_mt"]
+            .where(df["wave"] == "IFLS5")
+            .groupby(df["pidlink"])
+            .transform("max")
+        ),
+        palm_price_wave4=lambda df: (
+            df["palm_price_usd_mt"]
+            .where(df["wave"] == "IFLS4")
+            .groupby(df["pidlink"])
+            .transform("max")
+        ),
         palm_price_gap=lambda df: df.palm_price_wave5 - df.palm_price_wave4,
         palm_price_gap_z=lambda df: (
             (df.palm_price_gap - df.palm_price_gap.mean()) / df.palm_price_gap.std()
