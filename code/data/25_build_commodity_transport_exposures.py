@@ -12,11 +12,11 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _schemas import COMMODITY_TRANSPORT_EXPOSURES_SCHEMA  # noqa: E402
-from _sentinels import clean_money  # noqa: E402
-from _stata import read_stata_df  # noqa: E402
-from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
-from log import log  # noqa: E402
+from data._schemas import COMMODITY_TRANSPORT_EXPOSURES_SCHEMA  # noqa: E402
+from data._sentinels import clean_money  # noqa: E402
+from data._stata import read_stata_df  # noqa: E402
+from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
+from data.log import log  # noqa: E402
 
 
 PALM_PROVS = {
@@ -51,24 +51,21 @@ OUTPUT_COLUMNS = [
     "main_crop",
     "palm_region",
     "palm_farmer_individual",
-    "palm_farmer_individual_ifls4",
     "palm_farmer_hh",
-    "palm_farmer_hh_ifls4",
     "rubber_region",
     "rubber_farmer_individual",
     "coffee_region",
     "coffee_farmer_individual",
     "coal_region",
     "coal_worker_individual",
-    "coal_worker_individual_ifls4",
     "coal_worker_hh",
-    "coal_worker_hh_ifls4",
     "fuel_total",
     "transport_total",
     "transport_spending_mo",
     "fuel_transport_total",
     "total_mo",
     "fuel_share",
+    "fuel_share_ifls4",
     "transport_share",
     "fuel_transport_share",
     "fuel_total_quartile",
@@ -174,9 +171,7 @@ def _fuel_transport_share_from_frames(
     )
     food = _monthly_food_spending(ks0, hhid_col_name=hhid_col_name)
 
-    out = spending.merge(
-        total_ks2, on=hhid_col_name, validate="1:1"
-    )
+    out = spending.merge(total_ks2, on=hhid_col_name, validate="1:1")
     out = out.merge(total_ks3, on=hhid_col_name, validate="1:1").merge(
         food,
         on=hhid_col_name,
@@ -248,9 +243,9 @@ def _main_crop(wave: str) -> pd.DataFrame:
 def _add_region_worker_flags(out: pd.DataFrame) -> pd.DataFrame:
     is_agricultural = out.agricultural == 1
     is_mining = out.mining == 1
-    out["farmer_hh"] = out.groupby(["hhid", "wave"])[
-        "agricultural"
-    ].transform(lambda s: (s == 1).max())
+    out["farmer_hh"] = out.groupby(["hhid", "wave"])["agricultural"].transform(
+        lambda s: (s == 1).max()
+    )
     out["palm_region"] = out.province_code.isin(PALM_PROVS)
     out["palm_farmer_individual"] = is_agricultural & out.palm_region
     out["palm_farmer_hh"] = out.groupby(["hhid", "wave"])[
@@ -322,28 +317,7 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         .pipe(_add_region_worker_flags)
         .pipe(_add_spending_quantiles)
     )
-    worker_dummy_ifls4 = (
-        out_final
-        # Filter to rows where wave = ifls4
-        .query("wave == 'IFLS4'")
-        # Keep pidlink plus IFLS4 baseline worker columns
-        .filter(
-            items=[
-                "pidlink",
-                "palm_farmer_individual",
-                "palm_farmer_hh",
-                "coal_worker_individual",
-                "coal_worker_hh",
-            ]
-        )
-        # Add IFLS4 dummy to every column
-        .add_suffix("_ifls4", axis=1)
-        # Rename pidlink back to pidlink (remove suffix)
-        .rename(columns={"pidlink_ifls4": "pidlink"})
-    )
-    out_final = out_final.merge(
-        worker_dummy_ifls4, on="pidlink", how="left", validate="m:1"
-    ).filter(items=OUTPUT_COLUMNS)
+    out_final = out_final.filter(items=OUTPUT_COLUMNS)
 
     out_final = COMMODITY_TRANSPORT_EXPOSURES_SCHEMA.validate(out_final)
 

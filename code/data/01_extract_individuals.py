@@ -7,17 +7,15 @@ temperature data
 Output: data/generated/01_individuals.parquet
 """
 
-from enum import unique
-
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
 
-from config import GENERATED_DATA, RAW_IFLS_EXTRACTED
-from _stata import read_stata_df
-from _schemas import INDIVIDUALS_SCHEMA
-from log import log
+from data.config import GENERATED_DATA, RAW_IFLS_EXTRACTED
+from data._stata import read_stata_df
+from data._schemas import INDIVIDUALS_SCHEMA
+from data.log import log
 
 # Below are dicitonaries that store variable names for easier / cleaner code below
 IFLS4 = {
@@ -622,6 +620,11 @@ def main() -> None:
 
     geo_both = pd.concat([geo_ifls4, geo_ifls5], ignore_index=True)
     geo_both = geo_both.drop_duplicates(subset=["hhid", "wave"], keep="first")
+    geo_both = geo_both.assign(
+        province_full_code=lambda df: df.gadm_fullcode.astype(int) // 10000,
+        kabupaten_full_code=lambda df: df.gadm_fullcode.astype(int) // 1000,
+        kecamatan_full_code=lambda df: df.gadm_fullcode.astype(int),
+    )
 
     out = survey_both.merge(
         geo_both, on=["hhid", "wave"], how="left", validate="many_to_one"
