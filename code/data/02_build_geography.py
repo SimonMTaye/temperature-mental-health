@@ -1,22 +1,10 @@
-"""Build IFLS GADM geography -> polygon lookup.
+"""Build IFLS GADM 3.6 geography -> polygon lookup.
 
-Why kabupaten and not kecamatan?
-  IFLS exposes BPS prov + kab + kec codes, but its kec codes are from a 2007/2010-era
-  BPS scheme that BPS later renumbered. Only ~9% of IFLS kec codes match the current
-  BPS reference. Kabupaten codes match cleanly (99%) so kabupaten is the smallest unit
-  we can reliably geocode without a historical BPS code crosswalk.
-
-Why polygon (not centroid)?
-  Within a kabupaten — especially in mountainous Java — temperature varies by elevation.
-  Polygon-mean over ERA5-Land (~9 km grid) gives a representative estimate, not just
-  the value at one point.
-
-Steps
------
-1. Parse IFLS4 and IFLS5 household geography from the individual extraction step.
-2. Resolve each distinct GADM geography code to ADM3, then ADM2, then ADM1 geometry.
-3. Store polygon geometry as WKT in the parquet so it's directly usable by GEE later.
-4. Fallback: unmatched kecamatan get the kabupaten or province polygon (flagged).
+This v2 keeps the original output contract but reads GADM 3.6 layers, whose
+GeoPackage layers are named ``gadm36_IDN_1``/``2``/``3`` rather than
+``ADM_ADM_1``/``2``/``3``. Some GADM 3.6 CC_* admin codes appear on multiple
+adjacent polygons due to spelling or segmentation quirks, so lookup geometries
+are dissolved by code before matching IFLS geography.
 
 Outputs
 -------
@@ -24,22 +12,46 @@ data/generated/02_kabupaten_polygons.parquet
   cols: gadm_fullcode, province_code, geometry_wkt, match_level
 """
 
+import importlib
+
 import geopandas as gpd
 import pandas as pd
-import importlib
 from shapely import union_all
 
-from config import GADM_PATH, GENERATED_DATA
-from log import log
-
-G3 = gpd.read_file(GADM_PATH, layer="ADM_ADM_3").to_crs(4326)
-G2 = gpd.read_file(GADM_PATH, layer="ADM_ADM_2").to_crs(4326)
-G1 = gpd.read_file(GADM_PATH, layer="ADM_ADM_1").to_crs(4326)
+from data.config import GADM_PATH, GENERATED_DATA
+from data.log import log
 
 
-G3_BY_CODE = dict(zip(G3.CC_3.astype(str), G3.geometry, strict=False))
-G2_BY_CODE = dict(zip(G2.CC_2.astype(str), G2.geometry, strict=False))
-G1_BY_CODE = dict(zip(G1.CC_1.astype(str), G1.geometry, strict=False))
+ADM1_LAYER = "gadm36_IDN_1"
+ADM2_LAYER = "gadm36_IDN_2"
+ADM3_LAYER = "gadm36_IDN_3"
+
+
+def read_gadm_layer(layer: str) -> gpd.GeoDataFrame:
+    """Read a GADM 3.6 layer in WGS84 coordinates."""
+    return gpd.read_file(GADM_PATH, layer=layer).to_crs(4326)
+
+
+def build_geometry_lookup(
+    geographies: gpd.GeoDataFrame, code_column: str
+) -> dict[str, object]:
+    """Return one dissolved geometry per non-missing GADM code."""
+    coded = geographies.loc[
+        geographies[code_column].notna(), [code_column, "geometry"]
+    ].copy()
+    coded[code_column] = coded[code_column].astype(str)
+    coded = coded[coded[code_column] != "NA"].copy()
+
+    lookup = {}
+    for code, group in coded.groupby(code_column, sort=False):
+        geometries = list(group.geometry)
+        lookup[code] = geometries[0] if len(geometries) == 1 else union_all(geometries)
+    return lookup
+
+
+G3_BY_CODE = build_geometry_lookup(read_gadm_layer(ADM3_LAYER), "CC_3")
+G2_BY_CODE = build_geometry_lookup(read_gadm_layer(ADM2_LAYER), "CC_2")
+G1_BY_CODE = build_geometry_lookup(read_gadm_layer(ADM1_LAYER), "CC_1")
 
 
 def map_to_geometry(gadm_code: str) -> dict[str, str | None]:
@@ -47,10 +59,9 @@ def map_to_geometry(gadm_code: str) -> dict[str, str | None]:
     Return geometry for the given GADM code.
 
     Progressively matches code to
-    1. ADM3 (kecamatan) polygons if possible, averaging over multiple if needed for IFLS4 boundary changes.
+    1. ADM3 (kecamatan) polygons if possible.
     2. ADM2 (kabupaten) polygon if no ADM3 match.
     3. ADM1 (province) polygon if no ADM2 match.
-
     """
     kec_codes = gadm_code.split(",")
     polygons = [G3_BY_CODE[code] for code in kec_codes if code in G3_BY_CODE]
@@ -67,7 +78,7 @@ def map_to_geometry(gadm_code: str) -> dict[str, str | None]:
                 log(f"No geometry found for GADM code {gadm_code}", "WARNING")
                 return {"geometry_wkt": None, "match_level": "unmatched"}
     geometry = polygons[0] if len(polygons) == 1 else union_all(polygons)
-    return {"geometry_wkt": geometry.wkt, "match_level": match_level}
+    return {"geometry_wkt": geometry.wkt, "match_level": match_level}  # ty:ignore[unresolved-attribute]
 
 
 def build_geometry_matches(gadm_codes: pd.Series) -> pd.DataFrame:

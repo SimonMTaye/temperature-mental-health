@@ -5,18 +5,14 @@ Row level: one record per (pidlink, wave), using the individual panel skeleton
 from 01_individuals.parquet.
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
-from _schemas import COMMODITY_TRANSPORT_EXPOSURES_SCHEMA  # noqa: E402
-from _sentinels import clean_money  # noqa: E402
-from _stata import read_stata_df  # noqa: E402
-from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
-from log import log  # noqa: E402
+from data._schemas import COMMODITY_TRANSPORT_EXPOSURES_SCHEMA  # noqa: E402
+from data._sentinels import clean_money  # noqa: E402
+from data._stata import read_stata_df  # noqa: E402
+from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
+from data.log import log  # noqa: E402
 
 
 PALM_PROVS = {
@@ -174,9 +170,7 @@ def _fuel_transport_share_from_frames(
     )
     food = _monthly_food_spending(ks0, hhid_col_name=hhid_col_name)
 
-    out = spending.merge(
-        total_ks2, on=hhid_col_name, validate="1:1"
-    )
+    out = spending.merge(total_ks2, on=hhid_col_name, validate="1:1")
     out = out.merge(total_ks3, on=hhid_col_name, validate="1:1").merge(
         food,
         on=hhid_col_name,
@@ -248,9 +242,9 @@ def _main_crop(wave: str) -> pd.DataFrame:
 def _add_region_worker_flags(out: pd.DataFrame) -> pd.DataFrame:
     is_agricultural = out.agricultural == 1
     is_mining = out.mining == 1
-    out["farmer_hh"] = out.groupby(["hhid", "wave"])[
-        "agricultural"
-    ].transform(lambda s: (s == 1).max())
+    out["farmer_hh"] = out.groupby(["hhid", "wave"])["agricultural"].transform(
+        lambda s: (s == 1).max()
+    )
     out["palm_region"] = out.province_code.isin(PALM_PROVS)
     out["palm_farmer_individual"] = is_agricultural & out.palm_region
     out["palm_farmer_hh"] = out.groupby(["hhid", "wave"])[

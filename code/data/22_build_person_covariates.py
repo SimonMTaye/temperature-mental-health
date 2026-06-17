@@ -17,18 +17,15 @@ Notes
 - Quintiles computed within wave so they're comparable across waves.
 """
 
-import sys
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
 # Make _sentinels.py importable when this script is run directly
-sys.path.insert(0, str(Path(__file__).parent))
-from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER, RAW_IFLS_EXTRACTED  # noqa: E402
-from _sentinels import clean_age, clean_categorical  # noqa: E402
-from _schemas import STRESSORS_SCHEMA  # noqa: E402
-from _stata import read_stata_df  # noqa: E402
-from log import log  # noqa: E402
+from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER, RAW_IFLS_EXTRACTED  # noqa: E402
+from data._sentinels import clean_age, clean_categorical  # noqa: E402
+from data._schemas import STRESSORS_SCHEMA  # noqa: E402
+from data._stata import read_stata_df  # noqa: E402
+from data.log import log  # noqa: E402
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,

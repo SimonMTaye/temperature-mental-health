@@ -35,7 +35,7 @@ TABLES = OUTPUT / "tables"
 FIGURES = OUTPUT / "figures"
 
 # Shared external resources.
-GADM_PATH = RAW_ROOT / "gadm41_IDN.gpkg"
+GADM_PATH = RAW_ROOT / "gadm36_IDN.gpkg"
 
 # NOTE: these uses Simon's credentials tied to the cornell account. Please ask an LLM
 # on authenticating earthengine's python API for advice on setting up your own account and logging in

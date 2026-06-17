@@ -7,9 +7,9 @@ Row level: one person-wave record, keyed by pidlink + wave.
 import numpy as np
 import pandas as pd
 
-from _schemas import PROCESSED_TEMPERATURE_SCHEMA
-from config import GENERATED_DATA
-from log import log
+from data._schemas import PROCESSED_TEMPERATURE_SCHEMA
+from data.config import GENERATED_DATA
+from data.log import log
 
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
@@ -17,16 +17,26 @@ PAST30_TEMP_BIN_WIDTH = 1.5
 
 
 def _utc_offset_hours(province_code: int) -> int:
-    if (11 <= province_code <= 18) or (21 <= province_code <= 36) or province_code in (61, 62):
+    if (
+        (11 <= province_code <= 18)
+        or (21 <= province_code <= 36)
+        or province_code in (61, 62)
+    ):
         return 7
-    if (51 <= province_code <= 53) or (63 <= province_code <= 65) or (71 <= province_code <= 76):
+    if (
+        (51 <= province_code <= 53)
+        or (63 <= province_code <= 65)
+        or (71 <= province_code <= 76)
+    ):
         return 8
     if (81 <= province_code <= 82) or (91 <= province_code <= 94):
         return 9
     return 7
 
 
-def _rolling_mean_excluding_today(s: pd.Series, window: int, min_periods: int) -> pd.Series:
+def _rolling_mean_excluding_today(
+    s: pd.Series, window: int, min_periods: int
+) -> pd.Series:
     return s.rolling(window, min_periods=min_periods).mean().shift(1)
 
 
@@ -196,14 +206,16 @@ def add_daily_features(temp: pd.DataFrame) -> pd.DataFrame:
         lambda s: s.rolling(30, min_periods=15).mean()
     )
     temp["hot30_7d"] = (
-        temp["tmax_c"].gt(30.0)
+        temp["tmax_c"]
+        .gt(30.0)
         .astype(np.int8)
         .groupby(temp["gadm_fullcode"])
         .transform(lambda s: s.rolling(7, min_periods=4).sum())
     )
     p90 = temp.groupby("gadm_fullcode")["tmean_c"].transform(lambda s: s.quantile(0.90))
     temp["heatwave_7d"] = (
-        temp["tmean_c"].gt(p90)
+        temp["tmean_c"]
+        .gt(p90)
         .astype(np.int8)
         .groupby(temp["gadm_fullcode"])
         .transform(lambda s: s.rolling(7, min_periods=4).sum())
@@ -245,8 +257,7 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         sorted(
             col
             for col in temp
-            if col.startswith("tmean_c_past30_")
-            or col.startswith("wetbulb_c_past30_")
+            if col.startswith("tmean_c_past30_") or col.startswith("wetbulb_c_past30_")
         )
     )
     out = ind.merge(
@@ -308,10 +319,9 @@ def add_hourly_temperature(df: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFra
     # ERA5 hourly timestamps are UTC; IFLS interview hours are local Indonesian time.
     df["utc_offset"] = df.province_code.map(_utc_offset_hours)
     local_hour = df.hour_start.round().clip(lower=0, upper=23).astype(int)
-    df["interview_dt_utc"] = (
-        df["interview_date"].dt.tz_localize("UTC")
-        + pd.to_timedelta(local_hour - df["utc_offset"], unit="h")
-    )
+    df["interview_dt_utc"] = df["interview_date"].dt.tz_localize(
+        "UTC"
+    ) + pd.to_timedelta(local_hour - df["utc_offset"], unit="h")
     df = df.merge(
         hourly,
         left_on=["gadm_fullcode", "interview_dt_utc"],

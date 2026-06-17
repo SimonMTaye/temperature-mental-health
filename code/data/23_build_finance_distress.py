@@ -11,17 +11,14 @@
 Output: data/generated/finance_distress_shocks.parquet
 """
 
-import sys
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
-from config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
-from _sentinels import clean_money as _clean_money  # noqa: E402
-from _schemas import FINANCE_DISTRESS_SHOCKS_SCHEMA  # noqa: E402
-from _stata import read_stata_df  # noqa: E402
-from log import log  # noqa: E402
+from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
+from data._sentinels import clean_money as _clean_money  # noqa: E402
+from data._schemas import FINANCE_DISTRESS_SHOCKS_SCHEMA  # noqa: E402
+from data._stata import read_stata_df  # noqa: E402
+from data.log import log  # noqa: E402
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,

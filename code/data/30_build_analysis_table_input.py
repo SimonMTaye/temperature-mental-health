@@ -8,9 +8,9 @@ Output: data/generated/30_analysis_table_input.parquet
 
 import pandas as pd
 
-from config import GENERATED_DATA, IDR_2007_TO_2014_DEFLATOR
-from _schemas import ANALYSIS_TABLE_INPUT_SCHEMA
-from log import log
+from data.config import GENERATED_DATA, IDR_2007_TO_2014_DEFLATOR
+from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA
+from data.log import log
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
 HAZE_MONTHS = {(2015, 9), (2015, 10), (2015, 11)}
@@ -141,9 +141,7 @@ def main() -> None:
     )
     if "palm_region_commodity_transport" in df.columns:
         df = df.drop(columns=["palm_region_commodity_transport"])
-    df = df.merge(
-        income_mechanisms, on=["pidlink", "wave"], how="left", validate="1:1"
-    )
+    df = df.merge(income_mechanisms, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
         pd.read_parquet(GENERATED_DATA / "28_sleep_duration.parquet"),
         on=["pidlink", "wave"],

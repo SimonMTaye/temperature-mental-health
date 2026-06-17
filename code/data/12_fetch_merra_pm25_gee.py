@@ -13,6 +13,8 @@ Output: data/generated/12_pm25_daily_kab.parquet (gadm_fullcode, date, pm25_ugm3
 """
 
 import time
+import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 
 import ee
@@ -31,7 +33,22 @@ WINDOWS = [
 
 PM25_BANDS = ["BCSMASS", "OCSMASS", "SO4SMASS", "DUSMASS25", "SSSMASS25"]
 BATCH_DAYS = 2
+MAX_WORKERS = 4
 KEY_COLUMNS = ["gadm_fullcode", "date"]
+GEO_FINGERPRINT_COLUMN = "geo_fingerprint"
+
+
+def compute_geo_fingerprint(geographies: pd.DataFrame) -> str:
+    """Return a stable hash of the geometry lookup used to build GEE features."""
+    payload = (
+        geographies[
+            ["gadm_fullcode", "province_code", "match_level", "geometry_wkt"]
+        ]
+        .sort_values("gadm_fullcode")
+        .astype(str)
+        .to_csv(index=False)
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def init_gee() -> None:
@@ -50,7 +67,11 @@ def load_geographies() -> pd.DataFrame:
     if missing:
         raise ValueError(f"02_kabupaten_polygons.parquet missing columns: {missing}")
     geographies = geographies.dropna(subset=["geometry_wkt"]).copy()
-    return geographies[required].drop_duplicates("gadm_fullcode").reset_index(drop=True)
+    geographies = geographies[required].drop_duplicates("gadm_fullcode").reset_index(
+        drop=True
+    )
+    geographies.attrs[GEO_FINGERPRINT_COLUMN] = compute_geo_fingerprint(geographies)
+    return geographies
 
 
 def build_feature_collection(geographies: pd.DataFrame) -> ee.FeatureCollection:
@@ -136,6 +157,41 @@ def pull_window(
     return pd.DataFrame(rows)
 
 
+def pull_window_with_retry(
+    start: pd.Timestamp,
+    end_excl: pd.Timestamp,
+    fc: ee.FeatureCollection,
+    max_retries: int = 3,
+) -> pd.DataFrame:
+    """pull_window with exponential-backoff retry, safe for threaded use."""
+    for attempt in range(max_retries):
+        try:
+            return pull_window(start, end_excl, fc)
+        except Exception as exc:
+            if attempt == max_retries - 1:
+                raise
+            wait = (attempt + 1) * 30
+            log(
+                f"    {start} error ({exc}); retrying in {wait}s "
+                f"(attempt {attempt + 1}/{max_retries})",
+                "WARNING",
+            )
+            time.sleep(wait)
+    raise RuntimeError(f"failed to pull {start} after {max_retries} attempts")
+
+
+def add_cache_metadata(
+    df: pd.DataFrame, fetch_time: pd.Timestamp, geo_fingerprint: str
+) -> pd.DataFrame:
+    """Attach tmp-cache provenance columns."""
+    if df.empty:
+        return df
+    out = df.copy()
+    out["fetch_time"] = fetch_time
+    out[GEO_FINGERPRINT_COLUMN] = geo_fingerprint
+    return out
+
+
 def normalize_cached_window(cached: pd.DataFrame) -> pd.DataFrame:
     """Normalize cache keys and keep fetch_time as tmp-only provenance."""
     cached = cached.copy()
@@ -147,13 +203,20 @@ def normalize_cached_window(cached: pd.DataFrame) -> pd.DataFrame:
     return cached.drop_duplicates(KEY_COLUMNS, keep="first").reset_index(drop=True)
 
 
-def read_cached_window(path) -> pd.DataFrame | None:
-    """Read a wave tmp cache, ignoring legacy caches keyed by kabupaten_code."""
+def read_cached_window(path, geo_fingerprint: str) -> pd.DataFrame | None:
+    """Read a wave tmp cache, ignoring legacy or stale-geometry caches."""
     if not path.exists():
         return None
     cached = pd.read_parquet(path)
     if "gadm_fullcode" not in cached.columns:
         log(f"ignoring old kabupaten_code cache at {path}", "WARNING")
+        return None
+    if GEO_FINGERPRINT_COLUMN not in cached.columns:
+        log(f"ignoring cache without geography fingerprint at {path}", "WARNING")
+        return None
+    fingerprints = set(cached[GEO_FINGERPRINT_COLUMN].astype(str).unique())
+    if fingerprints != {geo_fingerprint}:
+        log(f"ignoring stale geography cache at {path}", "WARNING")
         return None
     return normalize_cached_window(cached)
 
@@ -194,11 +257,42 @@ def keep_missing_rows_only(
     return out.loc[out_index.isin(missing_index)].reset_index(drop=True)
 
 
+def build_missing_date_batches(missing_dates: pd.Index) -> list[list[pd.Timestamp]]:
+    """Group missing dates into consecutive batches capped at BATCH_DAYS."""
+    batches: list[list[pd.Timestamp]] = []
+    current: list[pd.Timestamp] = []
+    for date in sorted(pd.Timestamp(date) for date in missing_dates):
+        if (
+            not current
+            or (
+                len(current) < BATCH_DAYS
+                and date == current[-1] + pd.Timedelta(days=1)
+            )
+        ):
+            current.append(date)
+            continue
+        batches.append(current)
+        current = [date]
+    if current:
+        batches.append(current)
+    return batches
+
+
+def pull_missing_batch(
+    start: pd.Timestamp,
+    end_excl: pd.Timestamp,
+    batch_geographies: pd.DataFrame,
+) -> pd.DataFrame:
+    fc = build_feature_collection(batch_geographies)
+    return pull_window_with_retry(start, end_excl, fc)
+
+
 def fetch_missing_rows(
     tag: str,
     missing_keys: pd.DataFrame,
     geographies: pd.DataFrame,
     fetch_time: pd.Timestamp,
+    geo_fingerprint: str,
 ) -> pd.DataFrame:
     """Fetch missing PM2.5 rows using only the geographies missing for each date."""
     if missing_keys.empty:
@@ -208,39 +302,60 @@ def fetch_missing_rows(
     missing_keys["date"] = pd.to_datetime(missing_keys.date).dt.normalize()
     missing_dates = pd.Index(sorted(missing_keys.date.unique()))
     geo_lookup = geographies.set_index("gadm_fullcode", drop=False)
+    date_batches = build_missing_date_batches(missing_dates)
+    log(
+        f"{tag}: MERRA PM2.5 missing has {len(date_batches):,} EE calls for "
+        f"{len(missing_keys):,} keys"
+    )
+    tasks = []
+    for batch_dates in date_batches:
+        batch_keys = missing_keys[missing_keys.date.isin(batch_dates)]
+        batch_geographies = geo_lookup.loc[
+            batch_keys.gadm_fullcode.unique()
+        ].reset_index(drop=True)
+        start = batch_dates[0]
+        end_excl = batch_dates[-1] + pd.Timedelta(days=1)
+        tasks.append((start, end_excl, batch_keys, batch_geographies))
+
     frames = []
     t0 = time.time()
-    n_batches = (len(missing_dates) + BATCH_DAYS - 1) // BATCH_DAYS
-    batches = tqdm(
-        range(0, len(missing_dates), BATCH_DAYS),
-        total=n_batches,
-        desc=f"{tag} MERRA PM2.5 missing",
-        unit="batch",
-    )
-    for offset in batches:
-        batch_dates = missing_dates[offset : offset + BATCH_DAYS]
-        batch_keys = missing_keys[missing_keys.date.isin(batch_dates)]
-        pulled = []
-        for date, date_keys in batch_keys.groupby("date", sort=True):
-            date_geographies = geo_lookup.loc[
-                date_keys.gadm_fullcode.unique()
-            ].reset_index(drop=True)
-            fc = build_feature_collection(date_geographies)
-            day_candidate = pd.Timestamp(date)
-            if not isinstance(day_candidate, pd.Timestamp):
-                raise ValueError(f"{tag}: invalid missing date {date}")
-            day = day_candidate
-            df = pull_window(day, day + timedelta(days=1), fc)
-            pulled.append(keep_missing_rows_only(df, date_keys))
-        df = pd.concat(pulled, ignore_index=True) if pulled else pd.DataFrame()
-        if not df.empty:
-            df["fetch_time"] = fetch_time
-            frames.append(df)
-        batches.set_postfix(
-            rows=sum(len(frame) for frame in frames),
-            elapsed_s=f"{time.time() - t0:.0f}",
+    total_rows = 0
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_batch = {
+            executor.submit(
+                pull_missing_batch, start, end_excl, batch_geographies
+            ): (start, end_excl, batch_keys)
+            for start, end_excl, batch_keys, batch_geographies in tasks
+        }
+        pbar = tqdm(
+            as_completed(future_to_batch),
+            total=len(future_to_batch),
+            desc=f"{tag} MERRA PM2.5 missing",
+            unit="batch",
         )
-    return pd.concat(frames, ignore_index=True)
+        for i, fut in enumerate(pbar, 1):
+            batch_start, e_excl, batch_keys = future_to_batch[fut]
+            try:
+                df = keep_missing_rows_only(fut.result(), batch_keys)
+            except Exception as exc:
+                log(
+                    f"    {batch_start.date()}-{e_excl.date()} missing batch FAILED "
+                    f"after all retries: {exc}",
+                    "ERROR",
+                )
+                raise
+            if not df.empty:
+                df = add_cache_metadata(df, fetch_time, geo_fingerprint)
+                frames.append(df)
+                total_rows += len(df)
+            el = time.time() - t0
+            eta = el / i * (len(future_to_batch) - i)
+            pbar.set_postfix(
+                rows=f"{total_rows:,}",
+                elapsed_s=f"{el:.0f}",
+                eta_s=f"{eta:.0f}",
+            )
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def pull_wave_from_scratch(
@@ -249,6 +364,7 @@ def pull_wave_from_scratch(
     end: pd.Timestamp,
     geographies: pd.DataFrame,
     fetch_time: pd.Timestamp,
+    geo_fingerprint: str,
 ) -> pd.DataFrame:
     """Run the original full-wave pull when no usable tmp cache exists."""
     fc = build_feature_collection(geographies)
@@ -256,34 +372,58 @@ def pull_wave_from_scratch(
     if not isinstance(end_excl_total, pd.Timestamp):
         raise ValueError(f"{tag}: invalid end timestamp {end_excl_total}")
     starts = pd.date_range(start, end, freq=f"{BATCH_DAYS}D")
-    wave_frames = []
-    t0 = time.time()
-    batches = tqdm(starts, desc=f"{tag} MERRA PM2.5", unit="batch")
-    for s in batches:
+    log(
+        f"{tag}: pulling {(end - start).days + 1} days x "
+        f"{len(geographies)} polygons in {len(starts)} batches "
+        f"with {MAX_WORKERS} workers"
+    )
+    batch_windows: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    for s in starts:
         batch_start = pd.Timestamp(s)
         if not isinstance(batch_start, pd.Timestamp):
             raise ValueError(f"{tag}: invalid batch timestamp {s}")
         candidate_end = batch_start + timedelta(days=BATCH_DAYS)
         e_excl = candidate_end if candidate_end <= end_excl_total else end_excl_total
-        try:
-            df = pull_window(batch_start, e_excl, fc)
-            wave_frames.append(df)
-        except Exception as e:
-            log(
-                f"ERROR at {batch_start.date()}: {e}; sleeping 30s and retrying",
-                "WARNING",
+        batch_windows.append((batch_start, e_excl))
+
+    wave_frames = []
+    t0 = time.time()
+    total_rows = 0
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_window = {
+            executor.submit(pull_window_with_retry, batch_start, e_excl, fc): (
+                batch_start,
+                e_excl,
             )
-            time.sleep(30)
-            df = pull_window(batch_start, e_excl, fc)
-            wave_frames.append(df)
-        batches.set_postfix(
-            rows=len(df),
-            elapsed_s=f"{time.time() - t0:.0f}",
-            window=f"{batch_start.date()}->{e_excl.date()}",
+            for batch_start, e_excl in batch_windows
+        }
+        pbar = tqdm(
+            as_completed(future_to_window),
+            total=len(future_to_window),
+            desc=f"{tag} MERRA PM2.5",
+            unit="batch",
         )
+        for i, fut in enumerate(pbar, 1):
+            batch_start, e_excl = future_to_window[fut]
+            try:
+                df = fut.result()
+            except Exception as exc:
+                log(
+                    f"ERROR at {batch_start.date()} after all retries: {exc}",
+                    "ERROR",
+                )
+                raise
+            wave_frames.append(df)
+            total_rows += len(df)
+            el = time.time() - t0
+            eta = el / i * (len(future_to_window) - i)
+            pbar.set_postfix(
+                rows=f"{total_rows:,}",
+                elapsed_s=f"{el:.0f}",
+                eta_s=f"{eta:.0f}",
+            )
     wave_df = pd.concat(wave_frames, ignore_index=True)
-    wave_df["fetch_time"] = fetch_time
-    return wave_df
+    return add_cache_metadata(wave_df, fetch_time, geo_fingerprint)
 
 
 def write_output(df: pd.DataFrame) -> None:
@@ -297,6 +437,7 @@ def main() -> None:
     TMP.mkdir(parents=True, exist_ok=True)
 
     geographies = load_geographies()
+    geo_fingerprint = geographies.attrs[GEO_FINGERPRINT_COLUMN]
     log(f"polygons: {len(geographies)}")
 
     all_frames = []
@@ -315,7 +456,7 @@ def main() -> None:
         end = end_candidate
         fetch_time = pd.Timestamp.now(tz="UTC")
         required_keys = build_required_keys(geographies, start, end)
-        cached = read_cached_window(cache)
+        cached = read_cached_window(cache, geo_fingerprint)
         cached = None if cached is not None and cached.empty else cached
         missing_keys = missing_required_keys(required_keys, cached)
         log(
@@ -323,9 +464,13 @@ def main() -> None:
             f"{len(missing_keys):,} of {len(required_keys):,} keys need fetching"
         )
         if cached is None:
-            wave_df = pull_wave_from_scratch(tag, start, end, geographies, fetch_time)
+            wave_df = pull_wave_from_scratch(
+                tag, start, end, geographies, fetch_time, geo_fingerprint
+            )
         else:
-            fetched = fetch_missing_rows(tag, missing_keys, geographies, fetch_time)
+            fetched = fetch_missing_rows(
+                tag, missing_keys, geographies, fetch_time, geo_fingerprint
+            )
             wave_df = normalize_cached_window(
                 pd.concat([cached, fetched], ignore_index=True)
             )
@@ -333,7 +478,9 @@ def main() -> None:
         all_frames.append(wave_df)
 
     combined = pd.concat(all_frames, ignore_index=True)
-    combined = combined.drop(columns=["fetch_time"], errors="ignore")
+    combined = combined.drop(
+        columns=["fetch_time", GEO_FINGERPRINT_COLUMN], errors="ignore"
+    )
     combined["date"] = pd.to_datetime(combined.date)
     combined = combined.sort_values(["gadm_fullcode", "date"]).reset_index(drop=True)
     combined = PM25_DAILY_SCHEMA.validate(combined)
