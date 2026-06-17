@@ -7,10 +7,10 @@ Row level: one IFLS5 person-wave record, keyed by pidlink + wave.
 import numpy as np
 import pandas as pd
 
-from _schemas import SLEEP_DURATION_SCHEMA
-from _stata import read_stata_df
-from config import GENERATED_DATA, IFLS5_FOLDER
-from log import log
+from data._schemas import SLEEP_DURATION_SCHEMA
+from data._stata import read_stata_df
+from data.config import GENERATED_DATA, IFLS5_FOLDER
+from data.log import log
 
 
 def build_sleep_duration() -> pd.DataFrame:
@@ -18,15 +18,21 @@ def build_sleep_duration() -> pd.DataFrame:
     start_n = len(df)
     required = ["pidlink", "pna04hr", "pna04mnt", "pna05hr", "pna5mnt"]
     missing_time = df[required].isna().any(axis=1)
-    log(f"sleep duration: dropping {missing_time.sum():,} rows with missing time fields")
+    log(
+        f"sleep duration: dropping {missing_time.sum():,} rows with missing time fields"
+    )
     df = df[~missing_time].copy()
 
     valid_wake = df.pna04hr.between(0, 23) & df.pna04mnt.between(0, 59)
-    log(f"sleep duration: dropping {(~valid_wake).sum():,} rows with invalid wake times")
+    log(
+        f"sleep duration: dropping {(~valid_wake).sum():,} rows with invalid wake times"
+    )
     df = df[valid_wake].copy()
 
     valid_sleep = df.pna05hr.between(0, 23) & df.pna5mnt.between(0, 59)
-    log(f"sleep duration: dropping {(~valid_sleep).sum():,} rows with invalid sleep times")
+    log(
+        f"sleep duration: dropping {(~valid_sleep).sum():,} rows with invalid sleep times"
+    )
     df = df[valid_sleep].copy()
 
     wake_h = df.pna04hr + df.pna04mnt / 60.0
