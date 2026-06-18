@@ -18,7 +18,7 @@ JOB_LOSS_WINDOWS = [
     ("5 yr", "job_loss_1825d"),
 ]
 
-if __name__ == "__main__":
+def make_table() -> None:
     jobloss_robustness_specs = [
         update_formula_search_replace(jobloss, JOB_LOSS_MAIN, job_loss_var)
         for _, job_loss_var in JOB_LOSS_WINDOWS
@@ -62,3 +62,7 @@ if __name__ == "__main__":
         table,
         TABLE_OUTPUT / "table_e_job_loss_window_robustness.tex",
     )
+
+
+if __name__ == "__main__":
+    make_table()

@@ -40,7 +40,7 @@ TABLE_TEMPLATE = r"""\resizebox{\linewidth}{!}{
 #   Post Subsidy -> post_subsidy (data should be limited to wave 5)
 
 
-if __name__ == "__main__":
+def make_table() -> None:
     rows = {}
     observation_row = []
     for balance_variable in balance_variables_demographic:
@@ -91,3 +91,7 @@ if __name__ == "__main__":
     )
     with open(TABLE_OUTPUT / "table_c_shock_balances.tex", "w") as f:
         f.write(table)
+
+
+if __name__ == "__main__":
+    make_table()

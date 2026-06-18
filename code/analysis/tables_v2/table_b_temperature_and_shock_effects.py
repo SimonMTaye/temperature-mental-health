@@ -219,6 +219,10 @@ def build_table() -> str:
     )
 
 
-if __name__ == "__main__":
+def make_table() -> None:
     TABLE_FILE.parent.mkdir(parents=True, exist_ok=True)
     TABLE_FILE.write_text(build_table(), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    make_table()

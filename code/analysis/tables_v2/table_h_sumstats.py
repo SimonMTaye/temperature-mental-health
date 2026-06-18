@@ -56,7 +56,7 @@ def summarize(
     }
 
 
-def main() -> None:
+def make_table() -> None:
     rows: list[dict[str, object]] = []
     body = [
         r"\begin{adjustbox}{max width=\linewidth}",
@@ -91,4 +91,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    make_table()

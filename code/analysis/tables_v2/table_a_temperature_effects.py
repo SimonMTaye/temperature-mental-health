@@ -16,7 +16,7 @@ OVERALL_HEAT_COLUMNS = [
 ]
 
 
-if __name__ == "__main__":
+def make_table() -> None:
     specs = []
     for label, term in OVERALL_HEAT_COLUMNS:
         spec = temperature_spec
@@ -29,3 +29,7 @@ if __name__ == "__main__":
         titles=[label for label, _ in OVERALL_HEAT_COLUMNS],
     )
     render_table_to_latex(table, TABLE_OUTPUT / "table_a_temperature_effects.tex")
+
+
+if __name__ == "__main__":
+    make_table()
