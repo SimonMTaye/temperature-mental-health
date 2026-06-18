@@ -24,6 +24,7 @@ SHOCK_TABLE_TERMS = [
     "heat",
 ]
 MARGINAL_HEAT_EFFECT_TERMS = ["heat", "group:heat", "group:post:heat"]
+DIFFERENTIAL_HEAT_EFFECT_TERM = "differential_impact_heat"
 
 
 @dataclass(frozen=True)
@@ -189,6 +190,48 @@ def make_shock_regression_table(
     )
 
 
+def make_shock_regression_table_trimmed(
+    specs: list[RegressionSpec],
+    *,
+    group: str | Sequence[str],
+    post: str | Sequence[str | None],
+    temperature: str | Sequence[str],
+    **etable_kwargs,
+) -> mt.ETable:
+    """Run shock regressions and align group/post/heat terms across models."""
+
+    def _rename_to(
+        terms: str | Sequence[str],
+        new_term: str,
+    ) -> dict[str, str] | list[dict[str, str]]:
+        if isinstance(terms, str):
+            return {terms: new_term}
+        return [{term: new_term} for term in terms]
+
+    group_renames = _renames_by_spec(_rename_to(group, "group"), specs)
+    post_renames = _renames_by_spec(_rename_to(post, "post"), specs)
+    temperature_renames = _renames_by_spec(_rename_to(temperature, "heat"), specs)
+    renames = [
+        {
+            **group_rename,
+            **post_rename,
+            **temperature_rename,
+            "group:post:heat": DIFFERENTIAL_HEAT_EFFECT_TERM,
+        }
+        for group_rename, post_rename, temperature_rename in zip(
+            group_renames, post_renames, temperature_renames, strict=True
+        )
+    ]
+
+    return make_regression_table(
+        specs,
+        rename=renames,
+        keep=[DIFFERENTIAL_HEAT_EFFECT_TERM, "heat"],
+        exact_match=True,
+        **etable_kwargs,
+    )
+
+
 def _renames_by_spec(
     rename: dict[str, str] | list[dict[str, str]] | None,
     specs: list[RegressionSpec],
@@ -227,6 +270,10 @@ def rename_terms(model, replacements: dict[str, str]):
 
 
 def _replace_terms(text: str, replacements: dict[str, str]) -> str:
+    if text in replacements:
+        return replacements[text]
     for old_term, new_term in replacements.items():
         text = search_replace_term(text, old_term, new_term)[0]
+    if text in replacements:
+        return replacements[text]
     return text

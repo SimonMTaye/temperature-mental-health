@@ -5,8 +5,6 @@ They are intentionally plain text so they work in HTML preview output and can
 also be escaped later for LaTeX if needed.
 """
 
-from collections.abc import Iterable
-
 VARIABLE_LABELS: dict[str, str] = {
     # Mental-health outcomes
     "cesd_z": "CES-D z-score",
@@ -111,6 +109,7 @@ VARIABLE_LABELS: dict[str, str] = {
     "group": "Group",
     "post": "Post",
     "heat": "Heat",
+    "differential_impact_heat": "Differential Impact of Heat",
 }
 
 HEAT_TERMS = [
@@ -149,49 +148,3 @@ STRESSOR_TERMS = [
     "palm_farmer_hh_ifls4",
     "coal_worker_hh_ifls4",
 ]
-
-
-def label_term(term: str) -> str:
-    """Return a human-readable label for a variable or interaction term."""
-    if term in VARIABLE_LABELS:
-        return VARIABLE_LABELS[term]
-    if ":" not in term:
-        return term
-    return " x ".join(VARIABLE_LABELS.get(part, part) for part in term.split(":"))
-
-
-def labels_for(terms: Iterable[str]) -> dict[str, str]:
-    """Build a maketables-compatible labels dictionary for selected terms."""
-    return {term: label_term(term) for term in terms}
-
-
-INTERACTION_LABELS: dict[str, str] = {
-    **{
-        f"{heat}:{stressor}": label_term(f"{heat}:{stressor}")
-        for heat in HEAT_TERMS
-        for stressor in STRESSOR_TERMS
-    },
-    **{
-        f"{heat}:ifls5:palm_farmer_hh_ifls4": label_term(
-            f"{heat}:ifls5:palm_farmer_hh_ifls4"
-        )
-        for heat in HEAT_TERMS
-    },
-    **{
-        f"{heat}:ifls5:coal_worker_hh_ifls4": label_term(
-            f"{heat}:ifls5:coal_worker_hh_ifls4"
-        )
-        for heat in HEAT_TERMS
-    },
-    **{
-        f"{heat}:post_subsidy:urban_vehicle_hh_ifls4": label_term(
-            f"{heat}:post_subsidy:urban_vehicle_hh_ifls4"
-        )
-        for heat in HEAT_TERMS
-    },
-}
-
-TABLE_LABELS: dict[str, str] = {
-    **VARIABLE_LABELS,
-    **INTERACTION_LABELS,
-}

@@ -153,9 +153,12 @@ def main() -> None:
             .groupby(df["pidlink"])
             .transform("max")
         ),
-        palm_price_gap=lambda df: df.palm_price_wave5 - df.palm_price_wave4,
+        palm_price_gap=lambda df: (
+            (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
+        ),
         palm_price_gap_z=lambda df: (
-            (df.palm_price_gap - df.palm_price_gap.mean()) / df.palm_price_gap.std()
+            ((df.palm_price_gap - df.palm_price_gap.mean()) / df.palm_price_gap.std())
+            * df.palm_farmer_hh_ifls4
         ),
     )
 

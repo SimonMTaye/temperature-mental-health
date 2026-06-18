@@ -1012,6 +1012,8 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
                 "posaffect_z",
             ],
         ),
+        "palm_price_gap": pa.Column(float, nullable=True, coerce=True),
+        "palm_price_gap_z": pa.Column(float, nullable=True, coerce=True),
         # Exploratory sidecar variables retain missingness after left joins.
         "n_symptoms": pa.Column(int, checks=pa.Check.ge(0), nullable=True, coerce=True),
         "many_symptoms": _binary_column(nullable=True),
