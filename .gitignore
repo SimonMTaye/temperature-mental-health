@@ -19,6 +19,7 @@ data
 !code/data/_schemas.py
 ~/preview.*
 code/preview/.cache
+.cache
 code/preview/*.html
 *.quarto_ipynb
 code/analysis/exploratory/*

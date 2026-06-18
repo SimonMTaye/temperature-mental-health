@@ -620,6 +620,11 @@ def main() -> None:
 
     geo_both = pd.concat([geo_ifls4, geo_ifls5], ignore_index=True)
     geo_both = geo_both.drop_duplicates(subset=["hhid", "wave"], keep="first")
+    geo_both = geo_both.assign(
+        province_full_code=lambda df: df.gadm_fullcode.astype(int) // 10000,
+        kabupaten_full_code=lambda df: df.gadm_fullcode.astype(int) // 1000,
+        kecamatan_full_code=lambda df: df.gadm_fullcode.astype(int),
+    )
 
     out = survey_both.merge(
         geo_both, on=["hhid", "wave"], how="left", validate="many_to_one"

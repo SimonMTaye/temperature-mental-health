@@ -11,6 +11,7 @@ warning: false
 ```{python}
 from dataclasses import replace
 
+from re import I
 import numpy as np
 import pandas as pd
 from plotnine import (
@@ -420,21 +421,10 @@ make_shock_regression_table(
 The regressions below omit group effects and instead include individual fixed effects
 
 ```{python}
-panel_fuel_share_q4_data = analysis_df.merge(
-    (
-        analysis_df.loc[
-            analysis_df["wave"].eq("IFLS4"),
-            ["pidlink", "fuel_share_quartile"],
-        ]
-        .rename(columns={"fuel_share_quartile": "fuel_share_quartile_ifls4"})
-        .drop_duplicates("pidlink")
-    ),
-    on="pidlink",
-    how="left",
-    validate="m:1",
-)
+panel_fuel_share_q4_data = analysis_df.copy()
+
 panel_fuel_share_q4_data["fuel_share_q4_ifls4"] = (
-    panel_fuel_share_q4_data["fuel_share_quartile_ifls4"].eq(4).astype(int)
+    panel_fuel_share_q4_data["fuel_share_quartile_ifls4"].eq(4).astype("Int32")
 )
 panel_fuel_share_q4_pidlink = RegressionSpec(
     title="Fuel Share Q4 - Panel",
@@ -447,9 +437,7 @@ panel_fuel_share_q4_pidlink = RegressionSpec(
     ),
     df=panel_fuel_share_q4_data,
     tags=frozenset(["fuel-cut", "fuel-share-q4-panel-pidlink"]),
-    show_terms=frozenset(
-        [f"fuel_share_q4_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]
-    ),
+    show_terms=frozenset([f"fuel_share_q4_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]),
 )
 panel_shock_specs_with_fuel_share = [
     palm_shock_panel,
@@ -900,7 +888,7 @@ def add_farmer_crop_placebo_variables(df):
     out = df.copy()
     out["kec_post"] = out["gadm_fullcode"].astype("string") + "_" + out[
         "ifls5"
-    ].astype(int).astype(str)
+    ].astype("Int32").astype(str)
     baseline = (
         out.loc[
             out["wave"] == "IFLS4",
@@ -916,32 +904,32 @@ def add_farmer_crop_placebo_variables(df):
         .drop_duplicates("pidlink")
     )
     out = out.merge(baseline, on="pidlink", how="left", validate="m:1")
-    out["farmer_hh_ifls4"] = out["farmer_hh_ifls4"].fillna(0).astype(int)
-    out["palm_region_ifls4"] = out["palm_region_ifls4"].fillna(0).astype(int)
+    out["farmer_hh_ifls4"] = out["farmer_hh_ifls4"].fillna(0).astype("Int32")
+    out["palm_region_ifls4"] = out["palm_region_ifls4"].fillna(0).astype("Int32")
     out["farmer_nonpalm_hh_ifls4"] = (
         out["farmer_hh_ifls4"].eq(1) & out["palm_region_ifls4"].eq(0)
-    ).astype(int)
+    ).astype("Int32")
     out["nonfarmer_palm_region_ifls4"] = (
         out["farmer_hh_ifls4"].eq(0) & out["palm_region_ifls4"].eq(1)
-    ).astype(int)
+    ).astype("Int32")
     palm_in_ifls5 = (
         out.loc[out["wave"] == "IFLS5", ["pidlink", "palm_farmer_hh"]]
         .rename(columns={"palm_farmer_hh": "palm_farmer_hh_ifls5"})
         .drop_duplicates("pidlink")
     )
     out = out.merge(palm_in_ifls5, on="pidlink", how="left", validate="m:1")
-    out["palm_farmer_hh_ifls5"] = out["palm_farmer_hh_ifls5"].fillna(0).astype(int)
+    out["palm_farmer_hh_ifls5"] = out["palm_farmer_hh_ifls5"].fillna(0).astype("Int32")
     out["palm_farmer_hh_both_waves"] = (
-        out["palm_farmer_hh_ifls4"].fillna(0).astype(int).eq(1)
+        out["palm_farmer_hh_ifls4"].fillna(0).astype("Int32").eq(1)
         & out["palm_farmer_hh_ifls5"].eq(1)
-    ).astype(int)
+    ).astype("Int32")
     main_crop = out["main_crop_ifls4"]
     out["palm_farmer_specific_main_crop_ifls4"] = (
         out["farmer_hh_ifls4"].eq(1)
         & out["palm_region_ifls4"].eq(1)
         & main_crop.notna()
         & ~main_crop.isin(OTHER_MAIN_CROP_CODES)
-    ).astype(int)
+    ).astype("Int32")
     w4_price = (
         out.loc[out["wave"] == "IFLS4"]
         .groupby("pidlink")["palm_price_usd_mt"]
@@ -959,7 +947,7 @@ def add_farmer_crop_placebo_variables(df):
     out = out.merge(price_gap_z, on="pidlink", how="left", validate="m:1")
     out["palm_price_gap_z_ifls4_palm"] = out["price_gap_z"]
     out.loc[
-        out["palm_farmer_hh_ifls4"].fillna(0).astype(int).eq(0),
+        out["palm_farmer_hh_ifls4"].fillna(0).astype("Int32").eq(0),
         "palm_price_gap_z_ifls4_palm",
     ] = 0
     return out
@@ -1028,7 +1016,7 @@ def one_sector_per_person(data, sector_column):
     sector_data["wave_order"] = sector_data["wave"].map({"IFLS4": 4, "IFLS5": 5})
     sector_data[sector_column] = pd.to_numeric(
         sector_data[sector_column], errors="coerce"
-    ).astype(int)
+    ).astype("Int32")
     return (
         sector_data.sort_values(["pidlink", "wave_order"])
         .drop_duplicates("pidlink", keep="last")
@@ -1173,7 +1161,7 @@ jobloss_sector_df["jobloss_occupation_sector"] = jobloss_sector_df[
 jobloss_sector_df = jobloss_sector_df.dropna(subset=["jobloss_occupation_sector"]).copy()
 jobloss_sector_df["jobloss_occupation_sector"] = (
     pd.to_numeric(jobloss_sector_df["jobloss_occupation_sector"], errors="coerce")
-    .astype(int)
+    .astype("Int32")
 )
 
 occupation_sector_codes = sorted(jobloss_sector_df["jobloss_occupation_sector"].unique())
@@ -1181,7 +1169,7 @@ occupation_sector_terms = []
 for sector_code in occupation_sector_codes[1:]:
     sector_column = f"jobloss_occ_sector_{sector_code}"
     jobloss_sector_df[sector_column] = (
-        jobloss_sector_df["jobloss_occupation_sector"].eq(sector_code).astype(int)
+        jobloss_sector_df["jobloss_occupation_sector"].eq(sector_code).astype("Int32")
     )
     occupation_sector_terms.append(sector_column)
 
@@ -1312,10 +1300,8 @@ urban vehicle ownership among respondents observed in both waves.
 def add_fuel_group_robustness_variables(df):
     out = df.copy()
     ifls5_status = (
-        out.loc[
-            out["wave"].eq("IFLS5"),
-            ["pidlink", "urban_vehicle_hh", "cash_transfer_recipient"],
-        ]
+        out.query('wave == "IFLS5"')
+        .filter(items=["pidlink", "urban_vehicle_hh", "cash_transfer_recipient"])
         .rename(
             columns={
                 "urban_vehicle_hh": "urban_vehicle_hh_ifls5",
@@ -1325,9 +1311,9 @@ def add_fuel_group_robustness_variables(df):
         .drop_duplicates("pidlink")
     )
     ifls4_spending = (
-        out.loc[
-            out["wave"].eq("IFLS4"),
-            [
+        out.query('wave == "IFLS4"')
+        .filter(
+            items=[
                 "pidlink",
                 "vehicle_owner",
                 "urban",
@@ -1335,21 +1321,21 @@ def add_fuel_group_robustness_variables(df):
                 "fuel_share_quartile",
                 "fuel_transport_share_quartile",
             ],
-        ]
+        )
         .rename(
             columns={
                 "vehicle_owner": "vehicle_owner_ifls4",
                 "urban": "urban_ifls4",
-                "fuel_share": "fuel_share_ifls4",
-                "fuel_share_quartile": "fuel_share_quartile_ifls4",
+                "fuel_share": "fuel_share_ifls4_from_wave",
+                "fuel_share_quartile": "fuel_share_quartile_ifls4_from_wave",
                 "fuel_transport_share_quartile": (
-                    "fuel_transport_share_quartile_ifls4"
+                    "fuel_transport_share_quartile_ifls4_from_wave"
                 ),
             }
         )
         .assign(
             urban_fuel_share_ifsl4=lambda df: (
-                df["urban_ifls4"] * df["fuel_share_ifls4"]
+                df["urban_ifls4"] * df["fuel_share_ifls4_from_wave"]
             ),
             rural_vehicle_hh_ifls4=lambda df: (
                 (1 - df["urban_ifls4"]) * df["vehicle_owner_ifls4"]
@@ -1359,6 +1345,13 @@ def add_fuel_group_robustness_variables(df):
     )
     out = out.merge(ifls5_status, on="pidlink", how="left", validate="m:1")
     out = out.merge(ifls4_spending, on="pidlink", how="left", validate="m:1")
+    for col in ["fuel_share", "fuel_share_quartile", "fuel_transport_share_quartile"]:
+        baseline_col = f"{col}_ifls4"
+        merged_col = f"{baseline_col}_from_wave"
+        if baseline_col in out.columns:
+            out[baseline_col] = out[baseline_col].combine_first(out[merged_col])
+        else:
+            out[baseline_col] = out[merged_col]
 
     known_vehicle_status = (
         out["urban_vehicle_hh_ifls4"].notna() & out["urban_vehicle_hh_ifls5"].notna()
@@ -1368,18 +1361,18 @@ def add_fuel_group_robustness_variables(df):
         .where(known_vehicle_status)
         .astype("Int64")
     )
-    out["fuel_share_q4_ifls4"] = out["fuel_share_quartile_ifls4"].eq(4).astype(int)
+    out["fuel_share_q4_ifls4"] = out["fuel_share_quartile_ifls4"].eq(4).astype("Int32")
     out["fuel_transport_share_q4_ifls4"] = (
-        out["fuel_transport_share_quartile_ifls4"].eq(4).astype(int)
+        out["fuel_transport_share_quartile_ifls4"].eq(4).astype("Int32")
     )
-    out["vehicle_owner_ifls4"] = out["vehicle_owner_ifls4"].fillna(0).astype(int)
-    out["urban_ifls4"] = out["urban_ifls4"].fillna(0).astype(int)
+    out["vehicle_owner_ifls4"] = out["vehicle_owner_ifls4"].fillna(0).astype("Int32")
+    out["urban_ifls4"] = out["urban_ifls4"].fillna(0).astype("Int32")
     out["urban_vehicle_transfer_recipient_ifls4"] = (
         out["urban_vehicle_hh_ifls4"].eq(1) & out["cash_transfer_recipient_ifls5"].eq(1)
-    ).astype(int)
+    ).astype("Int32")
     out["urban_vehicle_transfer_nonrecipient_ifls4"] = (
         out["urban_vehicle_hh_ifls4"].eq(1) & out["cash_transfer_recipient_ifls5"].eq(0)
-    ).astype(int)
+    ).astype("Int32")
     return out
 
 
@@ -1753,7 +1746,7 @@ fuel_cutoffs = pd.concat(
 )
 
 fuel_placebo_post_columns = {
-    row.post_var: (fuel_placebo_df["interview_date"] >= row.cutoff_date).astype(int)
+    row.post_var: (fuel_placebo_df["interview_date"] >= row.cutoff_date).astype("Int32")
     for row in fuel_cutoffs.query("post_var != 'post_subsidy'").itertuples(index=False)
 }
 fuel_placebo_df = pd.concat(

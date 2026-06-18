@@ -71,7 +71,6 @@ OUTPUT_COLUMNS = [
     "vehicle_owner",
     "urban",
     "urban_vehicle_hh",
-    "urban_vehicle_hh_ifls4",
     "cash_transfer_recipient",
     "blt_card",
     "health_card",
@@ -378,19 +377,6 @@ def _finalize_output(out: pd.DataFrame) -> pd.DataFrame:
     return ECONOMIC_EXPOSURES_SCHEMA.validate(out_final)
 
 
-def _add_urban_vehicle_baseline(out: pd.DataFrame) -> pd.DataFrame:
-    out = out.copy()
-    out["urban_vehicle_hh"] = out.urban.fillna(0).astype(
-        int
-    ) * out.vehicle_owner.fillna(0).astype(int)
-    baseline = (
-        out.query("wave == 'IFLS4'")[["pidlink", "urban_vehicle_hh"]]
-        .drop_duplicates("pidlink")
-        .rename(columns={"urban_vehicle_hh": "urban_vehicle_hh_ifls4"})
-    )
-    return out.merge(baseline, on="pidlink", how="left", validate="m:1")
-
-
 def main() -> pd.DataFrame:
     """Build and write the 20-prefixed financial shock sidecar."""
     jl = pd.concat([_job_loss("IFLS4"), _job_loss("IFLS5")], ignore_index=True)
@@ -425,7 +411,9 @@ def main() -> pd.DataFrame:
         .merge(cash, on=["hhid", "wave"], how="left", validate="m:1")
         .pipe(_add_loss_timing)
         .pipe(_add_palm_price_exposure)
-        .pipe(_add_urban_vehicle_baseline)
+        .assign(
+            urban_vehicle_hh=lambda df: df.urban * df.vehicle_owner,
+        )
         .pipe(_finalize_output)
     )
     output_path = GENERATED_DATA / "20_economic_exposures.parquet"

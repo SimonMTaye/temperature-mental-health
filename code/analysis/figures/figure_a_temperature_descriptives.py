@@ -9,13 +9,8 @@ Outputs:
   output/figures/figure_a_temperature_descriptives.png
 """
 
-from __future__ import annotations
-
-import subprocess
-import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from plotnine import (
     aes,
@@ -31,11 +26,12 @@ from plotnine import (
     theme_minimal,
 )
 
+from library.config import FIGURE_OUTPUT
+
 PROJECT = Path(__file__).resolve().parents[3]
 ANALYSIS_INPUT = PROJECT / "data" / "generated" / "30_analysis_table_input.parquet"
-OUTPUT_DIR = PROJECT / "output" / "figures"
-PDF_OUTPUT = OUTPUT_DIR / "figure_a_temperature_descriptives.pdf"
-PNG_OUTPUT = OUTPUT_DIR / "figure_a_temperature_descriptives.png"
+PDF_OUTPUT = FIGURE_OUTPUT / "figure_a_temperature_descriptives.pdf"
+PNG_OUTPUT = FIGURE_OUTPUT / "figure_a_temperature_descriptives.png"
 
 REQUIRED_COLUMNS = [
     "kabupaten_code",
@@ -61,11 +57,13 @@ FIGURE_THEME = theme_minimal(base_family="DejaVu Serif", base_size=8) + theme(
 
 
 if __name__ == "__main__":
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    FIGURE_OUTPUT.mkdir(parents=True, exist_ok=True)
     df: pd.DataFrame = pd.read_parquet(ANALYSIS_INPUT)
-    df = df[REQUIRED_COLUMNS].dropna(
-        subset=["kabupaten_code", "interview_datetime", "wave", "tmean_c"]
-    ).copy()
+    df = (
+        df[REQUIRED_COLUMNS]
+        .dropna(subset=["kabupaten_code", "interview_datetime", "wave", "tmean_c"])
+        .copy()
+    )
     df = df[df["tmean_c"] > 0].copy()
     df["interview_date"] = pd.to_datetime(df["interview_datetime"]).dt.normalize()
     df["month"] = df["month"].astype(int)

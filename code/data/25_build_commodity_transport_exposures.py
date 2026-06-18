@@ -47,18 +47,14 @@ OUTPUT_COLUMNS = [
     "main_crop",
     "palm_region",
     "palm_farmer_individual",
-    "palm_farmer_individual_ifls4",
     "palm_farmer_hh",
-    "palm_farmer_hh_ifls4",
     "rubber_region",
     "rubber_farmer_individual",
     "coffee_region",
     "coffee_farmer_individual",
     "coal_region",
     "coal_worker_individual",
-    "coal_worker_individual_ifls4",
     "coal_worker_hh",
-    "coal_worker_hh_ifls4",
     "fuel_total",
     "transport_total",
     "transport_spending_mo",
@@ -316,28 +312,7 @@ def build_commodity_transport_exposures() -> pd.DataFrame:
         .pipe(_add_region_worker_flags)
         .pipe(_add_spending_quantiles)
     )
-    worker_dummy_ifls4 = (
-        out_final
-        # Filter to rows where wave = ifls4
-        .query("wave == 'IFLS4'")
-        # Keep pidlink plus IFLS4 baseline worker columns
-        .filter(
-            items=[
-                "pidlink",
-                "palm_farmer_individual",
-                "palm_farmer_hh",
-                "coal_worker_individual",
-                "coal_worker_hh",
-            ]
-        )
-        # Add IFLS4 dummy to every column
-        .add_suffix("_ifls4", axis=1)
-        # Rename pidlink back to pidlink (remove suffix)
-        .rename(columns={"pidlink_ifls4": "pidlink"})
-    )
-    out_final = out_final.merge(
-        worker_dummy_ifls4, on="pidlink", how="left", validate="m:1"
-    ).filter(items=OUTPUT_COLUMNS)
+    out_final = out_final.filter(items=OUTPUT_COLUMNS)
 
     out_final = COMMODITY_TRANSPORT_EXPOSURES_SCHEMA.validate(out_final)
 

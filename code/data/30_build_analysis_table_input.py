@@ -8,7 +8,7 @@ Output: data/generated/30_analysis_table_input.parquet
 
 import pandas as pd
 
-from data.config import GENERATED_DATA, IDR_2007_TO_2014_DEFLATOR
+from data.config import GENERATED_DATA
 from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA
 from data.log import log
 
@@ -24,57 +24,27 @@ CESD_FACTOR_COLUMNS = [
 ]
 
 
-def ensure_cesd_factor_columns(ces: pd.DataFrame) -> pd.DataFrame:
-    """Keep old CES-D score artifacts readable while 24 owns factor construction."""
-    missing = [col for col in CESD_FACTOR_COLUMNS if col not in ces.columns]
-    if missing:
-        log(
-            "warning: 24_cesd_scores.parquet is missing CES-D factor columns; "
-            "rerun code/data/24_score_cesd.py when raw IFLS files are mounted",
-            "WARNING",
+def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    wave4 = (
+        df
+        # Filter to rows where wave = ifls4
+        .query("wave == 'IFLS4'")
+        # Keep pidlink plus IFLS4 baseline worker columns
+        .filter(
+            items=columns + ["pidlink"],
         )
-        ces = ces.copy()
-        for col in missing:
-            ces[col] = float("nan")
-    return ces
-
-
-def _pce_decline(df: pd.DataFrame) -> pd.DataFrame:
-    """Bottom-quartile of inter-wave PCE change for panel respondents."""
-    pce = df[["pidlink", "wave", "pce"]].dropna(subset=["pce"])
-    pce = pce[pce.pce > 0]
-    pce_w = pce.pivot_table(
-        index="pidlink", columns="wave", values="pce", aggfunc="mean"
+        # Add IFLS4 dummy to every column
+        .add_suffix("_ifls4", axis=1)
+        # Rename pidlink back to pidlink (remove suffix)
+        .rename(columns={"pidlink_ifls4": "pidlink"})
     )
-    if "IFLS4" not in pce_w.columns or "IFLS5" not in pce_w.columns:
-        return pd.DataFrame(columns=["pidlink", "wave", "pce_decline_q4"])
-    panel = pce_w.dropna()
-    panel["pce_chg_real"] = panel["IFLS5"] - panel["IFLS4"] * IDR_2007_TO_2014_DEFLATOR
-    panel["pce_pct_chg"] = panel["pce_chg_real"] / (
-        panel["IFLS4"] * IDR_2007_TO_2014_DEFLATOR
-    )
-    thr = panel["pce_pct_chg"].quantile(0.25)
-    panel["pce_decline_q4_flag"] = (panel["pce_pct_chg"] <= thr).astype(int)
-
-    # Broadcast the same flag to BOTH wave-rows for each panel respondent
-    panel = panel.reset_index()[["pidlink", "pce_decline_q4_flag"]]
-    out = pd.concat(
-        [
-            panel.assign(wave="IFLS4"),
-            panel.assign(wave="IFLS5"),
-        ],
-        ignore_index=True,
-    )
-    out = out.rename(columns={"pce_decline_q4_flag": "pce_decline_q4"})
-    return out
+    return df.merge(wave4, on="pidlink", how="left", validate="m:1")
 
 
 def build_core_panel() -> pd.DataFrame:
     """Merge person, CES-D, covariate, and processed temperature inputs."""
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    ces = ensure_cesd_factor_columns(
-        pd.read_parquet(GENERATED_DATA / "24_cesd_scores.parquet")
-    )
+    ces = pd.read_parquet(GENERATED_DATA / "24_cesd_scores.parquet")
     stress = pd.read_parquet(GENERATED_DATA / "22_stressors.parquet")
     temp = pd.read_parquet(GENERATED_DATA / "26_processed_temperature_data.parquet")
 
@@ -106,16 +76,6 @@ def build_core_panel() -> pd.DataFrame:
     df["month_year"] = df.interview_date.dt.to_period("M").astype(str)
     df["month"] = df.interview_date.dt.month
     df["year"] = df.interview_date.dt.year
-    return df
-
-
-def add_model_variables(df: pd.DataFrame) -> pd.DataFrame:
-    """Add common outcome and demographic variables used by tables."""
-    df = df.copy()
-    df["female"] = (df.sex == "F").astype(int)
-    df["cesd_z"] = df.groupby("wave")["cesd_raw"].transform(
-        lambda s: (s - s.mean()) / s.std()
-    )
     return df
 
 
@@ -165,29 +125,42 @@ def main() -> None:
         validate="1:1",
     )
 
-    pce_d = _pce_decline(df)
-    df = df.merge(pce_d, on=["pidlink", "wave"], how="left", validate="1:1")
-    df["pce_decline_q4"] = df["pce_decline_q4"].fillna(0).astype(int)
-
-    df = add_model_variables(df)
-    df = df.dropna(
-        subset=[
-            "job_loss_1_yr",
-            "palm_farmer_individual",
-            "palm_farmer_individual_ifls4",
-            "farmer_hh",
-            "palm_farmer_hh",
-            "palm_farmer_hh_ifls4",
-            "rubber_farmer_individual",
-            "coffee_farmer_individual",
-            "coal_worker_individual",
-            "coal_worker_individual_ifls4",
+    df = df.pipe(
+        add_ifsl4_measurements,
+        columns=[
+            "urban_vehicle_hh",
             "coal_worker_hh",
-            "coal_worker_hh_ifls4",
-            "transport_share",
-            "vehicle_owner",
-        ]
-    ).copy()
+            "coal_worker_individual",
+            "palm_farmer_hh",
+            "palm_farmer_individual",
+            "fuel_share",
+            "fuel_share_quartile",
+        ],
+    ).assign(
+        female=lambda df: df["sex"].eq("F").astype(int),
+        cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
+            lambda s: (s - s.mean()) / s.std()
+        ),
+        palm_price_wave5=lambda df: (
+            df["palm_price_usd_mt"]
+            .where(df["wave"] == "IFLS5")
+            .groupby(df["pidlink"])
+            .transform("max")
+        ),
+        palm_price_wave4=lambda df: (
+            df["palm_price_usd_mt"]
+            .where(df["wave"] == "IFLS4")
+            .groupby(df["pidlink"])
+            .transform("max")
+        ),
+        palm_price_gap=lambda df: (
+            (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
+        ),
+        palm_price_gap_z=lambda df: (
+            ((df.palm_price_gap - df.palm_price_gap.mean()) / df.palm_price_gap.std())
+            * df.palm_farmer_hh_ifls4
+        ),
+    )
 
     int_cols = [
         "job_loss_1_yr",
