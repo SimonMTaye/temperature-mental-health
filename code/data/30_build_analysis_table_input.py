@@ -84,24 +84,17 @@ def main() -> None:
 
     df = build_core_panel()
     economic = pd.read_parquet(GENERATED_DATA / "20_economic_exposures.parquet")
-    commodity_transport = pd.read_parquet(
-        GENERATED_DATA / "25_commodity_transport_exposures.parquet"
-    )
-    income_mechanisms = pd.read_parquet(
-        GENERATED_DATA / "27_income_mechanism_inputs.parquet"
-    )
+    expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
+    asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
 
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
-        commodity_transport,
+        expenditure,
         on=["pidlink", "wave"],
         how="left",
-        suffixes=("", "_commodity_transport"),
         validate="1:1",
     )
-    if "palm_region_commodity_transport" in df.columns:
-        df = df.drop(columns=["palm_region_commodity_transport"])
-    df = df.merge(income_mechanisms, on=["pidlink", "wave"], how="left", validate="1:1")
+    df = df.merge(asset_expenditure, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
         pd.read_parquet(GENERATED_DATA / "28_sleep_duration.parquet"),
         on=["pidlink", "wave"],

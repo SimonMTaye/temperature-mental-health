@@ -60,20 +60,6 @@ FACTOR_MAP = {
     "depraffect": {"C", "F", "I"},
     "posaffect": {"E", "H"},
 }
-OUTPUT_COLUMNS = [
-    "pidlink",
-    "wave",
-    "cesd_raw",
-    "cesd10_count",
-    "depressed",
-    "n_items",
-    "somatic",
-    "depraffect",
-    "posaffect",
-    "somatic_z",
-    "depraffect_z",
-    "posaffect_z",
-]
 COMPLETE_SCORE_COLUMNS = [
     "cesd_raw",
     "somatic",
@@ -151,7 +137,7 @@ def build_output(
     out = out.merge(factors, on=["pidlink", "wave"], how="left", validate="1:1")
     out["depressed"] = (out.cesd_raw >= 10).astype(int)
     out = add_factor_z_scores(out)
-    return out[OUTPUT_COLUMNS]
+    return out[list(CESD_SCORES_SCHEMA.columns)]
 
 
 def complete_only(loose: pd.DataFrame) -> pd.DataFrame:
@@ -160,7 +146,7 @@ def complete_only(loose: pd.DataFrame) -> pd.DataFrame:
     complete["depressed"] = (complete.cesd_raw >= 10).astype(int)
     complete = complete.drop(columns=["somatic_z", "depraffect_z", "posaffect_z"])
     complete = add_factor_z_scores(complete)
-    return complete[OUTPUT_COLUMNS]
+    return complete[list(CESD_SCORES_SCHEMA.columns)]
 
 
 def score_ifls5() -> tuple[pd.DataFrame, pd.DataFrame]:

@@ -31,3 +31,9 @@ code/port
 sync_code.sh
 sync_output.sh
 check_newer.sh
+preview.tex
+preview.pdf
+preview.log
+preview.aux
+preview.out
+preview.toc

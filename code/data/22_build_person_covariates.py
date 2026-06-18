@@ -3,7 +3,7 @@
 Outputs: data/generated/stressors.parquet
   pidlink, wave, age, sex, married, widowed, edu_yrs, urban,
   hh_size, pce_log, pce_quintile,
-  loan_rejected, agri_occupation,
+  loan_rejected,
   disaster_5yr, disaster_severe_5yr,
   hh_with_adl_limit (proxy: caregiver burden)
 
@@ -12,8 +12,6 @@ Notes
 - "PCE" for IFLS4 = pre-computed nominal monthly per-capita expenditure (pce07nom.dta).
 - "PCE" for IFLS5 = computed here from b1_ks0/ks2/ks3 (food + non-food monthly).
 - Disaster variables are HH-level (b2_nd1) — broadcast to all adults in HH.
-- "agri_occupation" follows IFLS occupation codes 6-7 (agriculture/forestry/fishery)
-  in primary job (b3a_tk2 tk24a / tk24a3); fallback to ar15a "did HHM work".
 - Quintiles computed within wave so they're comparable across waves.
 """
 
@@ -183,38 +181,6 @@ def _loan_rejected(wave: str) -> pd.DataFrame:
     return _loan_rejected_from_df(bh, hhid_col_name=HHID_COLUMNS[wave], wave=wave)
 
 
-def _agri_occupation_from_df(tk: pd.DataFrame, *, wave: str) -> pd.DataFrame:
-    """Identify adults whose primary job is agriculture/forestry/fishery (sector 1)."""
-    sector_cols = [
-        c
-        for c in tk.columns
-        if c.lower().startswith("tk19a") or c.lower().startswith("tk24")
-    ]
-    # Heuristic: look for column whose values cluster around 1-9 (1-digit sector)
-    # IFLS sector codes: 1 = agriculture/forestry/fishing
-    candidate = None
-    for c in sector_cols:
-        u = tk[c].dropna().astype("Int64").unique()
-        if len(u) and 1 in u and tk[c].between(1, 99).any():
-            candidate = c
-            break
-    if candidate is None:
-        return pd.DataFrame(columns=["pidlink", "wave", "agri_occupation"])
-    tk["agri_occupation"] = (tk[candidate] == 1).astype(int)
-    out = tk[["pidlink", "agri_occupation"]].drop_duplicates("pidlink")
-    out["wave"] = wave
-    return out
-
-
-def _agri_occupation(wave: str) -> pd.DataFrame:
-    # tk2 has sector codes; tk24 series is the industry of primary job
-    p = IFLS_FOLDERS[wave] / "b3a_tk2.dta"
-    if not p.exists():
-        return pd.DataFrame(columns=["pidlink", "wave", "agri_occupation"])
-    tk = read_stata_df(p, convert_categoricals=False)
-    return _agri_occupation_from_df(tk, wave=wave)
-
-
 def _add_pce_fields(pce: pd.DataFrame) -> pd.DataFrame:
     return pce.assign(
         pce=lambda df: df.pce.replace([0, np.inf, -np.inf], np.nan),
@@ -230,7 +196,6 @@ def _finalize_stressors(out: pd.DataFrame) -> pd.DataFrame:
         disaster_5yr=lambda df: df.disaster_5yr.fillna(0).astype(int),
         disaster_severe_5yr=lambda df: df.disaster_severe_5yr.fillna(0).astype(int),
         loan_rejected=lambda df: df.loan_rejected.fillna(0).astype(int),
-        agri_occupation=lambda df: df.agri_occupation.fillna(0).astype(int),
     ).pipe(STRESSORS_SCHEMA.validate)
 
 
@@ -258,12 +223,6 @@ def main() -> None:
     )
     log(f"disaster: {len(disaster):,}, loan: {len(loan):,}")
 
-    # Individual-level
-    agri = pd.concat(
-        [_agri_occupation("IFLS4"), _agri_occupation("IFLS5")], ignore_index=True
-    )
-    log(f"agri occupation: {len(agri):,}")
-
     # Merge by (pidlink, wave) — most are HH-level so first attach to demo via hhid
     out = (
         demo.merge(
@@ -274,7 +233,6 @@ def main() -> None:
         )
         .merge(disaster, on=["hhid", "wave"], how="left", validate="m:1")
         .merge(loan, on=["hhid", "wave"], how="left", validate="m:1")
-        .merge(agri, on=["pidlink", "wave"], how="left", validate="1:1")
         .pipe(_finalize_stressors)
     )
     out.to_parquet(GENERATED_DATA / "22_stressors.parquet", index=False)
@@ -294,7 +252,6 @@ def main() -> None:
             loan_rejected_pct=("loan_rejected", lambda s: 100 * s.mean()),
             disaster_5yr_pct=("disaster_5yr", lambda s: 100 * s.mean()),
             disaster_severe_pct=("disaster_severe_5yr", lambda s: 100 * s.mean()),
-            agri_occ_pct=("agri_occupation", lambda s: 100 * s.mean()),
         )
         .round(2),
         "DEBUG",

@@ -18,11 +18,9 @@ from pathlib import Path
 
 from tqdm.auto import tqdm
 
-DATA_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(DATA_DIR))
 
-from config import RAW_IFLS, RAW_IFLS_EXTRACTED
-from log import DEFAULT_LOG_FILE, configure_logging, log
+from data.config import RAW_IFLS, RAW_IFLS_EXTRACTED
+from library.log import DEFAULT_LOG_FILE, configure_logging, log
 
 # Each entry: archive path (relative to RAW_IFLS) -> extraction dir (relative to RAW_IFLS_EXTRACTED).
 ARCHIVES: dict[str, str] = {
@@ -97,14 +95,11 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
         PipelineStep("22_build_person_covariates", "person covariates"),
         PipelineStep("23_build_finance_distress", "finance distress"),
         PipelineStep("24_score_cesd", "CES-D scores"),
-        PipelineStep(
-            "25_build_commodity_transport_exposures",
-            "commodity/transport exposures",
-        ),
+        PipelineStep("25_build_expenditure_data", "expenditure data"),
     ),
     (
         PipelineStep("26_process_temperature_data", "processed temperature"),
-        PipelineStep("27_build_income_mechanism_inputs", "income mechanisms"),
+        PipelineStep("27_asset_expenditure", "Asset and expenditure"),
         PipelineStep("28_build_sleep_duration", "sleep duration"),
     ),
     (PipelineStep("30_build_analysis_table_input", "analysis table input"),),
