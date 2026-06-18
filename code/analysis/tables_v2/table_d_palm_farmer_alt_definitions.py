@@ -48,7 +48,7 @@ if __name__ == "__main__":
         ("Main Definition", "palm_farmer_hh_ifls4"),
         (r"Both IFLS4\&5", "palm_farmer_both_waves"),
         ("IFLS5", "palm_farmer_hh_ifls5"),
-        (r"\shortstack{Farmer non-palm\\region}", "farmer_non_palm_ifls4"),
+        # (r"\shortstack{Farmer non-palm\\region}", "farmer_non_palm_ifls4"),
     ]
     specs = [
         replace(

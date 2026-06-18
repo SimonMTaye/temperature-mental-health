@@ -1,7 +1,7 @@
 import pyfixest as pf
 
 from library.config import TABLE_OUTPUT
-from library.specs import analysis_df, JOB_LOSS_MAIN, MAIN_TEMP_MEASURE
+from library.specs import analysis_df, JOB_LOSS_MAIN, MAIN_TEMP_MEASURE, FE_WAVE
 from library.dictionary import VARIABLE_LABELS
 from library.table_builder import coefficient_rows, make_row
 
@@ -14,11 +14,11 @@ balance_variables_demographic = [
 ]
 
 TABLE_TEMPLATE = r"""\resizebox{\linewidth}{!}{
-\begin{tabular}{@{}lccccccc}
+\begin{tabular}{@{}lccccc}
 \toprule
- & & \multicolumn{6}{c}{Regressor} \\
-\cmidrule(lr){3-8}
- & Mean (SD) & Temperature & Job Loss & \shortstack{Palm\\Farmers} & Fuel Share & \shortstack{Urban \\Vehicle Owners} & \shortstack{Vehicle Owners\\Post Subsidy} \\ 
+ & & \multicolumn{4}{c}{Regressor} \\
+\cmidrule(lr){3-6}
+ & Mean (SD) & Temperature & Job Loss &  Fuel Share &  \shortstack{Vehicle Owners\\Post Subsidy} \\ 
 \midrule\addlinespace[2.5pt]
 {coefficient_rows}
 \midrule\addlinespace[2.5pt]
@@ -57,12 +57,7 @@ if __name__ == "__main__":
         tests = [
             (MAIN_TEMP_MEASURE, analysis_df),
             (JOB_LOSS_MAIN, analysis_df),
-            ("palm_farmer_hh_ifls4", analysis_df),
             ("fuel_share_ifls4", analysis_df),
-            (
-                "urban_vehicle_hh_ifls4",
-                analysis_df,
-            ),
             (
                 "post_subsidy",
                 analysis_df[
@@ -72,7 +67,7 @@ if __name__ == "__main__":
         ]
         for term, data in tests:
             result = pf.feols(
-                f"{balance_variable} ~ {term}",
+                f"{balance_variable} ~ {term} | {FE_WAVE}",
                 data=data,
                 vcov={"CRV1": "gadm_fullcode"},
             )
