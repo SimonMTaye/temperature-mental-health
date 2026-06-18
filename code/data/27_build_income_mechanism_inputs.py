@@ -16,7 +16,7 @@ from data.config import (
     IFLS4_FOLDER,
     IFLS5_FOLDER,
 )
-from data.log import log
+from library.log import log
 
 
 IFLS_FOLDERS = {

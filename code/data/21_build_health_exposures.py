@@ -17,7 +17,7 @@ import pandas as pd
 from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER
 from data._schemas import HEALTH_BEREAVEMENT_SHOCKS_SCHEMA
 from data._stata import read_stata_df
-from data.log import log
+from library.log import log
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,

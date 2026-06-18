@@ -10,7 +10,7 @@ import pandas as pd
 from data._schemas import SLEEP_DURATION_SCHEMA
 from data._stata import read_stata_df
 from data.config import GENERATED_DATA, IFLS5_FOLDER
-from data.log import log
+from library.log import log
 
 
 def build_sleep_duration() -> pd.DataFrame:

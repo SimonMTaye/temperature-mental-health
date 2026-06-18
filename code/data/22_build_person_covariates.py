@@ -25,7 +25,7 @@ from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER, RAW_IFLS_EXT
 from data._sentinels import clean_age, clean_categorical  # noqa: E402
 from data._schemas import STRESSORS_SCHEMA  # noqa: E402
 from data._stata import read_stata_df  # noqa: E402
-from data.log import log  # noqa: E402
+from library.log import log  # noqa: E402
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,

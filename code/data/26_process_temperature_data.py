@@ -9,7 +9,7 @@ import pandas as pd
 
 from data._schemas import PROCESSED_TEMPERATURE_SCHEMA
 from data.config import GENERATED_DATA
-from data.log import log
+from library.log import log
 
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")

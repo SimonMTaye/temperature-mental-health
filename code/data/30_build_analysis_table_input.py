@@ -10,7 +10,7 @@ import pandas as pd
 
 from data.config import GENERATED_DATA
 from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA
-from data.log import log
+from library.log import log
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
 HAZE_MONTHS = {(2015, 9), (2015, 10), (2015, 11)}

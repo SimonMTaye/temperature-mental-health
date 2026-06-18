@@ -19,7 +19,7 @@ import pandas as pd
 from shapely import union_all
 
 from data.config import GADM_PATH, GENERATED_DATA
-from data.log import log
+from library.log import log
 
 
 ADM1_LAYER = "gadm36_IDN_1"

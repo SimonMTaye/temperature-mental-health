@@ -12,7 +12,7 @@ from data._schemas import COMMODITY_TRANSPORT_EXPOSURES_SCHEMA  # noqa: E402
 from data._sentinels import clean_money  # noqa: E402
 from data._stata import read_stata_df  # noqa: E402
 from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
-from data.log import log  # noqa: E402
+from library.log import log  # noqa: E402
 
 
 PALM_PROVS = {

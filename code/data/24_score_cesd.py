@@ -51,7 +51,7 @@ import pandas as pd
 from data.config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from data._schemas import CESD_SCORES_SCHEMA
 from data._stata import read_stata_df
-from data.log import log
+from library.log import log
 
 REVERSE_ITEMS = {"E", "H"}
 CESD_ITEMS = set("ABCDEFGHIJ")

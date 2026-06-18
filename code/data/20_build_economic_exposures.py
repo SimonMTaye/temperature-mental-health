@@ -13,7 +13,7 @@ from data._schemas import ECONOMIC_EXPOSURES_SCHEMA  # noqa: E402
 from data._sentinels import clean_count, clean_month, clean_year  # noqa: E402
 from data._stata import read_stata_df  # noqa: E402
 from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
-from data.log import log  # noqa: E402
+from library.log import log  # noqa: E402
 
 
 PALM_PROVS = {
