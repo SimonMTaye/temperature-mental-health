@@ -179,6 +179,7 @@ def main() -> None:
                 "expenditure_nonfood_fuel_mo",
                 "expenditure_food_total_mo",
                 "expenditure_nonfood_total_mo",
+                "expenditure_total_mo",
             ],
         )
     )

@@ -480,6 +480,9 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "expenditure_nonfood_total_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
+        "expenditure_total_mo": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         # Monthly household fuel spending from IFLS KS2 item A3.
         "fuel_total": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
@@ -1080,45 +1083,7 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             list(ECONOMIC_EXPOSURES_SCHEMA.columns),
         ),
         # Expenditure variables retained in the analysis table.
-        **_schema_columns(
-            EXPENDITURE_DATA_SCHEMA,
-            [
-                "main_crop",
-                "expenditure_food_items_mo",
-                "expenditure_food_cooking_oil_mo",
-                "expenditure_food_total_mo",
-                "expenditure_nonfood_ks2_mo",
-                "expenditure_nonfood_fuel_mo",
-                "expenditure_nonfood_transport_mo",
-                "expenditure_nonfood_children_education_mo",
-                "expenditure_nonfood_food_gift_mo",
-                "expenditure_nonfood_kerosene_mo",
-                "expenditure_nonfood_ks3_mo",
-                "expenditure_nonfood_total_mo",
-                "fuel_total",
-                "transport_total",
-                "transport_spending_mo",
-                "fuel_transport_total",
-                "total_mo",
-                "fuel_share",
-                "transport_share",
-                "fuel_transport_share",
-                "fuel_total_quartile",
-                "fuel_total_quintile",
-                "transport_total_quartile",
-                "transport_total_quintile",
-                "fuel_transport_total_quartile",
-                "fuel_transport_total_quintile",
-                "fuel_share_quartile",
-                "fuel_share_quintile",
-                "transport_share_quartile",
-                "transport_share_quintile",
-                "transport_share_q5",
-                "fuel_transport_share_quartile",
-                "fuel_transport_share_quintile",
-                "high_transport_share",
-            ],
-        ),
+        **EXPENDITURE_DATA_SCHEMA.columns,
         **_schema_columns(
             ASSET_EXPENDITURE_SCHEMA,
             [
@@ -1135,17 +1100,7 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             float, checks=pa.Check.between(0.5, 16.0), nullable=True, coerce=True
         ),
         # CES-D factor scores and within-wave standardized versions.
-        **_schema_columns(
-            CESD_SCORES_SCHEMA,
-            [
-                "somatic",
-                "depraffect",
-                "posaffect",
-                "somatic_z",
-                "depraffect_z",
-                "posaffect_z",
-            ],
-        ),
+        **CESD_SCORES_SCHEMA.columns,
         "palm_price_gap": pa.Column(float, nullable=True, coerce=True),
         "palm_price_gap_z": pa.Column(float, nullable=True, coerce=True),
         # Wave-deflated real monetary variables generated in the final analysis table.
@@ -1165,6 +1120,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
         "expenditure_nonfood_total_mo_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "expenditure_total_mo_real": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
         # Exploratory sidecar variables retain missingness after left joins.

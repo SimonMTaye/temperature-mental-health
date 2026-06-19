@@ -63,6 +63,7 @@ def _job_loss(wave: str) -> pd.DataFrame:
     # 1, 2 -> Fired, 3 -> Wage too Low, 4 -> Bad Working Env, 5 -> Refused relocation
     # 6 -> Prolonged sickness, 7, 8, 9 -> Family related (marriange, child, other) 95 -> Other
     out["job_loss_reason_code"] = pd.to_numeric(df.tk46m, errors="coerce")
+    out["job_loss_involuntary"] = out.job_loss_reason_code.isin([1, 2, 3, 4, 5])
     out.loc[~out.job_loss_reason_code.between(1, 95), "job_loss_reason_code"] = np.nan
     out["job_loss_sector"] = pd.to_numeric(df.tk46g, errors="coerce")
     out.loc[~out.job_loss_sector.between(1, 95), "job_loss_sector"] = np.nan
@@ -103,12 +104,16 @@ def current_employment(wave: str) -> pd.DataFrame:
     )
     out["agricultural"] = out["current_job_sector"].eq(1).fillna(0)
     out["mining"] = out["current_job_sector"].eq(2).fillna(0)
-    out["job_earnings_individual"] = (
-        clean_money(df.tk25a1)
-        + clean_money(df.tk25b1)
-        + clean_money(df.tk26a1)
-        + clean_money(df.tk26b1)
+    labor_income_parts = pd.concat(
+        [
+            clean_money(df.tk25a1),
+            clean_money(df.tk25b1),
+            clean_money(df.tk26a1),
+            clean_money(df.tk26b1),
+        ],
+        axis=1,
     )
+    out["job_earnings_individual"] = labor_income_parts.sum(axis=1, min_count=1)
     out["job_earnings_hh"] = out.groupby(["hhid", "wave"])[
         "job_earnings_individual"
     ].transform("sum")

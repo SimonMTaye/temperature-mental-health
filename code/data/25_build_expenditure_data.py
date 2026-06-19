@@ -244,6 +244,10 @@ def expenditure_data() -> pd.DataFrame:
         food = food_expenditure(ks0, ks4, hhid_column=hhid_col)
         non_food = non_food_expenditure(ks0, ks2, ks3, ks4, hhid_column=hhid_col)
         expenditure = food.merge(non_food, on=["hhid"], how="outer", validate="1:1")
+        expenditure["expenditure_total_mo"] = (
+            expenditure["expenditure_food_total_mo"]
+            + expenditure["expenditure_nonfood_total_mo"]
+        )
         expenditure["wave"] = wave
         frame = pd.concat([frame, expenditure], ignore_index=True)
     return frame
@@ -259,8 +263,7 @@ def compute_transport_share(expenditure: pd.DataFrame) -> pd.DataFrame:
     )
     expenditure["transport_spending_mo"] = expenditure.transport_total
     expenditure["total_mo"] = (
-        expenditure.expenditure_nonfood_total_mo
-        + expenditure.expenditure_food_total_mo
+        expenditure.expenditure_nonfood_total_mo + expenditure.expenditure_food_total_mo
     )
     expenditure["transport_share"] = (
         expenditure.transport_total / expenditure.total_mo.replace(0, np.nan)
