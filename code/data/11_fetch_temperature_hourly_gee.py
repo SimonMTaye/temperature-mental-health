@@ -60,7 +60,7 @@ from tqdm.auto import tqdm
 
 from data.config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE_HOURLY as TMP
 from data._schemas import HOURLY_TEMPERATURE_SCHEMA
-from data.log import log
+from library.log import log
 
 # 2 hours x 2,211 polygons = 4,422 features per getInfo() call.
 # GEE's getInfo response limit is ~5,000 features, so BATCH_HOURS cannot

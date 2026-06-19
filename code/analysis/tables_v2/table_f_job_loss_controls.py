@@ -11,7 +11,7 @@ from library.specs import (
 from library.render import make_regression_table, render_table_to_latex
 
 
-if __name__ == "__main__":
+def make_table() -> None:
     analysis_df["jobloss_occupation_sector"] = analysis_df[
         "current_job_sector"
     ].combine_first(analysis_df["job_loss_sector"])
@@ -75,3 +75,7 @@ if __name__ == "__main__":
         table,
         TABLE_OUTPUT / "table_f_job_loss_controls.tex",
     )
+
+
+if __name__ == "__main__":
+    make_table()

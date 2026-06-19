@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-from config import OUTPUT
+from library.config import OUTPUT
 
 LogOutput = Literal["file", "stdout", "both"]
 

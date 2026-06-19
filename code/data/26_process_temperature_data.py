@@ -9,11 +9,15 @@ import pandas as pd
 
 from data._schemas import PROCESSED_TEMPERATURE_SCHEMA
 from data.config import GENERATED_DATA
-from data.log import log
+from library.log import log
 
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
 PAST30_TEMP_BIN_WIDTH = 1.5
+
+
+TEMP_QUINTILE_LABELS = [f"q{i}" for i in range(1, 6)]
+TEMP_DECILE_LABELS = [f"d{i}" for i in range(1, 11)]
 
 
 def _utc_offset_hours(province_code: int) -> int:
@@ -91,6 +95,38 @@ def add_past30_bin_counts(
             .transform(lambda s: s.shift(1).rolling(30).sum())
         )
     log(f"built {len(bin_names)} past-30-day bins for {source_col}: {bin_names}")
+    return temp
+
+
+def add_temperature_quantile_day_counts(
+    temp: pd.DataFrame,
+    *,
+    source_col: str = "tmean_c",
+) -> pd.DataFrame:
+    """Count past 30/7 daily mean-temperature days in raw-data quantile bins."""
+    temp = temp.sort_values(["gadm_fullcode", "date"], kind="stable").copy()
+    series = temp[source_col].dropna()
+    quantile_specs = [
+        ("q", TEMP_QUINTILE_LABELS, [0.2, 0.4, 0.6, 0.8]),
+        ("d", TEMP_DECILE_LABELS, [i / 10 for i in range(1, 10)]),
+    ]
+    for prefix, labels, probs in quantile_specs:
+        cutpoints = series.quantile(probs).to_list()
+        bins = [-np.inf, *cutpoints, np.inf]
+        temp_bin = pd.cut(
+            temp[source_col], bins=bins, labels=labels, include_lowest=True
+        )
+        rounded = ", ".join(
+            f"{p:.1f}={v:.2f}" for p, v in zip(probs, cutpoints, strict=True)
+        )
+        log(f"{source_col} raw-data {prefix} cutpoints: {rounded}")
+        for label in labels:
+            in_bin = temp_bin.eq(label).astype(float).where(temp[source_col].notna())
+            for window in (30, 7):
+                temp[f"temp_days_past{window}_{label}"] = (
+                    in_bin.groupby(temp["gadm_fullcode"])
+                    .transform(lambda s: s.shift(1).rolling(window).sum())
+                )
     return temp
 
 
@@ -257,7 +293,9 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         sorted(
             col
             for col in temp
-            if col.startswith("tmean_c_past30_") or col.startswith("wetbulb_c_past30_")
+            if col.startswith("tmean_c_past30_")
+            or col.startswith("wetbulb_c_past30_")
+            or col.startswith("temp_days_past")
         )
     )
     out = ind.merge(
@@ -347,6 +385,7 @@ def build_processed_temperature() -> pd.DataFrame:
         wetbulb_daily, on=["gadm_fullcode", "date"], how="left", validate="1:1"
     )
     temp = add_daily_features(temp)
+    temp = add_temperature_quantile_day_counts(temp)
     temp = add_past30_bin_counts(temp, source_col="tmean_c")
     temp = add_past30_bin_counts(temp, source_col="wetbulb_c")
     out = merge_daily(ind, temp)

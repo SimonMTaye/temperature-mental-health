@@ -18,7 +18,7 @@ from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
 from data._sentinels import clean_money as _clean_money  # noqa: E402
 from data._schemas import FINANCE_DISTRESS_SHOCKS_SCHEMA  # noqa: E402
 from data._stata import read_stata_df  # noqa: E402
-from data.log import log  # noqa: E402
+from library.log import log  # noqa: E402
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,

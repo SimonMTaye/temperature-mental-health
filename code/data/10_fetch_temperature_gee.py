@@ -35,7 +35,7 @@ from tqdm.auto import tqdm
 
 from data.config import GEE_PROEJCT_ID, GENERATED_DATA, TMP_TEMPERATURE as TMP
 from data._schemas import DAILY_TEMPERATURE_HEAT_SCHEMA
-from data.log import log
+from library.log import log
 
 
 def init_gee() -> None:

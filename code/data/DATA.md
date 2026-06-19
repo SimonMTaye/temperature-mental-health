@@ -83,8 +83,9 @@ when the interface fits.
   dewpoint for within-day heat analysis.
 - `12_fetch_merra_pm25_gee.py`: builds daily kabupaten PM2.5 from MERRA-2
   aerosol components.
-- `20_build_economic_exposures.py`: builds job-loss, asset, benefit-card, and
-  palm-price exposure variables.
+- `20_build_economic_exposures.py`: builds job-loss, current-employment,
+  commodity-region, labor-earnings, asset, benefit-card, and palm-price exposure
+  variables.
 - `21_build_health_exposures.py`: builds acute health, hospitalization,
   accident, and bereavement shocks.
 - `22_build_person_covariates.py`: builds demographic, socioeconomic,
@@ -93,12 +94,12 @@ when the interface fits.
   economic-shock indicators.
 - `24_score_cesd.py`: scores CES-D outcomes and factors for IFLS mental-health
   modules.
-- `25_build_commodity_transport_exposures.py`: builds agriculture,
-  commodity-region/farmer, and transport-cost exposure measures.
+- `25_build_expenditure_data.py`: builds household expenditure and transport-cost
+  exposure measures.
 - `26_process_temperature_data.py`: merges interview records to daily/hourly
   temperature and builds lag, lead, anomaly, heat-window, and CDD variables.
-- `27_build_income_mechanism_inputs.py`: builds household income and real
-  income mechanism outcomes.
+- `27_build_income_mechanism_inputs.py`: builds raw household nonlabor income
+  mechanism inputs.
 - `28_build_sleep_duration.py`: builds IFLS5 time-use sleep duration.
 - `30_build_analysis_table_input.py`: merges outcomes, covariates, exposures,
   processed temperature, and mechanism sidecars into the canonical analysis

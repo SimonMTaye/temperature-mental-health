@@ -44,6 +44,16 @@ def shock_triple_diff_panel(outcome: str, heat: str, group: str, post: str) -> s
     """
 
 
+def bare_spec(rhs: str = "PLACEHOLDER") -> RegressionSpec:
+    return RegressionSpec(
+        title="",
+        formula=f"{rhs} + {CONTROLS} | {FE_WAVE}",
+        df=analysis_df,
+        tags=frozenset(),
+        show_terms=frozenset(),
+    )
+
+
 analysis_df = pd.read_parquet(ANALYSIS_INPUT)
 analysis_df["ifls5"] = analysis_df["wave"] == "IFLS5"
 wave5_df = analysis_df[analysis_df["ifls5"]].copy()

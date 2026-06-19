@@ -1,4 +1,5 @@
 from __future__ import annotations
+from library.render import RegressionSpec
 
 from dataclasses import replace
 import re
@@ -37,36 +38,42 @@ TABLE_SPECS = [
         "group": "palm_farmer_hh_ifls4",
         "post": "ifls5",
         "heat": MAIN_TEMP_MEASURE,
+        "label": r"Palm Shock",
     },
     {
         "spec": palm_shock_panel,
         "group": "palm_farmer_hh_ifls4",
         "post": "ifls5",
         "heat": MAIN_TEMP_MEASURE,
+        "label": r"\shortstack{Palm Shocks\\Panel}",
     },
     {
         "spec": PALM_PRICE_SHOCK,
         "group": "palm_price_gap_z",
         "post": "ifls5",
         "heat": MAIN_TEMP_MEASURE,
+        "label": r"\shortstack{Palm Shock\\Price Drop}",
     },
     {
         "spec": fuel_shock_fuel_share,
         "group": "fuel_share_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
+        "label": r"\shortstack{Fuel Cut\\Fuel Share}",
     },
     {
         "spec": fuel_shock_urban_vehicle,
         "group": "urban_vehicle_hh_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
+        "label": r"\shortstack{Fuel Cut\\Urban Vehicle Owners}",
     },
     {
         "spec": jobloss,
         "group": JOB_LOSS_MAIN,
         "post": None,
         "heat": MAIN_TEMP_MEASURE,
+        "label": r"Job Loss",
     },
 ]
 
@@ -164,14 +171,20 @@ def differential_impact_row(models) -> tuple[str, str]:
     return coefficient_rows("Differential Impact of Heat", stats)
 
 
-def wetbulb_specs() -> list[dict]:
+def wetbulb_specs(
+    original_specs: list[
+        dict[str, RegressionSpec | str | None] | dict[str, RegressionSpec | str]
+    ] = TABLE_SPECS,
+) -> list[dict]:
     specs = []
-    for spec_data in TABLE_SPECS:
+    for spec_data in original_specs:
+        old_spec = spec_data["spec"]
+        assert isinstance(old_spec, RegressionSpec)
         specs.append(
             {
                 **spec_data,
                 "spec": update_formula_search_replace(
-                    spec_data["spec"],
+                    old_spec,
                     MAIN_TEMP_MEASURE,
                     WETBULB_MEASURE,
                 ),
@@ -219,6 +232,10 @@ def build_table() -> str:
     )
 
 
-if __name__ == "__main__":
+def make_table() -> None:
     TABLE_FILE.parent.mkdir(parents=True, exist_ok=True)
     TABLE_FILE.write_text(build_table(), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    make_table()

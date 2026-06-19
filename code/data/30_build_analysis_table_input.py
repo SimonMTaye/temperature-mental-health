@@ -6,11 +6,12 @@ table, and figure scripts.
 Output: data/generated/30_analysis_table_input.parquet
 """
 
+import numpy as np
 import pandas as pd
 
-from data.config import GENERATED_DATA
+from data.config import GENERATED_DATA, IDR_2007_TO_2014_INFLATOR
 from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA
-from data.log import log
+from library.log import log
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
 HAZE_MONTHS = {(2015, 9), (2015, 10), (2015, 11)}
@@ -41,9 +42,27 @@ def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame
     return df.merge(wave4, on="pidlink", how="left", validate="m:1")
 
 
+def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    wave4 = (
+        df
+        # Filter to rows where wave = ifls4
+        .query("wave == 'IFLS4'")
+        # Keep pidlink plus IFLS4 baseline worker columns
+        .filter(
+            items=columns + ["pidlink"],
+        )
+        # Add IFLS4 dummy to every column
+        .add_suffix("_ifls4", axis=1)
+        # Rename pidlink back to pidlink (remove suffix)
+        .rename(columns={"pidlink_ifls4": "pidlink"})
+    )
+    return df.merge(wave4, on="pidlink", how="left", validate="m:1")
+
+
 def build_core_panel() -> pd.DataFrame:
     """Merge person, CES-D, covariate, and processed temperature inputs."""
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
+    ces = pd.read_parquet(GENERATED_DATA / "24_cesd_scores.parquet")
     ces = pd.read_parquet(GENERATED_DATA / "24_cesd_scores.parquet")
     stress = pd.read_parquet(GENERATED_DATA / "22_stressors.parquet")
     temp = pd.read_parquet(GENERATED_DATA / "26_processed_temperature_data.parquet")
@@ -79,29 +98,31 @@ def build_core_panel() -> pd.DataFrame:
     return df
 
 
+def deflate(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Deflate nominal values to real using wave-level CPI."""
+    df["deflator"] = np.where(df.wave == "IFLS4", IDR_2007_TO_2014_INFLATOR, 1)
+    for col in columns:
+        df[f"{col}_real"] = df[col] * df.deflator
+    df = df.drop(columns=["deflator"])
+    return df
+
+
 def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
     df = build_core_panel()
     economic = pd.read_parquet(GENERATED_DATA / "20_economic_exposures.parquet")
-    commodity_transport = pd.read_parquet(
-        GENERATED_DATA / "25_commodity_transport_exposures.parquet"
-    )
-    income_mechanisms = pd.read_parquet(
-        GENERATED_DATA / "27_income_mechanism_inputs.parquet"
-    )
+    expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
+    asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
 
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
-        commodity_transport,
+        expenditure,
         on=["pidlink", "wave"],
         how="left",
-        suffixes=("", "_commodity_transport"),
         validate="1:1",
     )
-    if "palm_region_commodity_transport" in df.columns:
-        df = df.drop(columns=["palm_region_commodity_transport"])
-    df = df.merge(income_mechanisms, on=["pidlink", "wave"], how="left", validate="1:1")
+    df = df.merge(asset_expenditure, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
         pd.read_parquet(GENERATED_DATA / "28_sleep_duration.parquet"),
         on=["pidlink", "wave"],
@@ -125,41 +146,60 @@ def main() -> None:
         validate="1:1",
     )
 
-    df = df.pipe(
-        add_ifsl4_measurements,
-        columns=[
-            "urban_vehicle_hh",
-            "coal_worker_hh",
-            "coal_worker_individual",
-            "palm_farmer_hh",
-            "palm_farmer_individual",
-            "fuel_share",
-            "fuel_share_quartile",
-        ],
-    ).assign(
-        female=lambda df: df["sex"].eq("F").astype(int),
-        cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
-            lambda s: (s - s.mean()) / s.std()
-        ),
-        palm_price_wave5=lambda df: (
-            df["palm_price_usd_mt"]
-            .where(df["wave"] == "IFLS5")
-            .groupby(df["pidlink"])
-            .transform("max")
-        ),
-        palm_price_wave4=lambda df: (
-            df["palm_price_usd_mt"]
-            .where(df["wave"] == "IFLS4")
-            .groupby(df["pidlink"])
-            .transform("max")
-        ),
-        palm_price_gap=lambda df: (
-            (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
-        ),
-        palm_price_gap_z=lambda df: (
-            ((df.palm_price_gap - df.palm_price_gap.mean()) / df.palm_price_gap.std())
-            * df.palm_farmer_hh_ifls4
-        ),
+    df = (
+        df.pipe(
+            add_ifsl4_measurements,
+            columns=[
+                "urban_vehicle_hh",
+                "coal_worker_hh",
+                "coal_worker_individual",
+                "palm_farmer_hh",
+                "palm_farmer_individual",
+                "fuel_share",
+                "fuel_share_quartile",
+            ],
+        )
+        .assign(
+            female=lambda df: df["sex"].eq("F").astype(int),
+            cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
+                lambda s: (s - s.mean()) / s.std()
+            ),
+            palm_price_wave5=lambda df: (
+                df["palm_price_usd_mt"]
+                .where(df["wave"] == "IFLS5")
+                .groupby(df["pidlink"])
+                .transform("max")
+            ),
+            palm_price_wave4=lambda df: (
+                df["palm_price_usd_mt"]
+                .where(df["wave"] == "IFLS4")
+                .groupby(df["pidlink"])
+                .transform("max")
+            ),
+            palm_price_gap=lambda df: (
+                (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
+            ),
+            palm_price_gap_z=lambda df: (
+                (
+                    (df.palm_price_gap - df.palm_price_gap.mean())
+                    / df.palm_price_gap.std()
+                )
+                * df.palm_farmer_hh_ifls4
+            ),
+            # Deflate total expenditure and job income variables and non labor income
+        )
+        .pipe(
+            deflate,
+            columns=[
+                "job_earnings_individual",
+                "job_earnings_hh",
+                "hh_nonlabor_income_mo",
+                "expenditure_nonfood_fuel_mo",
+                "expenditure_food_total_mo",
+                "expenditure_nonfood_total_mo",
+                "expenditure_total_mo",
+            ],
+        )
     )
 
     int_cols = [

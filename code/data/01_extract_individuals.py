@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 from data.config import GENERATED_DATA, RAW_IFLS_EXTRACTED
 from data._stata import read_stata_df
 from data._schemas import INDIVIDUALS_SCHEMA
-from data.log import log
+from library.log import log
 
 # Below are dicitonaries that store variable names for easier / cleaner code below
 IFLS4 = {

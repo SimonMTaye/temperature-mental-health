@@ -9,7 +9,7 @@ from library.specs import (
 from library.render import make_shock_regression_table_trimmed, render_table_to_latex
 
 
-if __name__ == "__main__":
+def make_table() -> None:
     wave5 = (
         analysis_df.copy()
         .query("wave == 'IFLS5'")
@@ -54,3 +54,7 @@ if __name__ == "__main__":
         titles=[label for label, _ in groups],
     )
     render_table_to_latex(table, TABLE_OUTPUT / "table_g_fuel_shock_alt_definition.tex")
+
+
+if __name__ == "__main__":
+    make_table()
