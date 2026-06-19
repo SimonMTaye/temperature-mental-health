@@ -16,11 +16,15 @@ OVERALL_HEAT_COLUMNS = [
 ]
 
 
-def make_table() -> None:
+def make_temp_table(
+    outcome="cesd_z", filename="table_a_temperature_effects.tex"
+) -> None:
     specs = []
     for label, term in OVERALL_HEAT_COLUMNS:
         spec = temperature_spec
         spec = update_formula_search_replace(spec, MAIN_TEMP_MEASURE, term)
+        if outcome != "cesd_z":
+            spec = update_formula_search_replace(spec, "cesd_z", outcome)
         specs.append(spec)
 
     table = make_regression_table(
@@ -28,7 +32,14 @@ def make_table() -> None:
         rename=[{term: "heat"} for _, term in OVERALL_HEAT_COLUMNS],
         titles=[label for label, _ in OVERALL_HEAT_COLUMNS],
     )
-    render_table_to_latex(table, TABLE_OUTPUT / "table_a_temperature_effects.tex")
+    render_table_to_latex(table, TABLE_OUTPUT / filename)
+
+
+def make_table():
+    make_temp_table()
+    make_temp_table(
+        outcome="sleep_dur_h", filename="table_a2_temperature_effects_sleep.tex"
+    )
 
 
 if __name__ == "__main__":

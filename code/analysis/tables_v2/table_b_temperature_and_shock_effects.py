@@ -1,4 +1,5 @@
 from __future__ import annotations
+from library.render import RegressionSpec
 
 from dataclasses import replace
 import re
@@ -164,9 +165,11 @@ def differential_impact_row(models) -> tuple[str, str]:
     return coefficient_rows("Differential Impact of Heat", stats)
 
 
-def wetbulb_specs() -> list[dict]:
+def wetbulb_specs(
+    original_specs: list[dict[str, RegressionSpec | str | None]] = TABLE_SPECS,
+) -> list[dict]:
     specs = []
-    for spec_data in TABLE_SPECS:
+    for spec_data in original_specs:
         specs.append(
             {
                 **spec_data,
