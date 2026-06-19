@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pandas as pd
+
 from library.render import make_regression_table, render_table_to_latex, RegressionSpec
 from library.specs import JOB_LOSS_MAIN, CONTROLS, FE_NO_WAVE
 from library.config import TABLE_OUTPUT
@@ -15,6 +17,11 @@ outcome_dict = {
 }
 
 
+def winsorized_millions(series: pd.Series) -> pd.Series:
+    # ponytail: upper-tail cap only; use two-sided winsorization if the table spec asks.
+    return series.clip(upper=series.quantile(0.95)) / 1_000
+
+
 def make_specs():
     """
     Make regression specs following the order and structure of Table B
@@ -28,7 +35,8 @@ def make_specs():
         old_spec = spec_data["spec"]
         assert isinstance(old_spec, RegressionSpec)
         df = old_spec.df.copy()  # ty:ignore[unresolved-attribute]
-        df[outcome] = df[outcome] / 1_000_000
+        df[outcome] = winsorized_millions(df[outcome])
+        dv_mean = df[outcome].mean()
         # If jobloss spec, then no post so handle that
         rhs = group if post is None else f"{group} * {post}"
         effect_term = group if post is None else f"{group}:{post}"
@@ -38,18 +46,26 @@ def make_specs():
             formula=f"{outcome} ~ {rhs} + {CONTROLS} | {FE_NO_WAVE}",
             show_terms=frozenset([effect_term]),
         )
-        economic_specs.append((spec, spec_data["label"], {effect_term: "Shock effect"}))
+        economic_specs.append(
+            (
+                spec,
+                spec_data["label"],
+                {effect_term: "Shock effect"},
+                "-" if pd.isna(dv_mean) else f"{dv_mean:.3f}",
+            )
+        )
     return economic_specs
 
 
 def make_table():
     specs = make_specs()
     table = make_regression_table(
-        [spec for spec, _, _ in specs],
-        titles=[label for _, label, _ in specs],
-        rename=[rename for _, _, rename in specs],
+        [spec for spec, _, _, _ in specs],
+        titles=[label for _, label, _, _ in specs],
+        rename=[rename for _, _, rename, _ in specs],
         keep=["Shock effect"],
         exact_match=True,
+        custom_model_stats={"DV mean": [dv_mean for _, _, _, dv_mean in specs]},
     )
     render_table_to_latex(table, TABLE_OUTPUT / "table_i_economics.tex")
 
