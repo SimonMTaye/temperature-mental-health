@@ -1148,6 +1148,25 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         ),
         "palm_price_gap": pa.Column(float, nullable=True, coerce=True),
         "palm_price_gap_z": pa.Column(float, nullable=True, coerce=True),
+        # Wave-deflated real monetary variables generated in the final analysis table.
+        "job_earnings_individual_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "job_earnings_hh_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "hh_nonlabor_income_mo_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "expenditure_nonfood_fuel_mo_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "expenditure_food_total_mo_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "expenditure_nonfood_total_mo_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         # Exploratory sidecar variables retain missingness after left joins.
         "n_symptoms": pa.Column(int, checks=pa.Check.ge(0), nullable=True, coerce=True),
         "many_symptoms": _binary_column(nullable=True),

@@ -26,55 +26,6 @@ from data.config import (
 from library.log import log  # noqa: E402
 
 
-BINARY_COLUMNS = [
-    "unemployed_since_then",
-    "lost_job_5y",
-    "job_loss_5y",
-    "involuntary_loss_5y",
-    "lost_job_90d",
-    "lost_job_180d",
-    "lost_job_270d",
-    "lost_job_1_yr",
-    "lost_job_365d",
-    "lost_job_540d",
-    "lost_job_730d",
-    "lost_job_1095d",
-    "lost_job_1825d",
-    "lost_job_6_months",
-    "lost_job_3_months",
-    "job_loss_90d",
-    "job_loss_180d",
-    "job_loss_270d",
-    "job_loss_1_yr",
-    "job_loss_365d",
-    "job_loss_540d",
-    "job_loss_730d",
-    "job_loss_1095d",
-    "job_loss_1825d",
-    "job_loss_6_months",
-    "job_loss_3_months",
-    "involuntary_loss_1_yr",
-    "family_loss_1_yr",
-    "vehicle_owner",
-    "urban",
-    "urban_vehicle_hh",
-    "cash_transfer_recipient",
-    "blt_card",
-    "health_card",
-    "palm_region",
-    "agricultural",
-    "farmer_hh",
-    "palm_farmer_individual",
-    "palm_farmer_hh",
-    "rubber_region",
-    "rubber_farmer_individual",
-    "coffee_region",
-    "coffee_farmer_individual",
-    "coal_region",
-    "coal_worker_individual",
-    "coal_worker_hh",
-]
-
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,
     "IFLS5": IFLS5_FOLDER,
@@ -226,9 +177,9 @@ def _add_palm_price_exposure(out: pd.DataFrame) -> pd.DataFrame:
     out["palm_region"] = out.province_code.isin(PALM_PROVS).astype(int)
     agricultural = out.agricultural.fillna(0).astype(bool)
     mining = out.mining.fillna(0).astype(bool)
-    out["palm_farmer_individual"] = (agricultural & out.palm_region.astype(bool)).astype(
-        int
-    )
+    out["palm_farmer_individual"] = (
+        agricultural & out.palm_region.astype(bool)
+    ).astype(int)
     out["farmer_hh"] = (
         agricultural.groupby([out["hhid"], out["wave"]]).transform("max").astype(int)
     )

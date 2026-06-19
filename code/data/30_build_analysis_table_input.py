@@ -6,9 +6,10 @@ table, and figure scripts.
 Output: data/generated/30_analysis_table_input.parquet
 """
 
+import numpy as np
 import pandas as pd
 
-from data.config import GENERATED_DATA
+from data.config import GENERATED_DATA, IDR_2007_TO_2014_INFLATOR
 from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA
 from library.log import log
 
@@ -79,6 +80,15 @@ def build_core_panel() -> pd.DataFrame:
     return df
 
 
+def deflate(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Deflate nominal values to real using wave-level CPI."""
+    df["deflator"] = np.where(df.wave == "IFLS4", IDR_2007_TO_2014_INFLATOR, 1)
+    for col in columns:
+        df[f"{col}_real"] = df[col] * df.deflator
+    df = df.drop(columns=["deflator"])
+    return df
+
+
 def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
@@ -118,41 +128,59 @@ def main() -> None:
         validate="1:1",
     )
 
-    df = df.pipe(
-        add_ifsl4_measurements,
-        columns=[
-            "urban_vehicle_hh",
-            "coal_worker_hh",
-            "coal_worker_individual",
-            "palm_farmer_hh",
-            "palm_farmer_individual",
-            "fuel_share",
-            "fuel_share_quartile",
-        ],
-    ).assign(
-        female=lambda df: df["sex"].eq("F").astype(int),
-        cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
-            lambda s: (s - s.mean()) / s.std()
-        ),
-        palm_price_wave5=lambda df: (
-            df["palm_price_usd_mt"]
-            .where(df["wave"] == "IFLS5")
-            .groupby(df["pidlink"])
-            .transform("max")
-        ),
-        palm_price_wave4=lambda df: (
-            df["palm_price_usd_mt"]
-            .where(df["wave"] == "IFLS4")
-            .groupby(df["pidlink"])
-            .transform("max")
-        ),
-        palm_price_gap=lambda df: (
-            (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
-        ),
-        palm_price_gap_z=lambda df: (
-            ((df.palm_price_gap - df.palm_price_gap.mean()) / df.palm_price_gap.std())
-            * df.palm_farmer_hh_ifls4
-        ),
+    df = (
+        df.pipe(
+            add_ifsl4_measurements,
+            columns=[
+                "urban_vehicle_hh",
+                "coal_worker_hh",
+                "coal_worker_individual",
+                "palm_farmer_hh",
+                "palm_farmer_individual",
+                "fuel_share",
+                "fuel_share_quartile",
+            ],
+        )
+        .assign(
+            female=lambda df: df["sex"].eq("F").astype(int),
+            cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
+                lambda s: (s - s.mean()) / s.std()
+            ),
+            palm_price_wave5=lambda df: (
+                df["palm_price_usd_mt"]
+                .where(df["wave"] == "IFLS5")
+                .groupby(df["pidlink"])
+                .transform("max")
+            ),
+            palm_price_wave4=lambda df: (
+                df["palm_price_usd_mt"]
+                .where(df["wave"] == "IFLS4")
+                .groupby(df["pidlink"])
+                .transform("max")
+            ),
+            palm_price_gap=lambda df: (
+                (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
+            ),
+            palm_price_gap_z=lambda df: (
+                (
+                    (df.palm_price_gap - df.palm_price_gap.mean())
+                    / df.palm_price_gap.std()
+                )
+                * df.palm_farmer_hh_ifls4
+            ),
+            # Deflate total expenditure and job income variables and non labor income
+        )
+        .pipe(
+            deflate,
+            columns=[
+                "job_earnings_individual",
+                "job_earnings_hh",
+                "hh_nonlabor_income_mo",
+                "expenditure_nonfood_fuel_mo",
+                "expenditure_food_total_mo",
+                "expenditure_nonfood_total_mo",
+            ],
+        )
     )
 
     int_cols = [
