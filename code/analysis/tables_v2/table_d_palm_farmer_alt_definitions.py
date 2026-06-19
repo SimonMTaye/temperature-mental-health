@@ -8,6 +8,7 @@ from library.specs import (
 from library.render import make_shock_regression_table_trimmed, render_table_to_latex
 from dataclasses import replace
 
+
 def make_table() -> None:
     wave5_palm = (
         analysis_df.copy()

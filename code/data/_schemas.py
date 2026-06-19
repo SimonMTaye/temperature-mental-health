@@ -17,6 +17,7 @@ def _id_column() -> pa.Column:
 def _binary_column(*, nullable: bool = False) -> pa.Column:
     return pa.Column(
         "Int32" if nullable else int,
+        "Int32" if nullable else int,
         checks=pa.Check.isin(BINARY),
         nullable=nullable,
         coerce=True,
@@ -65,6 +66,12 @@ INDIVIDUALS_SCHEMA = pa.DataFrameSchema(
         "kabupaten_code": pa.Column(int, nullable=False, coerce=True),
         # BPS seven-digit kecamatan code, computed from kabupaten_code and within-kabupaten kecamatan.
         "kecamatan_code": pa.Column(int, nullable=False, coerce=True),
+        # BPS two-digit province code from the household screening file.
+        "province_full_code": pa.Column(int, nullable=False, coerce=True),
+        # BPS four-digit kabupaten code, computed as province*100 plus within-province kabupaten.
+        "kabupaten_full_code": pa.Column(int, nullable=False, coerce=True),
+        # BPS seven-digit kecamatan code, computed from kabupaten_code and within-kabupaten kecamatan.
+        "kecamatan_full_code": pa.Column(int, nullable=False, coerce=True),
         # BPS two-digit province code from the household screening file.
         "province_full_code": pa.Column(int, nullable=False, coerce=True),
         # BPS four-digit kabupaten code, computed as province*100 plus within-province kabupaten.
@@ -1133,6 +1140,18 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "recently_widowed_5y": _binary_column(nullable=True),
         "debt_q4": _binary_column(nullable=True),
         "high_med_oop": _binary_column(nullable=True),
+        # Add IFLS4 indicators
+        "urban_vehicle_hh_ifls4": _binary_column(nullable=True),
+        "coal_worker_hh_ifls4": _binary_column(nullable=True),
+        "coal_worker_individual_ifls4": _binary_column(nullable=True),
+        "palm_farmer_hh_ifls4": _binary_column(nullable=True),
+        "palm_farmer_individual_ifls4": _binary_column(nullable=True),
+        "fuel_share_ifls4": pa.Column(
+            float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
+        "fuel_share_quartile_ifls4": pa.Column(
+            float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
+        ),
         # Add IFLS4 indicators
         "urban_vehicle_hh_ifls4": _binary_column(nullable=True),
         "coal_worker_hh_ifls4": _binary_column(nullable=True),

@@ -18,6 +18,7 @@ JOB_LOSS_WINDOWS = [
     ("5 yr", "job_loss_1825d"),
 ]
 
+
 def make_table() -> None:
     jobloss_robustness_specs = [
         update_formula_search_replace(jobloss, JOB_LOSS_MAIN, job_loss_var)
