@@ -31,7 +31,7 @@ def make_table() -> None:
     jobloss_slope_specs = [
         jobloss,
         RegressionSpec(
-            title="+ sector x heat",
+            title="+ Sector x Heat",
             formula=(
                 f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
                 f"+ {occupation_sector_slope_terms} + {CONTROLS} | {FE_WAVE}"
@@ -41,7 +41,7 @@ def make_table() -> None:
             show_terms=jobloss.show_terms,
         ),
         RegressionSpec(
-            title="+ age x heat",
+            title="+ Age x Heat",
             formula=(
                 f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
                 f"+ age:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
@@ -51,7 +51,7 @@ def make_table() -> None:
             show_terms=jobloss.show_terms,
         ),
         RegressionSpec(
-            title="+ education x heat",
+            title="+ Education x Heat",
             formula=(
                 f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
                 f"+ edu_yrs:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
