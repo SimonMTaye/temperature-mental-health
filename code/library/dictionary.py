@@ -61,6 +61,7 @@ VARIABLE_LABELS: dict[str, str] = {
     "urban_vehicle_hh_ifls4": "IFLS4 urban vehicle-owning household",
     "ifls5": "Wave",
     "post_subsidy": "Post-subsidy-cut interview",
+    "cash_transfer_recipient": "Cash-transfer recipient",
     "palm_shock": "Palm-price shock exposure",
     "coal_shock": "Coal-price shock exposure",
     "fuel_shock": "Fuel-subsidy-cut exposure",
@@ -112,7 +113,7 @@ VARIABLE_LABELS: dict[str, str] = {
     "differential_impact_heat": "Differential Impact of Heat",
     "job_earnings_hh_real": "Work Income (IDR 1,000)",
     "expenditure_total_mo_real": "Monthly Expenditure (IDR 1,000)",
-    "expenditure_nonfood_total_mo_real": "Monthly Expenditure (IDR 1,000)",
+    "expenditure_nonfood_total_mo_real": "Nonfood Expenditure (IDR 1,000)",
 }
 
 HEAT_TERMS = [

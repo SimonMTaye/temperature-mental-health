@@ -11,8 +11,11 @@ from analysis.tables_v2.table_b_temperature_and_shock_effects import TABLE_SPECS
 outcome_dict = {
     "palm_farmer_hh_ifls4": "job_earnings_hh_real",
     "palm_price_gap_z": "job_earnings_hh_real",
-    "fuel_share_ifls4": "expenditure_total_mo_real",
-    "urban_vehicle_hh_ifls4": "expenditure_total_mo_real",
+    "fuel_share_ifls4": "expenditure_nonfood_total_mo_real",
+    "fuel_share_z_ifls4": "expenditure_nonfood_total_mo_real",
+    "fuel_transport_share_ifls4": "expenditure_nonfood_total_mo_real",
+    "fuel_transport_share_z_ifls4": "expenditure_nonfood_total_mo_real",
+    "urban_vehicle_hh_ifls4": "expenditure_nonfood_total_mo_real",
     JOB_LOSS_MAIN: "job_earnings_hh_real",
 }
 ECONOMIC_OUTCOMES = tuple(dict.fromkeys(outcome_dict.values()))
@@ -55,7 +58,29 @@ def make_specs():
                 "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
             )
         )
-    return economic_specs
+    order = [0, 1, 2, 5, 3, 4]  # move job loss specs to the end
+    reordered_specs = [economic_specs[i] for i in order]
+
+    fuel_share_spec, _, fuel_share_rename, _ = economic_specs[4]
+    no_transfer_df = fuel_share_spec.df[
+        fuel_share_spec.df["cash_transfer_recipient"].eq(0)  # ty:ignore[invalid-argument-type]
+    ].copy()  # ty:ignore[unresolved-attribute]
+    outcome = outcome_dict["fuel_share_z_ifls4"]
+    dv_mean = no_transfer_df[outcome].mean()
+    no_transfer_spec = replace(
+        fuel_share_spec,
+        title=f"{fuel_share_spec.title} excluding cash-transfer recipients",
+        df=no_transfer_df,
+    )
+    # reordered_specs.append(
+    #     (
+    #         no_transfer_spec,
+    #         r"\shortstack{Fuel Cut\\Fuel Share\\No Transfer}",
+    #         fuel_share_rename,
+    #         "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
+    #     )
+    # )
+    return reordered_specs
 
 
 def make_table():

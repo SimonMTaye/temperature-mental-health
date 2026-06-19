@@ -12,6 +12,7 @@ balance_variables = [
     "edu_yrs",
     "married",
     "widowed",
+    "cash_transfer_recipient",
     *ECONOMIC_OUTCOMES,
 ]
 
@@ -64,7 +65,7 @@ def make_table() -> None:
         tests = [
             (MAIN_TEMP_MEASURE, balance_df),
             (JOB_LOSS_MAIN, balance_df),
-            ("fuel_share_ifls4", balance_df),
+            ("fuel_share_z_ifls4", balance_df),
             (
                 "post_subsidy",
                 balance_df[

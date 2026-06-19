@@ -63,7 +63,7 @@ TABLE_SPECS = [
     },
     {
         "spec": fuel_shock_fuel_share,
-        "group": "fuel_share_ifls4",
+        "group": "fuel_share_z_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
         "label": r"\shortstack{Fuel Cut\\Fuel Share}",
@@ -98,6 +98,7 @@ Individual & - & x & - & - & - & - \\
 Year  & x & x & x & x & x & x \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
+{group_mean_row}
 \bottomrule
 \end{tabular}
 \begin{minipage}{\linewidth}
@@ -211,6 +212,16 @@ def panel_rows(label: str, models) -> str:
     )
 
 
+def stressed_group_proportion_row(specs: list[dict]) -> str:
+    return make_row(
+        "Stressed Group Proportion",
+        [
+            f"{spec_data['spec'].df[spec_data['group']].mean():.3f}"
+            for spec_data in specs
+        ],
+    )
+
+
 def build_table() -> str:
     temperature_models = regression_runner(TABLE_SPECS)
     wetbulb_models = regression_runner(wetbulb_specs())
@@ -224,6 +235,7 @@ def build_table() -> str:
         )
         .replace("{wetbulb_panel}", panel_rows("7-day mean Wet Bulb", wetbulb_models))
         .replace("{observations_row}", observations_rows)
+        .replace("{group_mean_row}", stressed_group_proportion_row(TABLE_SPECS))
     )
 
 

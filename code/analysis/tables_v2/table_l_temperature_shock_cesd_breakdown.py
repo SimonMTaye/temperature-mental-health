@@ -7,6 +7,7 @@ from analysis.tables_v2.table_b_temperature_and_shock_effects import (
     panel_rows,
     regression_runner,
     make_row,
+    stressed_group_proportion_row,
 )
 
 TABLE_TEMPLATE = r"""
@@ -31,6 +32,7 @@ Individual & - & x & - & - & - & - \\
 Year  & x & x & x & x & x & x \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
+{group_mean_row}
 \bottomrule
 \end{tabular}
 \begin{minipage}{\linewidth}
@@ -82,6 +84,7 @@ def build_table() -> str:
             "{positive}", panel_rows("Positive-affect CES-D factor", positive_models)
         )
         .replace("{observations_row}", observations_rows)
+        .replace("{group_mean_row}", stressed_group_proportion_row(TABLE_SPECS))
     )
 
 

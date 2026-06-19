@@ -38,7 +38,14 @@ PANELS = [
         "D. Economic outcomes",
         [
             ("Monthly Work Income (IDR 1,000)", "job_earnings_hh_real"),
-            ("Monthly Expenditure (IDR 1,000)", "expenditure_total_mo_real"),
+            (
+                "Monthly Nonfood Expenditure (IDR 1,000)",
+                "expenditure_nonfood_total_mo_real",
+            ),
+            (
+                "Monthly Food Expenditure (IDR 1,000)",
+                "expenditure_food_total_mo_real",
+            ),
             ("Share of Expenditure on Fuel", "fuel_share"),
         ],
     ),
@@ -49,7 +56,7 @@ def summarize(
     df: pd.DataFrame, panel: str, label: str, variable: str
 ) -> dict[str, object]:
     values = pd.to_numeric(df[variable], errors="coerce")
-    if variable in ECONOMIC_OUTCOMES:
+    if "real" in variable:
         values = winsorized_millions(values)
     values = values.dropna()
     return {

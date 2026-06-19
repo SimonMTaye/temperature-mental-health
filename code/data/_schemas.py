@@ -440,11 +440,11 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "wave": _wave_column(),
         # Household's most valuable crop or livestock from b2_ut1/ut07a.
         "main_crop": pa.Column("Int64", nullable=True, coerce=True),
-        # Monthly household food spending from KS0 weekly food items.
+        # Monthly household non-oil food spending from KS1 weekly food items.
         "expenditure_food_items_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
-        # Monthly household cooking-oil spending from KS4 item E.
+        # Monthly household cooking-oil spending from KS1 item Y.
         "expenditure_food_cooking_oil_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
@@ -472,7 +472,7 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "expenditure_nonfood_food_gift_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
-        # Monthly household kerosene spending from KS4 item K.
+        # Kerosene is not separately observed as monthly spending in KS4.
         "expenditure_nonfood_kerosene_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
@@ -517,6 +517,10 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "fuel_transport_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
+        # Full-sample z-scores of spending shares.
+        "transport_share_z": pa.Column(float, nullable=True, coerce=True),
+        "fuel_share_z": pa.Column(float, nullable=True, coerce=True),
+        "fuel_transport_share_z": pa.Column(float, nullable=True, coerce=True),
         # Within-wave quartile/quintile codes for spending totals.
         "fuel_total_quartile": pa.Column(
             float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
@@ -1146,6 +1150,8 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "fuel_transport_share_ifls4": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
+        "fuel_share_z_ifls4": pa.Column(float, nullable=True, coerce=True),
+        "fuel_transport_share_z_ifls4": pa.Column(float, nullable=True, coerce=True),
         "fuel_share_quartile_ifls4": pa.Column(
             float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
         ),

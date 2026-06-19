@@ -140,6 +140,8 @@ def main() -> None:
                 "palm_farmer_individual",
                 "fuel_share",
                 "fuel_transport_share",
+                "fuel_share_z",
+                "fuel_transport_share_z",
                 "fuel_share_quartile",
             ],
         )
