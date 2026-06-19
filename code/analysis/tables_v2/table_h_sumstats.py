@@ -3,7 +3,6 @@
 from __future__ import annotations
 from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized_millions
 from library.config import TABLE_OUTPUT
-from library.dictionary import VARIABLE_LABELS
 from library.specs import analysis_df, JOB_LOSS_MAIN
 
 import pandas as pd
@@ -33,12 +32,15 @@ PANELS = [
             ("Job loss", JOB_LOSS_MAIN),
             ("Palm Farmers", "palm_farmer_hh_ifls4"),
             ("Urban Vehicle Owners", "urban_vehicle_hh_ifls4"),
-            ("Fuel Share", "fuel_share_ifls4"),
         ],
     ),
     (
         "D. Economic outcomes",
-        [(VARIABLE_LABELS[variable], variable) for variable in ECONOMIC_OUTCOMES],
+        [
+            ("Monthly Work Income (IDR 1,000)", "job_earnings_hh_real"),
+            ("Monthly Expenditure (IDR 1,000)", "expenditure_total_mo_real"),
+            ("Share of Expenditure on Fuel", "fuel_share"),
+        ],
     ),
 ]
 
