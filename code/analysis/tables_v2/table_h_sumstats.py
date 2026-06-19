@@ -1,7 +1,9 @@
 """Table D: summary statistics from the canonical analysis input."""
 
 from __future__ import annotations
+from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized_millions
 from library.config import TABLE_OUTPUT
+from library.dictionary import VARIABLE_LABELS
 from library.specs import analysis_df, JOB_LOSS_MAIN
 
 import pandas as pd
@@ -34,13 +36,20 @@ PANELS = [
             ("Fuel Share", "fuel_share_ifls4"),
         ],
     ),
+    (
+        "D. Economic outcomes",
+        [(VARIABLE_LABELS[variable], variable) for variable in ECONOMIC_OUTCOMES],
+    ),
 ]
 
 
 def summarize(
     df: pd.DataFrame, panel: str, label: str, variable: str
 ) -> dict[str, object]:
-    values = pd.to_numeric(df[variable], errors="coerce").dropna()
+    values = pd.to_numeric(df[variable], errors="coerce")
+    if variable in ECONOMIC_OUTCOMES:
+        values = winsorized_millions(values)
+    values = values.dropna()
     return {
         "panel": panel,
         "label": label,
@@ -59,7 +68,7 @@ def summarize(
 def make_table() -> None:
     rows: list[dict[str, object]] = []
     body = [
-        r"\begin{adjustbox}{max width=\linewidth}",
+        # r"\begin{adjustbox}{max width=\linewidth}",
         r"\begin{tabular}{lcc}",
         r"\toprule",
         r"Variable & Mean & SD \\",
@@ -70,7 +79,10 @@ def make_table() -> None:
         for label, variable in variables:
             row = summarize(analysis_df, panel, label, variable)
             rows.append(row)
-            body.append(rf"\quad {label} & {row['mean']:.3f} & {row['sd']:.3f} \\")
+            digits = 2 if variable in ECONOMIC_OUTCOMES else 3
+            body.append(
+                rf"\quad {label} & {row['mean']:.{digits}f} & {row['sd']:.{digits}f} \\"
+            )
         body.append(r"\midrule \addlinespace[1ex]")
     body.extend(
         [
@@ -81,7 +93,7 @@ def make_table() -> None:
             rf"\quad IFLS5 & & {len(analysis_df[analysis_df['ifls5']]):,}  \\",
             r"\bottomrule",
             r"\end{tabular}",
-            r"\end{adjustbox}",
+            # r"\end{adjustbox}",
         ]
     )
 

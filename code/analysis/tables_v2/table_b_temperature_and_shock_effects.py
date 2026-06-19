@@ -77,7 +77,8 @@ TABLE_SPECS = [
     },
 ]
 
-TABLE_TEMPLATE = r"""\resizebox{\linewidth}{!}{%
+# \resizebox{\linewidth}{!}{%
+TABLE_TEMPLATE = r"""
 \begin{tabular}{@{}lcccccc}
 \toprule
  & \multicolumn{6}{c}{CES-D z-score} \\
@@ -98,8 +99,7 @@ Year  & x & x & x & x & x & x \\
 {observations_row}
 {r2_row}
 \bottomrule
-\end{tabular}%
-}
+\end{tabular}
 \begin{minipage}{\linewidth}
 Significance levels: * p < 0.1, ** p < 0.05, *** p < 0.01. Format of coefficient cell: Coefficient   (Std. Error)\\
 \end{minipage}

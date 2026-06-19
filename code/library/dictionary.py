@@ -110,8 +110,8 @@ VARIABLE_LABELS: dict[str, str] = {
     "post": "Post",
     "heat": "Heat",
     "differential_impact_heat": "Differential Impact of Heat",
-    "job_earnings_hh_real": "Work Income",
-    "expenditure_total_mo_real": "Monthly Expenditure",
+    "job_earnings_hh_real": "Work Income (IDR 1,000)",
+    "expenditure_total_mo_real": "Monthly Expenditure (IDR 1,000)",
 }
 
 HEAT_TERMS = [

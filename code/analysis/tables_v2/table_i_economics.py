@@ -15,6 +15,7 @@ outcome_dict = {
     "urban_vehicle_hh_ifls4": "expenditure_total_mo_real",
     JOB_LOSS_MAIN: "job_earnings_hh_real",
 }
+ECONOMIC_OUTCOMES = tuple(dict.fromkeys(outcome_dict.values()))
 
 
 def winsorized_millions(series: pd.Series) -> pd.Series:
@@ -51,7 +52,7 @@ def make_specs():
                 spec,
                 spec_data["label"],
                 {effect_term: "Shock effect"},
-                "-" if pd.isna(dv_mean) else f"{dv_mean:.3f}",
+                "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
             )
         )
     return economic_specs
