@@ -42,23 +42,6 @@ def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame
     return df.merge(wave4, on="pidlink", how="left", validate="m:1")
 
 
-def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    wave4 = (
-        df
-        # Filter to rows where wave = ifls4
-        .query("wave == 'IFLS4'")
-        # Keep pidlink plus IFLS4 baseline worker columns
-        .filter(
-            items=columns + ["pidlink"],
-        )
-        # Add IFLS4 dummy to every column
-        .add_suffix("_ifls4", axis=1)
-        # Rename pidlink back to pidlink (remove suffix)
-        .rename(columns={"pidlink_ifls4": "pidlink"})
-    )
-    return df.merge(wave4, on="pidlink", how="left", validate="m:1")
-
-
 def build_core_panel() -> pd.DataFrame:
     """Merge person, CES-D, covariate, and processed temperature inputs."""
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
@@ -156,6 +139,7 @@ def main() -> None:
                 "palm_farmer_hh",
                 "palm_farmer_individual",
                 "fuel_share",
+                "fuel_transport_share",
                 "fuel_share_quartile",
             ],
         )

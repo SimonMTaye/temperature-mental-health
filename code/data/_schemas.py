@@ -1143,6 +1143,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "fuel_share_ifls4": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
+        "fuel_transport_share_ifls4": pa.Column(
+            float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
         "fuel_share_quartile_ifls4": pa.Column(
             float, checks=pa.Check.between(1, 4), nullable=True, coerce=True
         ),

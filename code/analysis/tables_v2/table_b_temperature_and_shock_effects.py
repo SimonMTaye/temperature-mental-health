@@ -55,18 +55,18 @@ TABLE_SPECS = [
         "label": r"\shortstack{Palm Shock\\Price Drop}",
     },
     {
-        "spec": fuel_shock_fuel_share,
-        "group": "fuel_share_ifls4",
-        "post": "post_subsidy",
-        "heat": MAIN_TEMP_MEASURE,
-        "label": r"\shortstack{Fuel Cut\\Fuel Share}",
-    },
-    {
         "spec": fuel_shock_urban_vehicle,
         "group": "urban_vehicle_hh_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
         "label": r"\shortstack{Fuel Cut\\Urban Vehicle Owners}",
+    },
+    {
+        "spec": fuel_shock_fuel_share,
+        "group": "fuel_transport_share_ifls4",
+        "post": "post_subsidy",
+        "heat": MAIN_TEMP_MEASURE,
+        "label": r"\shortstack{Fuel Cut\\Fuel Share}",
     },
     {
         "spec": jobloss,
@@ -83,7 +83,7 @@ TABLE_TEMPLATE = r"""
 \toprule
  & \multicolumn{6}{c}{CES-D z-score} \\
 \cmidrule(lr){2-7}
- & Palm Shock & \shortstack{Palm Shocks\\Panel} & \shortstack{Palm Shock\\Price Drop} & \shortstack{Fuel Cut\\Fuel Share} & \shortstack{Fuel Cut\\Urban Vehicle Owners} & Job Loss \\
+ & Palm Shock & \shortstack{Palm Shocks\\Panel} & \shortstack{Palm Shock\\Price Drop} & \shortstack{Fuel Cut\\Urban Vehicle Owners} & \shortstack{Fuel Cut\\Fuel Share} &  Job Loss \\
  & (1) & (2) & (3) & (4) & (5) & (6) \\
 \midrule\addlinespace[2.5pt]
 {temperature_panel}
@@ -97,7 +97,6 @@ Individual & - & x & - & - & - & - \\
 Year  & x & x & x & x & x & x \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
-{r2_row}
 \bottomrule
 \end{tabular}
 \begin{minipage}{\linewidth}
@@ -217,10 +216,6 @@ def build_table() -> str:
     observations_rows = make_row(
         "Observations", [f"{int(model.stats['N']):,}" for model in temperature_models]
     )
-    r2_rows = make_row(
-        "R²", [f"{model.stats['r2']:.3f}" for model in temperature_models]
-    )
-
     return (
         TABLE_TEMPLATE.replace(
             "{temperature_panel}",
@@ -228,7 +223,6 @@ def build_table() -> str:
         )
         .replace("{wetbulb_panel}", panel_rows("7-day mean Wet Bulb", wetbulb_models))
         .replace("{observations_row}", observations_rows)
-        .replace("{r2_row}", r2_rows)
     )
 
 
