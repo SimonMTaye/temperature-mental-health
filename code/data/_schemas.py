@@ -338,6 +338,10 @@ ECONOMIC_EXPOSURES_SCHEMA = pa.DataFrameSchema(
         # Past-5-year job termination among respondents not currently working.
         "job_loss_5y": _binary_column(),
         # Last job termination reason was fired, laid off, or plant closure.
+        "job_loss_involuntary": _binary_column(),
+        # Job lost due to family reasons such as marriage, childbirth, or other family matters.
+        "job_loss_family": _binary_column(),
+        # Past-5-year job termination with an involuntary reason.
         "involuntary_loss_5y": _binary_column(),
         # Days between interview date and the last reported job termination date.
         "days_since_last_loss": pa.Column(float, nullable=True, coerce=True),
@@ -1078,10 +1082,7 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "wetbulb_c_past30_gt_24p0": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
-        **_schema_columns(
-            ECONOMIC_EXPOSURES_SCHEMA,
-            list(ECONOMIC_EXPOSURES_SCHEMA.columns),
-        ),
+        **ECONOMIC_EXPOSURES_SCHEMA.columns,
         # Expenditure variables retained in the analysis table.
         **EXPENDITURE_DATA_SCHEMA.columns,
         **_schema_columns(

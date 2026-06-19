@@ -63,7 +63,10 @@ def _job_loss(wave: str) -> pd.DataFrame:
     # 1, 2 -> Fired, 3 -> Wage too Low, 4 -> Bad Working Env, 5 -> Refused relocation
     # 6 -> Prolonged sickness, 7, 8, 9 -> Family related (marriange, child, other) 95 -> Other
     out["job_loss_reason_code"] = pd.to_numeric(df.tk46m, errors="coerce")
-    out["job_loss_involuntary"] = out.job_loss_reason_code.isin([1, 2, 3, 4, 5])
+    out["job_loss_involuntary"] = out.job_loss_reason_code.isin([1, 2, 3, 4, 5]).astype(
+        "Int32"
+    )
+    out["job_loss_family"] = out.job_loss_reason_code.isin([7, 8, 9]).astype("Int32")
     out.loc[~out.job_loss_reason_code.between(1, 95), "job_loss_reason_code"] = np.nan
     out["job_loss_sector"] = pd.to_numeric(df.tk46g, errors="coerce")
     out.loc[~out.job_loss_sector.between(1, 95), "job_loss_sector"] = np.nan
@@ -131,6 +134,8 @@ def current_employment(wave: str) -> pd.DataFrame:
 def _add_loss_timing(out: pd.DataFrame) -> pd.DataFrame:
     out["unemployed_since_then"] = out.unemployed_since_then.fillna(0).astype(int)
     out["lost_job_5y"] = out.lost_job_5y.fillna(0).astype(int)
+    out["job_loss_involuntary"] = out.job_loss_involuntary.fillna(0).astype(int)
+    out["job_loss_family"] = out.job_loss_family.fillna(0).astype(int)
     has_date = (
         out.job_loss_last_loss_year.notna()
         & (out.job_loss_last_loss_year > 0)
