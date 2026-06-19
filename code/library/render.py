@@ -70,7 +70,10 @@ def render_table_to_latex(table: mt.ETable, file_path: str | Path):
         )
 
     latex = table.make(type="tex", tex_style={"tab_width": None})
-    latex = wrap_tabular_in_resizebox(latex)
+    latex = latex.replace(r"\begin{threeparttable}", "").replace(
+        r"\end{threeparttable}", ""
+    )
+    # latex = wrap_tabular_in_resizebox(latex)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(latex)
 
@@ -135,7 +138,7 @@ def make_shock_regression_table(
         return [{term: new_term} for term in terms]
 
     group_renames = _renames_by_spec(_rename_to(group, "group"), specs)
-    post_renames = _renames_by_spec(_rename_to(post, "post"), specs)
+    post_renames = _renames_by_spec(_rename_to(post, "post"), specs)  # ty:ignore[invalid-argument-type]
     temperature_renames = _renames_by_spec(_rename_to(temperature, "heat"), specs)
     renames = [
         {**group_rename, **post_rename, **temperature_rename}
@@ -209,7 +212,7 @@ def make_shock_regression_table_trimmed(
         return [{term: new_term} for term in terms]
 
     group_renames = _renames_by_spec(_rename_to(group, "group"), specs)
-    post_renames = _renames_by_spec(_rename_to(post, "post"), specs)
+    post_renames = _renames_by_spec(_rename_to(post, "post"), specs)  # ty:ignore[invalid-argument-type]
     temperature_renames = _renames_by_spec(_rename_to(temperature, "heat"), specs)
     renames = [
         {

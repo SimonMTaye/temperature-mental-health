@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pyfixest as pf
 
-PROJECT = Path(__file__).resolve().parents[3]
+PROJECT = Path(__file__).resolve().parents[2]
 CACHE_VERSION = "v2"
 CACHE_DIR = PROJECT / ".cache" / "regressions" / CACHE_VERSION
 DEFAULT_MODEL_STATS = ["N", "r2"]
