@@ -84,6 +84,7 @@ TABLE_TEMPLATE = r"""
  & \multicolumn{6}{c}{CES-D z-score} \\
 \cmidrule(lr){2-7}
  & Palm Shock & \shortstack{Palm Shocks\\Panel} & \shortstack{Palm Shock\\Price Drop} & \shortstack{Fuel Cut\\Urban Vehicle Owners} & \shortstack{Fuel Cut\\Fuel Share} &  Job Loss \\
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} \cmidrule(lr){7-7}
  & (1) & (2) & (3) & (4) & (5) & (6) \\
 \midrule\addlinespace[2.5pt]
 {temperature_panel}

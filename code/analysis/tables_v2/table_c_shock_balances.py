@@ -21,6 +21,8 @@ TABLE_TEMPLATE = r"""
  & & \multicolumn{4}{c}{Regressor} \\
 \cmidrule(lr){3-6}
  & Mean (SD) & Temperature & Job Loss &  Fuel Share &  \shortstack{Vehicle Owners\\Post Subsidy} \\ 
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} 
+ & (1) & (2) & (3) & (4) & (5) \\
 \midrule\addlinespace[2.5pt]
 {coefficient_rows}
 \midrule\addlinespace[2.5pt]
