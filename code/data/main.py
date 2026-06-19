@@ -84,11 +84,11 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
         PipelineStep("01_extract_individuals", "individuals"),
         PipelineStep("02_build_geography", "geography"),
     ),
-    (
-        PipelineStep("10_fetch_temperature_gee", "daily temperature"),
-        PipelineStep("11_fetch_temperature_hourly_gee", "hourly temperature"),
-        PipelineStep("12_fetch_merra_pm25_gee", "MERRA PM2.5"),
-    ),
+    # (
+    #     PipelineStep("10_fetch_temperature_gee", "daily temperature"),
+    #     PipelineStep("11_fetch_temperature_hourly_gee", "hourly temperature"),
+    #     PipelineStep("12_fetch_merra_pm25_gee", "MERRA PM2.5"),
+    # ),
     (
         PipelineStep("20_build_economic_exposures", "economic exposures"),
         PipelineStep("21_build_health_exposures", "health exposures"),
@@ -108,7 +108,7 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
 
 def run_step(step: PipelineStep) -> None:
     log(f"--- start {step.module}: {step.label} ---")
-    module = importlib.import_module(step.module)
+    module = importlib.import_module(f"data.{step.module}")
     module.main()
     log(f"--- done  {step.module}: {step.label} ---")
 

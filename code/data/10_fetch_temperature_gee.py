@@ -357,10 +357,10 @@ def build_missing_date_batches(missing_dates: pd.Index) -> list[list[pd.Timestam
         if not current or (
             len(current) < BATCH_DAYS and date == current[-1] + pd.Timedelta(days=1)
         ):
-            current.append(date)
+            current.append(date)  # ty:ignore[invalid-argument-type]
             continue
         batches.append(current)
-        current = [date]
+        current = [date]  # ty:ignore[invalid-assignment]
     if current:
         batches.append(current)
     return batches
@@ -410,7 +410,7 @@ def fetch_missing_rows(
     total_rows = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_batch = {
-            executor.submit(pull_missing_batch, start, end_excl, batch_geographies): (
+            executor.submit(pull_missing_batch, start, end_excl, batch_geographies): (  # ty:ignore[invalid-argument-type]
                 start,
                 end_excl,
                 batch_keys,
@@ -477,7 +477,7 @@ def pull_wave_from_scratch(
     total_rows = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_window = {
-            executor.submit(pull_window_with_retry, batch_start, e_excl, fc): (
+            executor.submit(pull_window_with_retry, batch_start, e_excl, fc): (  # ty:ignore[invalid-argument-type]
                 batch_start,
                 e_excl,
             )

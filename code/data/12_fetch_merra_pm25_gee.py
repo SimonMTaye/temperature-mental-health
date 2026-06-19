@@ -22,9 +22,9 @@ import pandas as pd
 import shapely.wkt
 from tqdm.auto import tqdm
 
-from config import GEE_PROEJCT_ID, TMP_PM25 as TMP, GENERATED_DATA
-from _schemas import PM25_DAILY_SCHEMA
-from log import log
+from data.config import GEE_PROEJCT_ID, TMP_PM25 as TMP, GENERATED_DATA
+from data._schemas import PM25_DAILY_SCHEMA
+from library.log import log
 
 WINDOWS = [
     ("2007-06-06", "2008-08-25"),  # IFLS4 (~445 days)
@@ -41,9 +41,7 @@ GEO_FINGERPRINT_COLUMN = "geo_fingerprint"
 def compute_geo_fingerprint(geographies: pd.DataFrame) -> str:
     """Return a stable hash of the geometry lookup used to build GEE features."""
     payload = (
-        geographies[
-            ["gadm_fullcode", "province_code", "match_level", "geometry_wkt"]
-        ]
+        geographies[["gadm_fullcode", "province_code", "match_level", "geometry_wkt"]]
         .sort_values("gadm_fullcode")
         .astype(str)
         .to_csv(index=False)
@@ -67,8 +65,8 @@ def load_geographies() -> pd.DataFrame:
     if missing:
         raise ValueError(f"02_kabupaten_polygons.parquet missing columns: {missing}")
     geographies = geographies.dropna(subset=["geometry_wkt"]).copy()
-    geographies = geographies[required].drop_duplicates("gadm_fullcode").reset_index(
-        drop=True
+    geographies = (
+        geographies[required].drop_duplicates("gadm_fullcode").reset_index(drop=True)
     )
     geographies.attrs[GEO_FINGERPRINT_COLUMN] = compute_geo_fingerprint(geographies)
     return geographies
@@ -262,17 +260,13 @@ def build_missing_date_batches(missing_dates: pd.Index) -> list[list[pd.Timestam
     batches: list[list[pd.Timestamp]] = []
     current: list[pd.Timestamp] = []
     for date in sorted(pd.Timestamp(date) for date in missing_dates):
-        if (
-            not current
-            or (
-                len(current) < BATCH_DAYS
-                and date == current[-1] + pd.Timedelta(days=1)
-            )
+        if not current or (
+            len(current) < BATCH_DAYS and date == current[-1] + pd.Timedelta(days=1)
         ):
-            current.append(date)
+            current.append(date)  # ty:ignore[invalid-argument-type]
             continue
         batches.append(current)
-        current = [date]
+        current = [date]  # ty:ignore[invalid-assignment]
     if current:
         batches.append(current)
     return batches
@@ -322,9 +316,11 @@ def fetch_missing_rows(
     total_rows = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_batch = {
-            executor.submit(
-                pull_missing_batch, start, end_excl, batch_geographies
-            ): (start, end_excl, batch_keys)
+            executor.submit(pull_missing_batch, start, end_excl, batch_geographies): (  # ty:ignore[invalid-argument-type]
+                start,
+                end_excl,
+                batch_keys,
+            )
             for start, end_excl, batch_keys, batch_geographies in tasks
         }
         pbar = tqdm(

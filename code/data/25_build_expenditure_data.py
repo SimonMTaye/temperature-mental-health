@@ -277,7 +277,7 @@ def compute_transport_share(expenditure: pd.DataFrame) -> pd.DataFrame:
     return expenditure
 
 
-def build_expenditure_data() -> pd.DataFrame:
+def main() -> pd.DataFrame:
     """Build and write the 25-prefixed expenditure sidecar."""
     expenditure = expenditure_data().pipe(compute_transport_share)
 
@@ -330,4 +330,4 @@ def build_expenditure_data() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    build_expenditure_data()
+    main()
