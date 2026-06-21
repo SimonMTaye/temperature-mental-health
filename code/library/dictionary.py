@@ -110,6 +110,11 @@ VARIABLE_LABELS: dict[str, str] = {
     "job_earnings_hh_real": "Work Income (IDR 1,000)",
     "expenditure_total_mo_real": "Monthly Expenditure (IDR 1,000)",
     "expenditure_nonfood_total_mo_real": "Nonfood Expenditure (IDR 1,000)",
+    "expenditure_transport_fuel_total_mo_real": "Monthly Transport Expenditure (IDR 1,000)",
+    "job_earnings_hh_real_usd": "Work Income (USD)",
+    "expenditure_total_mo_real_usd": "Monthly Expenditure (USD)",
+    "expenditure_nonfood_total_mo_real_usd": "Nonfood Expenditure (USD)",
+    "expenditure_transport_fuel_total_mo_real_usd": "Monthly Transport Expenditure (USD)",
 }
 
 HEAT_TERMS = [

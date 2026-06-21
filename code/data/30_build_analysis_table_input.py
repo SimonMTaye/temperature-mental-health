@@ -86,6 +86,7 @@ def deflate(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     df["deflator"] = np.where(df.wave == "IFLS4", IDR_2007_TO_2014_INFLATOR, 1)
     for col in columns:
         df[f"{col}_real"] = df[col] * df.deflator
+        df[f"{col}_real_usd"] = df[f"{col}_real"] * df.conversion_factor
     df = df.drop(columns=["deflator"])
     return df
 
@@ -101,9 +102,7 @@ def main() -> None:
     expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
     asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
 
-    df = df.merge(
-        conversions, on=["year", "month"], how="left", validate="m:1"
-    )
+    df = df.merge(conversions, on=["year", "month"], how="left", validate="m:1")
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
         expenditure,
@@ -190,6 +189,7 @@ def main() -> None:
                 "expenditure_food_total_mo",
                 "expenditure_nonfood_total_mo",
                 "expenditure_total_mo",
+                "expenditure_transport_fuel_total_mo",
             ],
         )
     )

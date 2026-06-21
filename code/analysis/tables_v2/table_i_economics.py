@@ -8,22 +8,28 @@ from library.config import TABLE_OUTPUT
 from analysis.tables_v2.table_b_temperature_and_shock_effects import TABLE_SPECS
 
 # Should contain "expenditure" for fuel share groups or "job_income_hh" for palm shock / job loss groups
+expenditure_variable = "expenditure_transport_fuel_total_mo_real_usd"
+earnings_variable = "job_earnings_hh_real_usd"
 outcome_dict = {
-    "palm_farmer_hh_ifls4": "job_earnings_hh_real",
-    "palm_price_gap_z": "job_earnings_hh_real",
-    "fuel_share_ifls4": "expenditure_nonfood_total_mo_real",
-    "fuel_share_z_ifls4": "expenditure_nonfood_total_mo_real",
-    "fuel_transport_share_ifls4": "expenditure_nonfood_total_mo_real",
-    "fuel_transport_share_z_ifls4": "expenditure_nonfood_total_mo_real",
-    "urban_vehicle_hh_ifls4": "expenditure_nonfood_total_mo_real",
-    JOB_LOSS_MAIN: "job_earnings_hh_real",
+    "palm_farmer_hh_ifls4": earnings_variable,
+    "palm_price_gap_z": earnings_variable,
+    # "fuel_share_ifls4": "expenditure_nonfood_total_mo_real",
+    # "fuel_share_z_ifls4": "expenditure_nonfood_total_mo_real",
+    # "fuel_transport_share_ifls4": "expenditure_nonfood_total_mo_real",
+    # "fuel_transport_share_z_ifls4": "expenditure_nonfood_total_mo_real",
+    "fuel_share_ifls4": expenditure_variable,
+    "fuel_share_z_ifls4": expenditure_variable,
+    "fuel_transport_share_ifls4": expenditure_variable,
+    "fuel_transport_share_z_ifls4": expenditure_variable,
+    "urban_vehicle_hh_ifls4": expenditure_variable,
+    JOB_LOSS_MAIN: earnings_variable,
 }
 ECONOMIC_OUTCOMES = tuple(dict.fromkeys(outcome_dict.values()))
 
 
-def winsorized_millions(series: pd.Series) -> pd.Series:
+def winsorized(series: pd.Series) -> pd.Series:
     # ponytail: upper-tail cap only; use two-sided winsorization if the table spec asks.
-    return series.clip(upper=series.quantile(0.95)) / 1_000
+    return series.clip(upper=series.quantile(0.95))
 
 
 def make_specs():
@@ -39,7 +45,9 @@ def make_specs():
         old_spec = spec_data["spec"]
         assert isinstance(old_spec, RegressionSpec)
         df = old_spec.df.copy()  # ty:ignore[unresolved-attribute]
-        df[outcome] = winsorized_millions(df[outcome])
+        df[outcome] = winsorized(df[outcome])
+        if "usd" not in outcome:
+            df[outcome] = df[outcome] / 1000  # rescale to thousands of IDR
         dv_mean = df[outcome].mean()
         # If jobloss spec, then no post so handle that
         rhs = group if post is None else f"{group} * {post}"

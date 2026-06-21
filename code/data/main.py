@@ -9,7 +9,6 @@ files, the archive is skipped. Run from anywhere:
 """
 
 import importlib
-import sys
 import zipfile
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -83,6 +82,7 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
     (
         PipelineStep("01_extract_individuals", "individuals"),
         PipelineStep("02_build_geography", "geography"),
+        PipelineStep("03_extract_conversions", "currency conversions"),
     ),
     # (
     #     PipelineStep("10_fetch_temperature_gee", "daily temperature"),
