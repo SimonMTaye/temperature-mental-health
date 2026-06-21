@@ -115,6 +115,7 @@ def make_regression_table(
         "exact_match": False,
         "labels": VARIABLE_LABELS,
         "felabels": VARIABLE_LABELS,
+        "notes": None,
     }
     return mt.ETable(models, **{**default_etable_kwargs, **etable_kwargs})  # ty:ignore[invalid-argument-type]
 

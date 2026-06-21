@@ -35,9 +35,6 @@ Year  & x & x & x & x & x & x \\
 {group_mean_row}
 \bottomrule
 \end{tabular}
-\begin{minipage}{\linewidth}
-Significance levels: * p < 0.1, ** p < 0.05, *** p < 0.01. Format of coefficient cell: Coefficient   (Std. Error)\\
-\end{minipage}
 """
 
 
