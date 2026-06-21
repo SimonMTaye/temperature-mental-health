@@ -1,7 +1,7 @@
 """Table D: summary statistics from the canonical analysis input."""
 
 from __future__ import annotations
-from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized_millions
+from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
 from library.config import TABLE_OUTPUT
 from library.specs import analysis_df, JOB_LOSS_MAIN
 
@@ -72,9 +72,9 @@ def summarize(
     values = pd.to_numeric(df[variable], errors="coerce")
     if "real" in variable:
         values = (
-            values.clip(upper=values.quantile(0.95))
+            winsorized(values)
             if variable.endswith("_usd")
-            else winsorized_millions(values)
+            else winsorized(values) / 1000
         )
     values = values.dropna()
     return {

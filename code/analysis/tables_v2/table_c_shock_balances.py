@@ -1,4 +1,4 @@
-from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized_millions
+from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
 from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
 from library.specs import analysis_df, JOB_LOSS_MAIN, MAIN_TEMP_MEASURE, FE_WAVE
@@ -47,7 +47,11 @@ TABLE_TEMPLATE = r"""
 def make_table() -> None:
     balance_df = analysis_df.copy()
     for variable in ECONOMIC_OUTCOMES:
-        balance_df[variable] = winsorized_millions(balance_df[variable])
+        balance_df[variable] = winsorized(balance_df[variable])
+        if "usd" not in variable:
+            balance_df[variable] = (
+                balance_df[variable] / 1000
+            )  # rescale to thousands of IDR
 
     rows = {}
     observation_row = []
