@@ -48,18 +48,12 @@ PANELS = [
     (
         "D. Economic outcomes",
         [
-            ("Monthly Work Income (IDR 1,000)", "job_earnings_hh_real"),
-            (r"\quad (in USD)", "job_earnings_hh_real_usd"),
+            ("Monthly Work Income (USD)", "job_earnings_hh_real_usd"),
             (
-                "Monthly Nonfood Expenditure (IDR 1,000)",
-                "expenditure_nonfood_total_mo_real",
+                "Monthly Nonfood Expenditure (USD)",
+                "expenditure_nonfood_total_mo_real_usd",
             ),
-            (r"\quad (in USD)", "expenditure_nonfood_total_mo_real_usd"),
-            (
-                "Monthly Food Expenditure (IDR 1,000)",
-                "expenditure_food_total_mo_real",
-            ),
-            (r"\quad (in USD)", "expenditure_food_total_mo_real_usd"),
+            ("Monthly Food Expenditure (USD)", "expenditure_food_total_mo_real_usd"),
             ("Share of Expenditure on Fuel", "fuel_share"),
         ],
     ),
