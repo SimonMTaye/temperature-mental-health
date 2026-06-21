@@ -31,7 +31,7 @@ PANELS = [
     ),
     (
         "D. Fuel-cut variables",
-        [("Post subsidy cut", "post_subsidy"), ("Transport share", "transport_share"), ("Transport spending", "transport_spending_mo")],
+        [("Post subsidy cut", "post_subsidy"), ("Transport share", "transport_share"), ("Transport spending", "expenditure_nonfood_transport_mo")],
         "ifls5",
     ),
     (
