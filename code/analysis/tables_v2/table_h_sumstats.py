@@ -9,6 +9,17 @@ import pandas as pd
 
 TABLE = "table_d_sumstats"
 
+analysis_df["job_earnings_hh_real_usd"] = (
+    analysis_df["job_earnings_hh_real"] * analysis_df["conversion_factor"]
+)
+analysis_df["expenditure_nonfood_total_mo_real_usd"] = (
+    analysis_df["expenditure_nonfood_total_mo_real"] * analysis_df["conversion_factor"]
+)
+analysis_df["expenditure_food_total_mo_real_usd"] = (
+    analysis_df["expenditure_food_total_mo_real"] * analysis_df["conversion_factor"]
+)
+
+
 PANELS = [
     (
         "A. Mental-health outcome",
@@ -38,14 +49,17 @@ PANELS = [
         "D. Economic outcomes",
         [
             ("Monthly Work Income (IDR 1,000)", "job_earnings_hh_real"),
+            (r"\quad (in USD)", "job_earnings_hh_real_usd"),
             (
                 "Monthly Nonfood Expenditure (IDR 1,000)",
                 "expenditure_nonfood_total_mo_real",
             ),
+            (r"\quad (in USD)", "expenditure_nonfood_total_mo_real_usd"),
             (
                 "Monthly Food Expenditure (IDR 1,000)",
                 "expenditure_food_total_mo_real",
             ),
+            (r"\quad (in USD)", "expenditure_food_total_mo_real_usd"),
             ("Share of Expenditure on Fuel", "fuel_share"),
         ],
     ),
@@ -57,7 +71,11 @@ def summarize(
 ) -> dict[str, object]:
     values = pd.to_numeric(df[variable], errors="coerce")
     if "real" in variable:
-        values = winsorized_millions(values)
+        values = (
+            values.clip(upper=values.quantile(0.95))
+            if variable.endswith("_usd")
+            else winsorized_millions(values)
+        )
     values = values.dropna()
     return {
         "panel": panel,
@@ -88,7 +106,9 @@ def make_table() -> None:
         for label, variable in variables:
             row = summarize(analysis_df, panel, label, variable)
             rows.append(row)
-            digits = 2 if variable in ECONOMIC_OUTCOMES else 3
+            digits = 3
+            if variable in ECONOMIC_OUTCOMES or variable.endswith("_usd"):
+                digits = 2
             body.append(
                 rf"\quad {label} & {row['mean']:.{digits}f} & {row['sd']:.{digits}f} \\"
             )
