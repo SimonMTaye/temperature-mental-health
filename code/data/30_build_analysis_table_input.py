@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from data.config import GENERATED_DATA, IDR_2007_TO_2014_INFLATOR
-from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA
+from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA, CURRENCY_CONVERSIONS_SCHEMA
 from library.log import log
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
@@ -94,10 +94,16 @@ def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
     df = build_core_panel()
+    conversions = CURRENCY_CONVERSIONS_SCHEMA.validate(
+        pd.read_parquet(GENERATED_DATA / "03_currency_conversions.parquet")
+    )
     economic = pd.read_parquet(GENERATED_DATA / "20_economic_exposures.parquet")
     expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
     asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
 
+    df = df.merge(
+        conversions, on=["year", "month"], how="left", validate="m:1"
+    )
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
         expenditure,

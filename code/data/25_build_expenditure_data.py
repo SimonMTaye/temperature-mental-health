@@ -15,14 +15,14 @@ from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
 from library.log import log  # noqa: E402
 
 
-SPENDING_QUANTILE_COLUMNS = [
-    "fuel_total",
-    "transport_total",
-    "fuel_transport_total",
-    "fuel_share",
-    "transport_share",
-    "fuel_transport_share",
-]
+SPENDING_QUANTILE_COLUMNS = {
+    "fuel_total": "expenditure_nonfood_fuel_mo",
+    "transport_total": "expenditure_nonfood_transport_mo",
+    "fuel_transport_total": "expenditure_transport_fuel_total_mo",
+    "fuel_share": "fuel_share",
+    "transport_share": "transport_share",
+    "fuel_transport_share": "fuel_transport_share",
+}
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,
@@ -195,11 +195,11 @@ def _main_crop(wave: str) -> pd.DataFrame:
 
 
 def _add_spending_quantiles(out: pd.DataFrame) -> pd.DataFrame:
-    for column in SPENDING_QUANTILE_COLUMNS:
-        out[f"{column}_quartile"] = out.groupby("wave")[column].transform(
+    for output_prefix, source_column in SPENDING_QUANTILE_COLUMNS.items():
+        out[f"{output_prefix}_quartile"] = out.groupby("wave")[source_column].transform(
             lambda series: pd.qcut(series.rank(method="first"), 4, labels=False) + 1,
         )
-        out[f"{column}_quintile"] = out.groupby("wave")[column].transform(
+        out[f"{output_prefix}_quintile"] = out.groupby("wave")[source_column].transform(
             lambda series: pd.qcut(series.rank(method="first"), 5, labels=False) + 1,
         )
     out["transport_share_q5"] = out["transport_share_quintile"]
@@ -237,29 +237,19 @@ def expenditure_data() -> pd.DataFrame:
 
 
 def compute_transport_share(expenditure: pd.DataFrame) -> pd.DataFrame:
-    expenditure["transport_total"] = expenditure[
-        ["expenditure_nonfood_transport_mo"]
+    expenditure["expenditure_transport_fuel_total_mo"] = expenditure[
+        ["expenditure_nonfood_transport_mo", "expenditure_nonfood_fuel_mo"]
     ].sum(axis=1, min_count=1)
-
-    expenditure["fuel_total"] = expenditure[["expenditure_nonfood_fuel_mo"]].sum(
-        axis=1, min_count=1
-    )
-    expenditure["fuel_transport_total"] = expenditure[
-        ["transport_total", "fuel_total"]
-    ].sum(axis=1, min_count=1)
-    expenditure["transport_spending_mo"] = expenditure.transport_total
-    expenditure["total_mo"] = expenditure[
-        ["expenditure_nonfood_total_mo", "expenditure_food_total_mo"]
-    ].sum(axis=1, min_count=1)
+    total_expenditure = expenditure.expenditure_total_mo.replace(0, np.nan)
 
     expenditure["transport_share"] = (
-        expenditure.transport_total / expenditure.total_mo.replace(0, np.nan)
+        expenditure.expenditure_nonfood_transport_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)
     expenditure["fuel_share"] = (
-        expenditure.fuel_total / expenditure.total_mo.replace(0, np.nan)
+        expenditure.expenditure_nonfood_fuel_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)
     expenditure["fuel_transport_share"] = (
-        expenditure.fuel_transport_total / expenditure.total_mo.replace(0, np.nan)
+        expenditure.expenditure_transport_fuel_total_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)
 
     # Compute z-scores of the shares
