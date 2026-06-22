@@ -59,6 +59,29 @@ def _sum_clean_money_columns(df: pd.DataFrame, columns: list[str]) -> pd.Series:
     return cleaned.sum(axis=1, min_count=1)
 
 
+def vehicle_fuel_expenditure(
+    ks4: pd.DataFrame,
+    hhid_column: str,
+) -> pd.DataFrame:
+    """Build the IFLS5 last-purchase vehicle-fuel expenditure proxy."""
+    out = ks4.loc[
+        ks4["ks4type"].eq("L"),
+        [hhid_column, "ks13a", "ks15"],
+    ].copy()
+    out["expenditure_nonfood_vehicle_fuel_mo"] = np.nan
+    out.loc[
+        out["ks13a"].eq(1),
+        "expenditure_nonfood_vehicle_fuel_mo",
+    ] = clean_money(out.loc[out["ks13a"].eq(1), "ks15"])
+    out.loc[
+        out["ks13a"].eq(3),
+        "expenditure_nonfood_vehicle_fuel_mo",
+    ] = 0.0
+    return out[
+        [hhid_column, "expenditure_nonfood_vehicle_fuel_mo"]
+    ].rename(columns={hhid_column: "hhid"})
+
+
 def food_expenditure(
     ks0: pd.DataFrame,
     ks4: pd.DataFrame,
@@ -244,6 +267,15 @@ def expenditure_data() -> pd.DataFrame:
         food = food_expenditure(ks0, ks4, hhid_column=hhid_col)
         non_food = non_food_expenditure(ks0, ks2, ks3, ks4, hhid_column=hhid_col)
         expenditure = food.merge(non_food, on=["hhid"], how="outer", validate="1:1")
+        if wave == "IFLS5":
+            expenditure = expenditure.merge(
+                vehicle_fuel_expenditure(ks4, hhid_col),
+                on="hhid",
+                how="left",
+                validate="1:1",
+            )
+        else:
+            expenditure["expenditure_nonfood_vehicle_fuel_mo"] = np.nan
         expenditure["expenditure_total_mo"] = (
             expenditure["expenditure_food_total_mo"]
             + expenditure["expenditure_nonfood_total_mo"]
@@ -271,6 +303,13 @@ def compute_transport_share(expenditure: pd.DataFrame) -> pd.DataFrame:
     expenditure["fuel_share"] = (
         expenditure.fuel_total / expenditure.total_mo.replace(0, np.nan)
     ).replace([0, np.inf, -np.inf], np.nan)
+    expenditure["vehicle_fuel_share"] = (
+        expenditure.expenditure_nonfood_vehicle_fuel_mo
+        / expenditure.total_mo.replace(0, np.nan)
+    ).replace([np.inf, -np.inf], np.nan)
+    expenditure["vehicle_fuel_share"] = expenditure["vehicle_fuel_share"].where(
+        expenditure["vehicle_fuel_share"].between(0, 1)
+    )
     expenditure["fuel_transport_share"] = (
         expenditure.fuel_transport_total / expenditure.total_mo.replace(0, np.nan)
     ).replace([0, np.inf, -np.inf], np.nan)
