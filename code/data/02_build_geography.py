@@ -93,7 +93,7 @@ def build_geometry_matches(gadm_codes: pd.Series) -> pd.DataFrame:
 
 
 def main() -> None:
-    first_module = importlib.import_module("01_extract_individuals")
+    first_module = importlib.import_module("data.01_extract_individuals")
     geo_ifls4 = first_module.parse_geo_codes_ifls4()
     geo_ifls5 = first_module.parse_geo_codes_ifls5()
     geo_both = pd.concat([geo_ifls4, geo_ifls5], ignore_index=True)

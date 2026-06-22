@@ -1,18 +1,35 @@
 from dataclasses import replace
 
+import pandas as pd
+
 from library.render import make_regression_table, render_table_to_latex, RegressionSpec
 from library.specs import JOB_LOSS_MAIN, CONTROLS, FE_NO_WAVE
 from library.config import TABLE_OUTPUT
 from analysis.tables_v2.table_b_temperature_and_shock_effects import TABLE_SPECS
 
 # Should contain "expenditure" for fuel share groups or "job_income_hh" for palm shock / job loss groups
+expenditure_variable = "expenditure_transport_fuel_total_mo_real_usd"
+earnings_variable = "job_earnings_hh_real_usd"
 outcome_dict = {
-    "palm_farmer_hh_ifls4": "job_earnings_hh_real",
-    "palm_price_gap_z": "job_earnings_hh_real",
-    "fuel_share_ifls4": "expenditure_total_mo_real",
-    "urban_vehicle_hh_ifls4": "expenditure_total_mo_real",
-    JOB_LOSS_MAIN: "job_earnings_hh_real",
+    "palm_farmer_hh_ifls4": earnings_variable,
+    "palm_price_gap_z": earnings_variable,
+    # "fuel_share_100_ifls4": "expenditure_nonfood_total_mo_real",
+    # "fuel_share_z_ifls4": "expenditure_nonfood_total_mo_real",
+    # "fuel_transport_share_ifls4": "expenditure_nonfood_total_mo_real",
+    # "fuel_transport_share_z_ifls4": "expenditure_nonfood_total_mo_real",
+    "fuel_share_100_ifls4": expenditure_variable,
+    "fuel_share_z_ifls4": expenditure_variable,
+    "fuel_transport_share_ifls4": expenditure_variable,
+    "fuel_transport_share_z_ifls4": expenditure_variable,
+    "urban_vehicle_hh_ifls4": expenditure_variable,
+    JOB_LOSS_MAIN: earnings_variable,
 }
+ECONOMIC_OUTCOMES = tuple(dict.fromkeys(outcome_dict.values()))
+
+
+def winsorized(series: pd.Series) -> pd.Series:
+    # ponytail: upper-tail cap only; use two-sided winsorization if the table spec asks.
+    return series.clip(upper=series.quantile(0.95))
 
 
 def make_specs():
@@ -28,7 +45,10 @@ def make_specs():
         old_spec = spec_data["spec"]
         assert isinstance(old_spec, RegressionSpec)
         df = old_spec.df.copy()  # ty:ignore[unresolved-attribute]
-        df[outcome] = df[outcome] / 1_000_000
+        df[outcome] = winsorized(df[outcome])
+        if "usd" not in outcome:
+            df[outcome] = df[outcome] / 1000  # rescale to thousands of IDR
+        dv_mean = df[outcome].mean()
         # If jobloss spec, then no post so handle that
         rhs = group if post is None else f"{group} * {post}"
         effect_term = group if post is None else f"{group}:{post}"
@@ -38,18 +58,48 @@ def make_specs():
             formula=f"{outcome} ~ {rhs} + {CONTROLS} | {FE_NO_WAVE}",
             show_terms=frozenset([effect_term]),
         )
-        economic_specs.append((spec, spec_data["label"], {effect_term: "Shock effect"}))
-    return economic_specs
+        economic_specs.append(
+            (
+                spec,
+                spec_data["label"],
+                {effect_term: "Shock effect"},
+                "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
+            )
+        )
+    order = [0, 1, 2, 5, 3, 4]  # move job loss specs to the end
+    reordered_specs = [economic_specs[i] for i in order]
+
+    fuel_share_spec, _, fuel_share_rename, _ = economic_specs[4]
+    no_transfer_df = fuel_share_spec.df[
+        fuel_share_spec.df["cash_transfer_recipient"].eq(0)  # ty:ignore[invalid-argument-type]
+    ].copy()  # ty:ignore[unresolved-attribute]
+    outcome = outcome_dict["fuel_share_100_ifls4"]
+    dv_mean = no_transfer_df[outcome].mean()
+    no_transfer_spec = replace(
+        fuel_share_spec,
+        title=f"{fuel_share_spec.title} excluding cash-transfer recipients",
+        df=no_transfer_df,
+    )
+    # reordered_specs.append(
+    #     (
+    #         no_transfer_spec,
+    #         r"\shortstack{Fuel Cut\\Fuel Share\\No Transfer}",
+    #         fuel_share_rename,
+    #         "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
+    #     )
+    # )
+    return reordered_specs
 
 
 def make_table():
     specs = make_specs()
     table = make_regression_table(
-        [spec for spec, _, _ in specs],
-        titles=[label for _, label, _ in specs],
-        rename=[rename for _, _, rename in specs],
+        [spec for spec, _, _, _ in specs],
+        titles=[label for _, label, _, _ in specs],
+        rename=[rename for _, _, rename, _ in specs],
         keep=["Shock effect"],
         exact_match=True,
+        custom_model_stats={"DV mean": [dv_mean for _, _, _, dv_mean in specs]},
     )
     render_table_to_latex(table, TABLE_OUTPUT / "table_i_economics.tex")
 

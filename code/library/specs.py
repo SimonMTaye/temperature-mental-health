@@ -78,10 +78,10 @@ palm_shock = RegressionSpec(
 
 fuel_shock_fuel_share = RegressionSpec(
     title="Fuel Cut - Fuel Share",
-    formula=f"cesd_z ~ fuel_share_ifls4 * post_subsidy * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
+    formula=f"cesd_z ~ fuel_share_100_ifls4 * post_subsidy * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=wave5_df,
     tags=frozenset(["fuel-shock", "mean-daily-temp"]),
-    show_terms=frozenset([f"fuel_share:post_subsidy:{MAIN_TEMP_MEASURE}"]),
+    show_terms=frozenset([f"fuel_share_100_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]),
 )
 
 fuel_shock_urban_vehicle = RegressionSpec(
