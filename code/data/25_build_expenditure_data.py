@@ -248,6 +248,9 @@ def expenditure_data() -> pd.DataFrame:
         ks3 = read_stata_df(
             IFLS_FOLDERS[wave] / "b1_ks3.dta", convert_categoricals=False
         )
+        ks4 = read_stata_df(
+            IFLS_FOLDERS[wave] / "b1_ks4.dta", convert_categoricals=False
+        )
         food = food_expenditure(ks1, hhid_column=hhid_col)
         non_food = non_food_expenditure(ks0, ks2, ks3, hhid_column=hhid_col)
         expenditure = food.merge(non_food, on=["hhid"], how="outer", validate="1:1")
@@ -280,23 +283,25 @@ def compute_transport_share(expenditure: pd.DataFrame) -> pd.DataFrame:
     expenditure["fuel_share"] = (
         expenditure.expenditure_nonfood_fuel_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)
-    expenditure["fuel_share_100"] = expenditure["fuel_share"] * 100
     expenditure["vehicle_fuel_share"] = (
-        expenditure.expenditure_nonfood_vehicle_fuel_mo
-        / expenditure.total_mo.replace([np.inf, -np.inf], np.nan)
+        expenditure.expenditure_nonfood_vehicle_fuel_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)
-    expenditure["vehicle_fuel_share"] = expenditure["vehicle_fuel_share"].where(
-        expenditure["vehicle_fuel_share"].between(0, 1)
-    )
+
     expenditure["fuel_transport_share"] = (
         expenditure.expenditure_transport_fuel_total_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)
 
     # Compute z-scores of the shares
-    for share_column in ["transport_share", "fuel_share", "fuel_transport_share"]:
+    for share_column in [
+        "transport_share",
+        "fuel_share",
+        "fuel_transport_share",
+        "vehicle_fuel_share",
+    ]:
         expenditure[f"{share_column}_z"] = (
             expenditure[share_column] - expenditure[share_column].mean()
         ) / expenditure[share_column].std()
+        expenditure[f"{share_column}_100"] = expenditure[share_column] * 100
     return expenditure
 
 

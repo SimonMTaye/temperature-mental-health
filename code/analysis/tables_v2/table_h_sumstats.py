@@ -3,7 +3,7 @@
 from __future__ import annotations
 from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
 from library.config import TABLE_OUTPUT
-from library.specs import analysis_df, JOB_LOSS_MAIN
+from library.specs import analysis_df, JOB_LOSS_MAIN, FUEL_SHARE_MAIN_SUMSTATS
 
 import pandas as pd
 
@@ -54,7 +54,7 @@ PANELS = [
                 "expenditure_nonfood_total_mo_real_usd",
             ),
             ("Monthly Food Expenditure (USD)", "expenditure_food_total_mo_real_usd"),
-            (r"Fuel Share (\% of Monthly Expenditure)", "fuel_share_100"),
+            (r"Fuel Share (\% of Monthly Expenditure)", FUEL_SHARE_MAIN_SUMSTATS),
         ],
     ),
 ]

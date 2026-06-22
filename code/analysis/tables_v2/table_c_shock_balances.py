@@ -1,7 +1,13 @@
 from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
 from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
-from library.specs import analysis_df, JOB_LOSS_MAIN, MAIN_TEMP_MEASURE, FE_WAVE
+from library.specs import (
+    analysis_df,
+    JOB_LOSS_MAIN,
+    MAIN_TEMP_MEASURE,
+    FE_WAVE,
+    FUEL_SHARE_MAIN,
+)
 from library.dictionary import VARIABLE_LABELS
 from library.render import RegressionSpec
 from library.table_builder import coefficient_rows, make_row
@@ -69,7 +75,7 @@ def make_table() -> None:
         tests = [
             (MAIN_TEMP_MEASURE, balance_df),
             (JOB_LOSS_MAIN, balance_df),
-            ("fuel_share_100_ifls4", balance_df),
+            (FUEL_SHARE_MAIN, balance_df),
             (
                 "post_subsidy",
                 balance_df[

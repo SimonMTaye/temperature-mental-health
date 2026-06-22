@@ -3,7 +3,7 @@ from dataclasses import replace
 import pandas as pd
 
 from library.render import make_regression_table, render_table_to_latex, RegressionSpec
-from library.specs import JOB_LOSS_MAIN, CONTROLS, FE_NO_WAVE
+from library.specs import JOB_LOSS_MAIN, CONTROLS, FE_NO_WAVE, FUEL_SHARE_MAIN
 from library.config import TABLE_OUTPUT
 from analysis.tables_v2.table_b_temperature_and_shock_effects import TABLE_SPECS
 
@@ -17,10 +17,7 @@ outcome_dict = {
     # "fuel_share_z_ifls4": "expenditure_nonfood_total_mo_real",
     # "fuel_transport_share_ifls4": "expenditure_nonfood_total_mo_real",
     # "fuel_transport_share_z_ifls4": "expenditure_nonfood_total_mo_real",
-    "fuel_share_100_ifls4": expenditure_variable,
-    "fuel_share_z_ifls4": expenditure_variable,
-    "fuel_transport_share_ifls4": expenditure_variable,
-    "fuel_transport_share_z_ifls4": expenditure_variable,
+    FUEL_SHARE_MAIN: expenditure_variable,
     "urban_vehicle_hh_ifls4": expenditure_variable,
     JOB_LOSS_MAIN: earnings_variable,
 }
@@ -68,26 +65,6 @@ def make_specs():
         )
     order = [0, 1, 2, 5, 3, 4]  # move job loss specs to the end
     reordered_specs = [economic_specs[i] for i in order]
-
-    fuel_share_spec, _, fuel_share_rename, _ = economic_specs[4]
-    no_transfer_df = fuel_share_spec.df[
-        fuel_share_spec.df["cash_transfer_recipient"].eq(0)  # ty:ignore[invalid-argument-type]
-    ].copy()  # ty:ignore[unresolved-attribute]
-    outcome = outcome_dict["fuel_share_100_ifls4"]
-    dv_mean = no_transfer_df[outcome].mean()
-    no_transfer_spec = replace(
-        fuel_share_spec,
-        title=f"{fuel_share_spec.title} excluding cash-transfer recipients",
-        df=no_transfer_df,
-    )
-    # reordered_specs.append(
-    #     (
-    #         no_transfer_spec,
-    #         r"\shortstack{Fuel Cut\\Fuel Share\\No Transfer}",
-    #         fuel_share_rename,
-    #         "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
-    #     )
-    # )
     return reordered_specs
 
 

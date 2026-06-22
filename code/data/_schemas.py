@@ -522,10 +522,6 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "vehicle_fuel_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
-        # Fuel spending share expressed in percentage points.
-        "fuel_share_100": pa.Column(
-            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
-        ),
         # Transportation spending divided by total monthly household spending.
         "transport_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
@@ -533,6 +529,19 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         # Fuel plus transportation spending divided by total monthly household spending.
         "fuel_transport_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
+        # Fuel spending share expressed in percentage points.
+        "fuel_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
+        "vehicle_fuel_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
+        "transport_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
+        "fuel_transport_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
         ),
         # Full-sample z-scores of spending shares.
         "transport_share_z": pa.Column(float, nullable=True, coerce=True),
