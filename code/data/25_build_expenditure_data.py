@@ -15,14 +15,14 @@ from data.config import GENERATED_DATA, IFLS4_FOLDER, IFLS5_FOLDER  # noqa: E402
 from library.log import log  # noqa: E402
 
 
-SPENDING_QUANTILE_COLUMNS = [
-    "fuel_total",
-    "transport_total",
-    "fuel_transport_total",
-    "fuel_share",
-    "transport_share",
-    "fuel_transport_share",
-]
+SPENDING_QUANTILE_COLUMNS = {
+    "fuel_total": "expenditure_nonfood_fuel_mo",
+    "transport_total": "expenditure_nonfood_transport_mo",
+    "fuel_transport_total": "expenditure_transport_fuel_total_mo",
+    "fuel_share": "fuel_share",
+    "transport_share": "transport_share",
+    "fuel_transport_share": "fuel_transport_share",
+}
 
 IFLS_FOLDERS = {
     "IFLS4": IFLS4_FOLDER,
@@ -35,6 +35,8 @@ HHID_COLUMNS = {
 }
 
 MONTHS_PER_YEAR = 12
+WEEKS_PER_MONTH = 4.33
+COOKING_OIL_FOOD_TYPE = "Y"
 
 
 def _grouped_money_sum(
@@ -60,36 +62,32 @@ def _sum_clean_money_columns(df: pd.DataFrame, columns: list[str]) -> pd.Series:
 
 
 def food_expenditure(
-    ks0: pd.DataFrame,
-    ks4: pd.DataFrame,
+    ks1: pd.DataFrame,
     hhid_column: str,
 ) -> pd.DataFrame:
-    """Build local monthly food-expenditure components from KS0 and KS4."""
-    food_column = "ks02a" if "ks02a" in ks0.columns else "ks02"
-    ks0_food = _grouped_money_sum(
-        ks0,
-        hhid_column=hhid_column,
-        value_column=food_column,
-        output_column="expenditure_food_items_mo",
-    )
-    # KS0 food expenditure is weekly; convert to monthly
-    ks0_food["expenditure_food_items_mo"] *= 4.33
-
-    ks4_oil = ks4[[hhid_column, "ks4type", "ks15"]].copy()
-    ks4_oil["ks15"] = clean_money(ks4_oil["ks15"])
-    ks4_oil["expenditure_food_cooking_oil_mo"] = ks4_oil["ks15"].where(
-        ks4_oil["ks4type"] == "E",
+    """Build local monthly food-expenditure components from KS1."""
+    food = ks1[[hhid_column, "ks1type", "ks02"]].copy()
+    food["ks02"] = clean_money(food["ks02"])
+    food["expenditure_food_items_mo"] = food["ks02"].where(
+        food["ks1type"] != COOKING_OIL_FOOD_TYPE,
         0,
     )
-    ks4_oil = (
-        ks4_oil.groupby(hhid_column)["expenditure_food_cooking_oil_mo"]
-        .sum(min_count=1)
-        .reset_index()
+    food["expenditure_food_cooking_oil_mo"] = food["ks02"].where(
+        food["ks1type"] == COOKING_OIL_FOOD_TYPE,
+        0,
     )
 
-    out = ks0_food.merge(ks4_oil, on=hhid_column, validate="1:1").assign(
-        expenditure_food_total_mo=lambda x: (
-            x.expenditure_food_items_mo + x.expenditure_food_cooking_oil_mo
+    out = (
+        food.groupby(hhid_column)[
+            ["expenditure_food_items_mo", "expenditure_food_cooking_oil_mo"]
+        ]
+        .sum(min_count=1)
+        .mul(WEEKS_PER_MONTH)
+        .reset_index()
+        .assign(
+            expenditure_food_total_mo=lambda df: df[
+                ["expenditure_food_items_mo", "expenditure_food_cooking_oil_mo"]
+            ].sum(axis=1, min_count=1)
         )
     )
     return out.rename(columns={hhid_column: "hhid"})
@@ -99,7 +97,6 @@ def non_food_expenditure(
     ks0: pd.DataFrame,
     ks2: pd.DataFrame,
     ks3: pd.DataFrame,
-    ks4: pd.DataFrame,
     hhid_column: str,
 ) -> pd.DataFrame:
     """Build local monthly non-food expenditure components from KS modules."""
@@ -154,19 +151,7 @@ def non_food_expenditure(
         output_column="expenditure_nonfood_food_gift_mo",
     )
     # Convert to monthly from weekly
-    ks0_food_gift["expenditure_nonfood_food_gift_mo"] *= 4.33
-
-    ks4_kerosene = ks4[[hhid_column, "ks4type", "ks15"]].copy()
-    ks4_kerosene["ks15"] = clean_money(ks4_kerosene["ks15"])
-    ks4_kerosene["expenditure_nonfood_kerosene_mo"] = ks4_kerosene["ks15"].where(
-        ks4_kerosene["ks4type"] == "K",
-        0,
-    )
-    ks4_kerosene = (
-        ks4_kerosene.groupby(hhid_column)["expenditure_nonfood_kerosene_mo"]
-        .sum(min_count=1)
-        .reset_index()
-    )
+    ks0_food_gift["expenditure_nonfood_food_gift_mo"] *= WEEKS_PER_MONTH
 
     ks3_total = _grouped_money_sum(
         ks3,
@@ -180,18 +165,17 @@ def non_food_expenditure(
         ks2_total.merge(ks2_component, on=hhid_column, how="left", validate="1:1")
         .merge(ks0_education, on=hhid_column, how="left", validate="1:1")
         .merge(ks0_food_gift, on=hhid_column, how="left", validate="1:1")
-        .merge(ks4_kerosene, on=hhid_column, how="left", validate="1:1")
         .merge(ks3_total, on=hhid_column, how="left", validate="1:1")
         .assign(
+            expenditure_nonfood_kerosene_mo=np.nan,
             expenditure_nonfood_total_mo=lambda df: df[
                 [
                     "expenditure_nonfood_ks2_mo",
                     "expenditure_nonfood_children_education_mo",
                     "expenditure_nonfood_food_gift_mo",
-                    "expenditure_nonfood_kerosene_mo",
                     "expenditure_nonfood_ks3_mo",
                 ]
-            ].sum(axis=1, min_count=1)
+            ].sum(axis=1, min_count=1),
         )
     )
     return out.rename(columns={hhid_column: "hhid"})
@@ -211,11 +195,11 @@ def _main_crop(wave: str) -> pd.DataFrame:
 
 
 def _add_spending_quantiles(out: pd.DataFrame) -> pd.DataFrame:
-    for column in SPENDING_QUANTILE_COLUMNS:
-        out[f"{column}_quartile"] = out.groupby("wave")[column].transform(
+    for output_prefix, source_column in SPENDING_QUANTILE_COLUMNS.items():
+        out[f"{output_prefix}_quartile"] = out.groupby("wave")[source_column].transform(
             lambda series: pd.qcut(series.rank(method="first"), 4, labels=False) + 1,
         )
-        out[f"{column}_quintile"] = out.groupby("wave")[column].transform(
+        out[f"{output_prefix}_quintile"] = out.groupby("wave")[source_column].transform(
             lambda series: pd.qcut(series.rank(method="first"), 5, labels=False) + 1,
         )
     out["transport_share_q5"] = out["transport_share_quintile"]
@@ -232,52 +216,52 @@ def expenditure_data() -> pd.DataFrame:
             continue
         ks0 = read_stata_df(p, convert_categoricals=False)
         hhid_col = HHID_COLUMNS[wave]
+        ks1 = read_stata_df(
+            IFLS_FOLDERS[wave] / "b1_ks1.dta", convert_categoricals=False
+        )
         ks2 = read_stata_df(
             IFLS_FOLDERS[wave] / "b1_ks2.dta", convert_categoricals=False
         )
         ks3 = read_stata_df(
             IFLS_FOLDERS[wave] / "b1_ks3.dta", convert_categoricals=False
         )
-        ks4 = read_stata_df(
-            IFLS_FOLDERS[wave] / "b1_ks4.dta", convert_categoricals=False
-        )
-        food = food_expenditure(ks0, ks4, hhid_column=hhid_col)
-        non_food = non_food_expenditure(ks0, ks2, ks3, ks4, hhid_column=hhid_col)
+        food = food_expenditure(ks1, hhid_column=hhid_col)
+        non_food = non_food_expenditure(ks0, ks2, ks3, hhid_column=hhid_col)
         expenditure = food.merge(non_food, on=["hhid"], how="outer", validate="1:1")
-        expenditure["expenditure_total_mo"] = (
-            expenditure["expenditure_food_total_mo"]
-            + expenditure["expenditure_nonfood_total_mo"]
-        )
+        expenditure["expenditure_total_mo"] = expenditure[
+            ["expenditure_food_total_mo", "expenditure_nonfood_total_mo"]
+        ].sum(axis=1, min_count=1)
         expenditure["wave"] = wave
         frame = pd.concat([frame, expenditure], ignore_index=True)
     return frame
 
 
 def compute_transport_share(expenditure: pd.DataFrame) -> pd.DataFrame:
-    expenditure["transport_total"] = expenditure[
-        ["expenditure_nonfood_transport_mo", "expenditure_nonfood_ks3_mo"]
+    expenditure["expenditure_transport_fuel_total_mo"] = expenditure[
+        ["expenditure_nonfood_transport_mo", "expenditure_nonfood_fuel_mo"]
     ].sum(axis=1, min_count=1)
-    expenditure["fuel_total"] = expenditure.expenditure_nonfood_fuel_mo.fillna(0)
-    expenditure["fuel_transport_total"] = (
-        expenditure.transport_total + expenditure.fuel_total
-    )
-    expenditure["transport_spending_mo"] = expenditure.transport_total
-    expenditure["total_mo"] = (
-        expenditure.expenditure_nonfood_total_mo + expenditure.expenditure_food_total_mo
-    )
+    total_expenditure = expenditure.expenditure_total_mo.replace(0, np.nan)
+
     expenditure["transport_share"] = (
-        expenditure.transport_total / expenditure.total_mo.replace(0, np.nan)
-    ).replace([0, np.inf, -np.inf], np.nan)
+        expenditure.expenditure_nonfood_transport_mo / total_expenditure
+    ).replace([np.inf, -np.inf], np.nan)
     expenditure["fuel_share"] = (
-        expenditure.fuel_total / expenditure.total_mo.replace(0, np.nan)
-    ).replace([0, np.inf, -np.inf], np.nan)
+        expenditure.expenditure_nonfood_fuel_mo / total_expenditure
+    ).replace([np.inf, -np.inf], np.nan)
+    expenditure["fuel_share_100"] = expenditure["fuel_share"] * 100
     expenditure["fuel_transport_share"] = (
-        expenditure.fuel_transport_total / expenditure.total_mo.replace(0, np.nan)
-    ).replace([0, np.inf, -np.inf], np.nan)
+        expenditure.expenditure_transport_fuel_total_mo / total_expenditure
+    ).replace([np.inf, -np.inf], np.nan)
+
+    # Compute z-scores of the shares
+    for share_column in ["transport_share", "fuel_share", "fuel_transport_share"]:
+        expenditure[f"{share_column}_z"] = (
+            expenditure[share_column] - expenditure[share_column].mean()
+        ) / expenditure[share_column].std()
     return expenditure
 
 
-def build_expenditure_data() -> pd.DataFrame:
+def main() -> pd.DataFrame:
     """Build and write the 25-prefixed expenditure sidecar."""
     expenditure = expenditure_data().pipe(compute_transport_share)
 
@@ -330,4 +314,4 @@ def build_expenditure_data() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    build_expenditure_data()
+    main()

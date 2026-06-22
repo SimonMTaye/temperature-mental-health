@@ -1,12 +1,24 @@
 """Table D: summary statistics from the canonical analysis input."""
 
 from __future__ import annotations
+from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
 from library.config import TABLE_OUTPUT
 from library.specs import analysis_df, JOB_LOSS_MAIN
 
 import pandas as pd
 
 TABLE = "table_d_sumstats"
+
+analysis_df["job_earnings_hh_real_usd"] = (
+    analysis_df["job_earnings_hh_real"] * analysis_df["conversion_factor"]
+)
+analysis_df["expenditure_nonfood_total_mo_real_usd"] = (
+    analysis_df["expenditure_nonfood_total_mo_real"] * analysis_df["conversion_factor"]
+)
+analysis_df["expenditure_food_total_mo_real_usd"] = (
+    analysis_df["expenditure_food_total_mo_real"] * analysis_df["conversion_factor"]
+)
+
 
 PANELS = [
     (
@@ -31,7 +43,18 @@ PANELS = [
             ("Job loss", JOB_LOSS_MAIN),
             ("Palm Farmers", "palm_farmer_hh_ifls4"),
             ("Urban Vehicle Owners", "urban_vehicle_hh_ifls4"),
-            ("Fuel Share", "fuel_share_ifls4"),
+        ],
+    ),
+    (
+        "D. Economic outcomes",
+        [
+            ("Monthly Work Income (USD)", "job_earnings_hh_real_usd"),
+            (
+                "Monthly Nonfood Expenditure (USD)",
+                "expenditure_nonfood_total_mo_real_usd",
+            ),
+            ("Monthly Food Expenditure (USD)", "expenditure_food_total_mo_real_usd"),
+            (r"Fuel Share (\% of Monthly Expenditure)", "fuel_share_100"),
         ],
     ),
 ]
@@ -40,7 +63,14 @@ PANELS = [
 def summarize(
     df: pd.DataFrame, panel: str, label: str, variable: str
 ) -> dict[str, object]:
-    values = pd.to_numeric(df[variable], errors="coerce").dropna()
+    values = pd.to_numeric(df[variable], errors="coerce")
+    if "real" in variable:
+        values = (
+            winsorized(values)
+            if variable.endswith("_usd")
+            else winsorized(values) / 1000
+        )
+    values = values.dropna()
     return {
         "panel": panel,
         "label": label,
@@ -59,7 +89,7 @@ def summarize(
 def make_table() -> None:
     rows: list[dict[str, object]] = []
     body = [
-        r"\begin{adjustbox}{max width=\linewidth}",
+        # r"\begin{adjustbox}{max width=\linewidth}",
         r"\begin{tabular}{lcc}",
         r"\toprule",
         r"Variable & Mean & SD \\",
@@ -70,7 +100,12 @@ def make_table() -> None:
         for label, variable in variables:
             row = summarize(analysis_df, panel, label, variable)
             rows.append(row)
-            body.append(rf"\quad {label} & {row['mean']:.3f} & {row['sd']:.3f} \\")
+            digits = 3
+            if variable in ECONOMIC_OUTCOMES or variable.endswith("_usd"):
+                digits = 2
+            body.append(
+                rf"\quad {label} & {row['mean']:.{digits}f} & {row['sd']:.{digits}f} \\"
+            )
         body.append(r"\midrule \addlinespace[1ex]")
     body.extend(
         [
@@ -81,7 +116,7 @@ def make_table() -> None:
             rf"\quad IFLS5 & & {len(analysis_df[analysis_df['ifls5']]):,}  \\",
             r"\bottomrule",
             r"\end{tabular}",
-            r"\end{adjustbox}",
+            # r"\end{adjustbox}",
         ]
     )
 

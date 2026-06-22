@@ -8,6 +8,13 @@ from analysis.tables_v2.table_e_job_loss_window_robustness import make_table as 
 from analysis.tables_v2.table_f_job_loss_controls import make_table as table_f
 from analysis.tables_v2.table_g_fuel_shock_alt_definitions import make_table as table_g
 from analysis.tables_v2.table_h_sumstats import make_table as table_h
+from analysis.tables_v2.table_i_economics import make_table as table_i
+from analysis.tables_v2.table_j_palm_farmer_selfemp import make_table as table_j
+from analysis.tables_v2.table_k_jobloss_voluntary import make_table as table_k
+from analysis.tables_v2.table_l_temperature_shock_cesd_breakdown import (
+    make_table as table_l,
+)
+
 from library.log import log
 
 
@@ -28,6 +35,14 @@ def main() -> None:
     log("Table G completed")
     table_h()
     log("Table H completed")
+    table_i()
+    log("Table I completed")
+    table_j()
+    log("Table J completed")
+    table_k()
+    log("Table K completed")
+    table_l()
+    log("Table L completed")
 
 
 if __name__ == "__main__":

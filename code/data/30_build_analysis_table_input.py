@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from data.config import GENERATED_DATA, IDR_2007_TO_2014_INFLATOR
-from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA
+from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA, CURRENCY_CONVERSIONS_SCHEMA
 from library.log import log
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
@@ -23,23 +23,6 @@ CESD_FACTOR_COLUMNS = [
     "depraffect_z",
     "posaffect_z",
 ]
-
-
-def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    wave4 = (
-        df
-        # Filter to rows where wave = ifls4
-        .query("wave == 'IFLS4'")
-        # Keep pidlink plus IFLS4 baseline worker columns
-        .filter(
-            items=columns + ["pidlink"],
-        )
-        # Add IFLS4 dummy to every column
-        .add_suffix("_ifls4", axis=1)
-        # Rename pidlink back to pidlink (remove suffix)
-        .rename(columns={"pidlink_ifls4": "pidlink"})
-    )
-    return df.merge(wave4, on="pidlink", how="left", validate="m:1")
 
 
 def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -103,6 +86,7 @@ def deflate(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     df["deflator"] = np.where(df.wave == "IFLS4", IDR_2007_TO_2014_INFLATOR, 1)
     for col in columns:
         df[f"{col}_real"] = df[col] * df.deflator
+        df[f"{col}_real_usd"] = df[f"{col}_real"] * df.conversion_factor
     df = df.drop(columns=["deflator"])
     return df
 
@@ -111,10 +95,14 @@ def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
     df = build_core_panel()
+    conversions = CURRENCY_CONVERSIONS_SCHEMA.validate(
+        pd.read_parquet(GENERATED_DATA / "03_currency_conversions.parquet")
+    )
     economic = pd.read_parquet(GENERATED_DATA / "20_economic_exposures.parquet")
     expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
     asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
 
+    df = df.merge(conversions, on=["year", "month"], how="left", validate="m:1")
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
         expenditure,
@@ -156,6 +144,10 @@ def main() -> None:
                 "palm_farmer_hh",
                 "palm_farmer_individual",
                 "fuel_share",
+                "fuel_share_100",
+                "fuel_transport_share",
+                "fuel_share_z",
+                "fuel_transport_share_z",
                 "fuel_share_quartile",
             ],
         )
@@ -198,6 +190,7 @@ def main() -> None:
                 "expenditure_food_total_mo",
                 "expenditure_nonfood_total_mo",
                 "expenditure_total_mo",
+                "expenditure_transport_fuel_total_mo",
             ],
         )
     )

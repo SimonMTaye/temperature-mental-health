@@ -116,47 +116,48 @@ if __name__ == "__main__":
             "no same-month kabupaten observations are available in both waves"
         )
 
+    distribution_panel = (
+        ggplot(df, aes(x="tmean_c"))
+        + geom_histogram(binwidth=0.5)
+        + labs(
+            title="Panel A: Distribution of temperature",
+            x="Daily mean temperature (°C)",
+            y="Observations",
+        )
+        + FIGURE_THEME
+    )
+
     monthly_panel = (
         ggplot(monthly, aes(x="month", y="median_tmean"))
         + geom_errorbar(aes(ymin="p25_tmean", ymax="p75_tmean"), width=0.18)
         + geom_point(size=2.2)
         + scale_x_continuous(breaks=MONTH_BREAKS, limits=(0.5, 12.5))
         + labs(
-            title="Temperature across the year",
+            title="Panel B: Temperature across the year",
             x="Month",
-            y="Daily mean temperature (C)",
+            y="Daily mean temperature (°C)",
         )
         + FIGURE_THEME
     )
 
+    monthly_change = monthly_change[monthly_change["n"] > 1]
     change_panel = (
         ggplot(monthly_change, aes(x="month", y="median_change"))
         + geom_errorbar(aes(ymin="p25_change", ymax="p75_change"), width=0.18)
         + geom_point(size=2.2)
         + scale_x_continuous(breaks=MONTH_BREAKS, limits=(0.5, 12.5))
         + labs(
-            title="Change from IFLS4 to IFLS5",
+            title="Panel C: Change from IFLS4 to IFLS5",
             x="Month",
-            y="Change in Temperature",
+            y="Change in Temperature (°C)",
         )
         + FIGURE_THEME
     )
 
-    distribution_panel = (
-        ggplot(df, aes(x="tmean_c"))
-        + geom_histogram(binwidth=0.5)
-        + labs(
-            title="Distribution of temperature",
-            x="Daily mean temperature (C)",
-            y="Observations",
-        )
-        + FIGURE_THEME
-    )
-
-    ((monthly_panel | change_panel) / distribution_panel).save(
+    (distribution_panel / (monthly_panel | change_panel)).save(
         PDF_OUTPUT, width=9.0, height=8.0
     )
-    ((monthly_panel | change_panel) / distribution_panel).save(
+    (distribution_panel / (monthly_panel | change_panel)).save(
         PNG_OUTPUT, width=9.0, height=8.0, dpi=300
     )
     print(f"wrote {PDF_OUTPUT}")

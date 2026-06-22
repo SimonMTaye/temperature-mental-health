@@ -1,31 +1,35 @@
-import pyfixest as pf
-
+from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
+from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
 from library.specs import analysis_df, JOB_LOSS_MAIN, MAIN_TEMP_MEASURE, FE_WAVE
 from library.dictionary import VARIABLE_LABELS
+from library.render import RegressionSpec
 from library.table_builder import coefficient_rows, make_row
 
-balance_variables_demographic = [
+balance_variables = [
     "age",
     "female",
     "edu_yrs",
     "married",
     "widowed",
+    "cash_transfer_recipient",
+    *ECONOMIC_OUTCOMES,
 ]
 
-TABLE_TEMPLATE = r"""\resizebox{\linewidth}{!}{
+TABLE_TEMPLATE = r"""
 \begin{tabular}{@{}lccccc}
 \toprule
  & & \multicolumn{4}{c}{Regressor} \\
 \cmidrule(lr){3-6}
  & Mean (SD) & Temperature & Job Loss &  Fuel Share &  \shortstack{Vehicle Owners\\Post Subsidy} \\ 
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} 
+ & (1) & (2) & (3) & (4) & (5) \\
 \midrule\addlinespace[2.5pt]
 {coefficient_rows}
 \midrule\addlinespace[2.5pt]
 {observations_row}
 \bottomrule
 \end{tabular}
-}
 """
 
 # Goal is a balance table
@@ -41,44 +45,57 @@ TABLE_TEMPLATE = r"""\resizebox{\linewidth}{!}{
 
 
 def make_table() -> None:
+    balance_df = analysis_df.copy()
+    for variable in ECONOMIC_OUTCOMES:
+        balance_df[variable] = winsorized(balance_df[variable])
+        if "usd" not in variable:
+            balance_df[variable] = (
+                balance_df[variable] / 1000
+            )  # rescale to thousands of IDR
+
     rows = {}
     observation_row = []
-    for balance_variable in balance_variables_demographic:
+    for balance_variable in balance_variables:
         term_data = []
         term_data.append(
             (
-                analysis_df[balance_variable].mean(),
-                analysis_df[balance_variable].std(),
+                balance_df[balance_variable].mean(),
+                balance_df[balance_variable].std(),
                 0,
             ),
         )
-        observation_row.append(len(analysis_df))
+        observation_row.append(len(balance_df))
 
         tests = [
-            (MAIN_TEMP_MEASURE, analysis_df),
-            (JOB_LOSS_MAIN, analysis_df),
-            ("fuel_share_ifls4", analysis_df),
+            (MAIN_TEMP_MEASURE, balance_df),
+            (JOB_LOSS_MAIN, balance_df),
+            ("fuel_share_100_ifls4", balance_df),
             (
                 "post_subsidy",
-                analysis_df[
-                    analysis_df["ifls5"] & (analysis_df["urban_vehicle_hh_ifls4"] == 1)
+                balance_df[
+                    balance_df["ifls5"] & (balance_df["urban_vehicle_hh_ifls4"] == 1)
                 ].copy(),
             ),
         ]
         for term, data in tests:
-            result = pf.feols(
-                f"{balance_variable} ~ {term} | {FE_WAVE}",
-                data=data,
-                vcov={"CRV1": "gadm_fullcode"},
+            spec = RegressionSpec(
+                title=f"{balance_variable} balance on {term}",
+                formula=f"{balance_variable} ~ {term} | {FE_WAVE}",
+                df=data,
+                tags=frozenset(),
+                show_terms=frozenset([term]),
+            )
+            result = run_regression_with_caching(
+                spec,
             )
             term_data.append(
                 (
-                    float(result.coef().loc[term]),
-                    float(result.se().loc[term]),
-                    float(result.pvalue().loc[term]),
+                    float(result.coef_table.loc[term, "b"]),
+                    float(result.coef_table.loc[term, "se"]),
+                    float(result.coef_table.loc[term, "p"]),
                 )
             )
-            observation_row.append(int(result._N))
+            observation_row.append(int(result.stats["N"]))
         rows[VARIABLE_LABELS[balance_variable]] = term_data
 
     coef_rows = []
