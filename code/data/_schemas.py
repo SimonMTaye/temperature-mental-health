@@ -483,6 +483,10 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "expenditure_nonfood_transport_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
+        # IFLS5 amount paid on the household's last vehicle-fuel purchase.
+        "expenditure_nonfood_vehicle_fuel_mo": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
         # Monthly household child-education spending from KS0 annual items.
         "expenditure_nonfood_children_education_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
@@ -514,9 +518,9 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "fuel_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
-        # Fuel spending share expressed in percentage points.
-        "fuel_share_100": pa.Column(
-            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        # IFLS5 last vehicle-fuel purchase divided by monthly household spending.
+        "vehicle_fuel_share": pa.Column(
+            float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
         # Transportation spending divided by total monthly household spending.
         "transport_share": pa.Column(
@@ -525,6 +529,19 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         # Fuel plus transportation spending divided by total monthly household spending.
         "fuel_transport_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
+        # Fuel spending share expressed in percentage points.
+        "fuel_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
+        "vehicle_fuel_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
+        "transport_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
+        "fuel_transport_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
         ),
         # Full-sample z-scores of spending shares.
         "transport_share_z": pa.Column(float, nullable=True, coerce=True),
@@ -1129,6 +1146,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
         "expenditure_nonfood_fuel_mo_real": pa.Column(
+            float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        ),
+        "expenditure_nonfood_vehicle_fuel_mo_real": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
         "expenditure_food_total_mo_real": pa.Column(

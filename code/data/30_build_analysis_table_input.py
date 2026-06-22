@@ -46,7 +46,6 @@ def build_core_panel() -> pd.DataFrame:
     """Merge person, CES-D, covariate, and processed temperature inputs."""
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
     ces = pd.read_parquet(GENERATED_DATA / "24_cesd_scores.parquet")
-    ces = pd.read_parquet(GENERATED_DATA / "24_cesd_scores.parquet")
     stress = pd.read_parquet(GENERATED_DATA / "22_stressors.parquet")
     temp = pd.read_parquet(GENERATED_DATA / "26_processed_temperature_data.parquet")
 
@@ -187,6 +186,7 @@ def main() -> None:
                 "job_earnings_hh",
                 "hh_nonlabor_income_mo",
                 "expenditure_nonfood_fuel_mo",
+                "expenditure_nonfood_vehicle_fuel_mo",
                 "expenditure_food_total_mo",
                 "expenditure_nonfood_total_mo",
                 "expenditure_total_mo",

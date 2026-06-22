@@ -10,6 +10,8 @@ FE_WAVE = "month+year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month+year+gadm_fullcode"
 MAIN_TEMP_MEASURE = "tmean_7d"
 JOB_LOSS_MAIN = "job_loss_180d"
+FUEL_SHARE_MAIN = "vehicle_fuel_share_100"
+FUEL_SHARE_MAIN_SUMSTATS = FUEL_SHARE_MAIN
 
 
 def update_formula_search_replace(
@@ -78,7 +80,7 @@ palm_shock = RegressionSpec(
 
 fuel_shock_fuel_share = RegressionSpec(
     title="Fuel Cut - Fuel Share",
-    formula=f"cesd_z ~ fuel_share_100_ifls4 * post_subsidy * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
+    formula=f"cesd_z ~ {FUEL_SHARE_MAIN} * post_subsidy * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=wave5_df,
     tags=frozenset(["fuel-shock", "mean-daily-temp"]),
     show_terms=frozenset([f"fuel_share_100_ifls4:post_subsidy:{MAIN_TEMP_MEASURE}"]),

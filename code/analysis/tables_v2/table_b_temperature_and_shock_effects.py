@@ -18,6 +18,7 @@ from library.specs import (
     palm_shock,
     palm_shock_panel,
     update_formula_search_replace,
+    FUEL_SHARE_MAIN,
 )
 from library.table_builder import make_row, coefficient_rows
 
@@ -63,7 +64,7 @@ TABLE_SPECS = [
     },
     {
         "spec": fuel_shock_fuel_share,
-        "group": "fuel_share_100_ifls4",
+        "group": FUEL_SHARE_MAIN,
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
         "label": r"\shortstack{Fuel Cut\\Fuel Share}",

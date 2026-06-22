@@ -11,6 +11,7 @@ on the field's width:
   3       998            999
   4       9998           9999
   5       99998          99999
+  6       999998         999999
   8       99999998       99999999    (monetary "Rp." 8-digit)
   9       999999998      999999999   (monetary 9-digit)
   10      9999999998     9999999999  (monetary 10-digit)
@@ -39,6 +40,7 @@ _SENTINELS_BY_DIGITS: dict[int, set[float]] = {
     3:  {998, 999},
     4:  {9998, 9999},
     5:  {99998, 99999},
+    6:  {999998, 999999},
     8:  {99999998, 99999999},
     9:  {999999998, 999999999},
     10: {9999999998, 9999999999},
@@ -47,6 +49,7 @@ _SENTINELS_BY_DIGITS: dict[int, set[float]] = {
 # Pooled supersets for common variable types
 _MONEY_SENTINELS = (
     _SENTINELS_BY_DIGITS[5]
+    | _SENTINELS_BY_DIGITS[6]
     | _SENTINELS_BY_DIGITS[8]
     | _SENTINELS_BY_DIGITS[9]
     | _SENTINELS_BY_DIGITS[10]
@@ -67,7 +70,7 @@ def clean_categorical(s: pd.Series, digits: int = 2) -> pd.Series:
 
 
 def clean_money(s: pd.Series) -> pd.Series:
-    """Mask all IFLS monetary sentinels (5-, 8-, 9-, 10-digit) as NaN."""
+    """Mask all IFLS monetary sentinels (5-, 6-, 8-, 9-, 10-digit) as NaN."""
     s = pd.to_numeric(s, errors="coerce")
     return s.where(~s.isin(_MONEY_SENTINELS))
 
