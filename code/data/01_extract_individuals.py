@@ -605,6 +605,36 @@ def parse_ifls5_survey_info() -> pd.DataFrame:
     return survey_info[DATE_COLUMNS]
 
 
+def community_hh_map() -> pd.DataFrame:
+    """
+    Returns a tuple of two DataFrames:
+    1. A DataFrame mapping community IDs to household IDs for IFLS4 and IFLS5.
+    2. A DataFrame mapping community IDs to household IDs for IFLS5 only.
+    """
+    htrack_data = read_stata_df(
+        Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "htrack.dta",
+        convert_categoricals=False,
+    )
+    ifls4_map = htrack_data[["commid07hhid07"]].copy()
+    ifls4_map = ifls4_map.rename(columns={"commid07": "community_id", "hhid07": "hhid"})
+    ifls4_map["wave"] = "IFLS4"
+    ifls5_map = htrack_data[["commid14, hhid14"]].copy()
+    ifls5_map = ifls5_map.rename(columns={"commid14": "community_id", "hhid14": "hhid"})
+    ifls5_map["wave"] = "IFLS5"
+    for ifls in ifls4_map, ifls5_map:
+        # Drop duplicates
+        ifls = ifls.drop_duplicates(subset=["community_id", "hhid"])
+        # Drop instances where hhid07 is missing
+        ifls = ifls.dropna(subset=["hhid"])
+        # Assert map is one to one
+        assert ifls.groupby("hhid")["community_id"].nunique().max() == 1
+    community_hh_map: pd.DataFrame = pd.concat(
+        [ifls4_map, ifls5_map], ignore_index=True
+    )
+
+    return community_hh_map
+
+
 def main() -> None:
     survey_datetime_ifls4 = parse_ifls4_survey_info()
     survey_datetime_ifls5 = parse_ifls5_survey_info()
@@ -625,10 +655,11 @@ def main() -> None:
         kabupaten_full_code=lambda df: df.gadm_fullcode.astype(int) // 1000,
         kecamatan_full_code=lambda df: df.gadm_fullcode.astype(int),
     )
+    community_map = community_hh_map()
 
     out = survey_both.merge(
         geo_both, on=["hhid", "wave"], how="left", validate="many_to_one"
-    )
+    ).merge(community_map, on=["hhid", "wave"], how="left", validate="many_to_one")
 
     # Validate against schema
     out = INDIVIDUALS_SCHEMA.validate(out)

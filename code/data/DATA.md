@@ -76,8 +76,8 @@ when the interface fits.
 - `01_extract_individuals.py`: builds person-wave IFLS4/IFLS5 interview records
   with dates and normalized admin codes.
 - `02_build_geography.py`: builds the kabupaten polygon/centroid lookup from
-  BPS and GADM sources.
-- `03_community_info.py`: reshapes community travel distance, cost, time, and
+- `03_extract_conversions.py`: extract and tidies IMF currency data
+- `04_community_info.py`: reshapes community travel distance, cost, time, and
   method for markets and district/provincial capitals.
 - `10_fetch_temperature_gee.py`: pulls ERA5-Land daily polygon-mean temperature
   and weather variables.

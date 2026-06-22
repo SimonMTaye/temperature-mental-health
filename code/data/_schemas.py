@@ -82,6 +82,8 @@ INDIVIDUALS_SCHEMA = pa.DataFrameSchema(
         "kecamatan_code_map": pa.Column(str, nullable=False, coerce=True),
         # IFLS survey wave for the person record.
         "wave": _wave_column(),
+        # Community ID
+        "community_id": pa.Column(str, nullable=False, coerce=True),
     },
     strict=True,
     unique=["pidlink", "wave"],
