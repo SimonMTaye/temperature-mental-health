@@ -77,6 +77,8 @@ when the interface fits.
   with dates and normalized admin codes.
 - `02_build_geography.py`: builds the kabupaten polygon/centroid lookup from
   BPS and GADM sources.
+- `03_community_info.py`: reshapes community travel distance, cost, time, and
+  method for markets and district/provincial capitals.
 - `10_fetch_temperature_gee.py`: pulls ERA5-Land daily polygon-mean temperature
   and weather variables.
 - `11_fetch_temperature_hourly_gee.py`: builds ERA5-Land hourly temperature and

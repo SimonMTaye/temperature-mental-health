@@ -82,6 +82,7 @@ PIPELINE_LAYERS: tuple[tuple[PipelineStep, ...], ...] = (
     (
         PipelineStep("01_extract_individuals", "individuals"),
         PipelineStep("02_build_geography", "geography"),
+        PipelineStep("03_community_info", "community travel information"),
         PipelineStep("03_extract_conversions", "currency conversions"),
     ),
     # (
