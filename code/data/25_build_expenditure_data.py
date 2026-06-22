@@ -248,6 +248,7 @@ def compute_transport_share(expenditure: pd.DataFrame) -> pd.DataFrame:
     expenditure["fuel_share"] = (
         expenditure.expenditure_nonfood_fuel_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)
+    expenditure["fuel_share_100"] = expenditure["fuel_share"] * 100
     expenditure["fuel_transport_share"] = (
         expenditure.expenditure_transport_fuel_total_mo / total_expenditure
     ).replace([np.inf, -np.inf], np.nan)

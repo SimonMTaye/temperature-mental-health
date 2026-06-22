@@ -69,7 +69,7 @@ def make_table() -> None:
         tests = [
             (MAIN_TEMP_MEASURE, balance_df),
             (JOB_LOSS_MAIN, balance_df),
-            ("fuel_share_z_ifls4", balance_df),
+            ("fuel_share_100_ifls4", balance_df),
             (
                 "post_subsidy",
                 balance_df[

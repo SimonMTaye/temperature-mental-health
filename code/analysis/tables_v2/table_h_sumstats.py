@@ -54,7 +54,7 @@ PANELS = [
                 "expenditure_nonfood_total_mo_real_usd",
             ),
             ("Monthly Food Expenditure (USD)", "expenditure_food_total_mo_real_usd"),
-            ("Share of Expenditure on Fuel", "fuel_share"),
+            (r"Fuel Share (\% of Monthly Expenditure)", "fuel_share_100"),
         ],
     ),
 ]

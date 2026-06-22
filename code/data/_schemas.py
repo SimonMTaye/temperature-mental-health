@@ -514,6 +514,10 @@ EXPENDITURE_DATA_SCHEMA = pa.DataFrameSchema(
         "fuel_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
         ),
+        # Fuel spending share expressed in percentage points.
+        "fuel_share_100": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
+        ),
         # Transportation spending divided by total monthly household spending.
         "transport_share": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
@@ -1179,6 +1183,9 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "palm_farmer_individual_ifls4": _binary_column(nullable=True),
         "fuel_share_ifls4": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True
+        ),
+        "fuel_share_100_ifls4": pa.Column(
+            float, checks=pa.Check.between(0, 100), nullable=True, coerce=True
         ),
         "fuel_transport_share_ifls4": pa.Column(
             float, checks=pa.Check.between(0, 1), nullable=True, coerce=True

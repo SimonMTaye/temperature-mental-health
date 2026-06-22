@@ -13,11 +13,11 @@ earnings_variable = "job_earnings_hh_real_usd"
 outcome_dict = {
     "palm_farmer_hh_ifls4": earnings_variable,
     "palm_price_gap_z": earnings_variable,
-    # "fuel_share_ifls4": "expenditure_nonfood_total_mo_real",
+    # "fuel_share_100_ifls4": "expenditure_nonfood_total_mo_real",
     # "fuel_share_z_ifls4": "expenditure_nonfood_total_mo_real",
     # "fuel_transport_share_ifls4": "expenditure_nonfood_total_mo_real",
     # "fuel_transport_share_z_ifls4": "expenditure_nonfood_total_mo_real",
-    "fuel_share_ifls4": expenditure_variable,
+    "fuel_share_100_ifls4": expenditure_variable,
     "fuel_share_z_ifls4": expenditure_variable,
     "fuel_transport_share_ifls4": expenditure_variable,
     "fuel_transport_share_z_ifls4": expenditure_variable,
@@ -73,7 +73,7 @@ def make_specs():
     no_transfer_df = fuel_share_spec.df[
         fuel_share_spec.df["cash_transfer_recipient"].eq(0)  # ty:ignore[invalid-argument-type]
     ].copy()  # ty:ignore[unresolved-attribute]
-    outcome = outcome_dict["fuel_share_z_ifls4"]
+    outcome = outcome_dict["fuel_share_100_ifls4"]
     dv_mean = no_transfer_df[outcome].mean()
     no_transfer_spec = replace(
         fuel_share_spec,

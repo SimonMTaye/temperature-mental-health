@@ -115,6 +115,7 @@ VARIABLE_LABELS: dict[str, str] = {
     "expenditure_total_mo_real_usd": "Monthly Expenditure (USD)",
     "expenditure_nonfood_total_mo_real_usd": "Nonfood Expenditure (USD)",
     "expenditure_transport_fuel_total_mo_real_usd": "Monthly Transport Expenditure (USD)",
+    "expenditure_transport_fuel_total_mo_real_usd_asinh": "Monthly Transport Spending (USD, asinh)",
 }
 
 HEAT_TERMS = [

@@ -63,7 +63,7 @@ TABLE_SPECS = [
     },
     {
         "spec": fuel_shock_fuel_share,
-        "group": "fuel_share_ifls4",
+        "group": "fuel_share_100_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
         "label": r"\shortstack{Fuel Cut\\Fuel Share}",
