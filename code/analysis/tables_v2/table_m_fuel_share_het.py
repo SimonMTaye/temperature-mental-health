@@ -12,16 +12,10 @@ from library.render import make_shock_regression_table_trimmed, render_table_to_
 
 def make_table() -> None:
     wave5 = analysis_df.copy().query("wave == 'IFLS5'")
-    valid_transfer = [
-        "cash_transfer_health_card",
-        "cash_transfer_dana_sehat",
-        "cash_transfer_poverty_certificate",
-        "cash_transfer_blt_blsm_card",
-    ]
-    transfer_recipient = wave5[valid_transfer].any(axis=1)
-    transfer_recipient_ifls4 = wave5[
-        [f"{transfer}_ifls4" for transfer in valid_transfer]
-    ].any(axis=1)
+    transfer_recipient = wave5["cash_transfer_recipient"].fillna(0).astype(bool)
+    transfer_recipient_ifls4 = (
+        wave5["cash_transfer_recipient_ifls4"].fillna(0).astype(bool)
+    )
     wave5 = wave5.assign(
         fuel_share_recipient=(wave5["fuel_transport_share_100"] * transfer_recipient),
         fuel_share_nonrecipient=(

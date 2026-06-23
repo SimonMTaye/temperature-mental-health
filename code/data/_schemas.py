@@ -1053,7 +1053,7 @@ ASSET_EXPENDITURE_SCHEMA = pa.DataFrameSchema(
         "vehicle_owner": _binary_column(),
         "urban": _binary_column(),
         "urban_vehicle_hh": _binary_column(),
-        "cash_transfer_recipient": _binary_column(nullable=True),
+        "cash_transfer_recipient": _binary_column(),
         **{col: _binary_column(nullable=True) for col in CASH_TRANSFER_CARD_COLUMNS},
         "hh_nonlabor_income_mo": pa.Column(
             float, checks=pa.Check.ge(0), nullable=False, coerce=True

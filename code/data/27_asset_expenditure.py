@@ -45,6 +45,10 @@ CASH_TRANSFER_CARD_FIELDS = {
     "kr27k": "cash_transfer_family_card",
 }
 CASH_TRANSFER_CARD_COLUMNS = list(CASH_TRANSFER_CARD_FIELDS.values())
+CASH_TRANSFER_RECIPIENT_COLUMNS = [
+    "any_cash_transfer_ksr",
+    "cash_transfer_blt_blsm_card",
+]
 
 
 def _clean_binary_response(values: pd.Series) -> pd.Series:
@@ -58,14 +62,6 @@ def _collapse_binary_response(values: pd.Series) -> object:
     if clean.isna().any():
         return pd.NA
     return 0
-
-
-def _any_nullable_binary(df: pd.DataFrame, columns: list[str]) -> pd.Series:
-    values = df[columns].astype("Int32")
-    out = pd.Series(0, index=df.index, dtype="Int32")
-    out[values.isna().any(axis=1)] = pd.NA
-    out[values.eq(1).any(axis=1)] = 1
-    return out
 
 
 def _farm_profit(wave: str) -> pd.DataFrame:
@@ -159,7 +155,9 @@ def _cash_transfer_from_frames(
         if col not in out.columns:
             out[col] = pd.Series(0, index=out.index, dtype="Int32")
         out[col] = out[col].astype("Int32")
-    out["cash_transfer_recipient"] = _any_nullable_binary(out, component_cols)
+    out["cash_transfer_recipient"] = (
+        out[CASH_TRANSFER_RECIPIENT_COLUMNS].fillna(0).max(axis=1).astype("Int32")
+    )
     out["wave"] = wave
     return out
 
@@ -169,8 +167,11 @@ def _fill_household_binary_exposures(out: pd.DataFrame) -> pd.DataFrame:
         vehicle_owner=lambda df: df.vehicle_owner.fillna(0).astype(int),
         urban=lambda df: df.urban.fillna(0).astype(int),
         urban_vehicle_hh=lambda df: df.urban * df.vehicle_owner,
+        cash_transfer_recipient=lambda df: df.cash_transfer_recipient.fillna(0).astype(
+            "Int32"
+        ),
     )
-    for col in ["cash_transfer_recipient", *CASH_TRANSFER_CARD_COLUMNS]:
+    for col in CASH_TRANSFER_CARD_COLUMNS:
         out[col] = out[col].astype("Int32")
     return out
 

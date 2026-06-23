@@ -11,14 +11,14 @@ from library.render import make_shock_regression_table_trimmed, render_table_to_
 
 def make_table() -> None:
     wave5 = analysis_df.copy().query("wave == 'IFLS5'")
-    urban_vehicle = wave5["urban_vehicle_hh_ifls4"].fillna(0).astype(bool)
-    transfer_recipient = wave5["cash_transfer_recipient"].fillna(0).astype(bool)
+    urban_vehicle = wave5["urban_vehicle_hh_ifls4"]
+    transfer_recipient = wave5["cash_transfer_recipient"]
     wave5 = wave5.assign(
         urban_vehicle_transfer_recipient_ifls4=(
-            urban_vehicle & transfer_recipient
+            urban_vehicle * transfer_recipient
         ).astype("Int32"),
         urban_vehicle_transfer_nonrecipient_ifls4=(
-            urban_vehicle & ~transfer_recipient
+            urban_vehicle * (1 - transfer_recipient)
         ).astype("Int32"),
     )
     groups = [

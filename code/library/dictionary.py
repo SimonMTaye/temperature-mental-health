@@ -85,6 +85,7 @@ VARIABLE_LABELS: dict[str, str] = {
     "nonlabor_real_w": "Real nonlabor income",
     "transport_real_w": "Real transport spending",
     "expenditure_transport_fuel_total_mo": "Monthly Spending on Transportation (IDR 1,000)",
+    "vehicle_fuel_quantity_liters": "Vehicle fuel quantity (liters)",
     "fuel_share": "Fuel budget share",
     "transport_share": "Transport budget share",
     "fuel_transport_share": "Fuel + transport budget share",

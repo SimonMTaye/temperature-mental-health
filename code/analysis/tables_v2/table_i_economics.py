@@ -3,22 +3,19 @@ from dataclasses import replace
 import pandas as pd
 
 from library.render import make_regression_table, render_table_to_latex, RegressionSpec
-from library.specs import JOB_LOSS_MAIN, CONTROLS, FE_NO_WAVE, FUEL_SHARE_MAIN
+from library.specs import JOB_LOSS_MAIN, CONTROLS, FE_NO_WAVE
 from library.config import TABLE_OUTPUT
 from analysis.tables_v2.table_b_temperature_and_shock_effects import TABLE_SPECS
 
-# Should contain "expenditure" for fuel share groups or "job_income_hh" for palm shock / job loss groups
-expenditure_variable = "expenditure_transport_fuel_total_mo_real_usd"
+# Should contain vehicle fuel quantity for urban vehicle groups or "job_income_hh" for palm shock / job loss groups
+vehicle_fuel_quantity_variable = "vehicle_fuel_quantity_liters"
 earnings_variable = "job_earnings_hh_real_usd"
 outcome_dict = {
     "palm_farmer_hh_ifls4": earnings_variable,
     "palm_price_gap_z": earnings_variable,
-    # "fuel_share_100_ifls4": "expenditure_nonfood_total_mo_real",
-    # "fuel_share_z_ifls4": "expenditure_nonfood_total_mo_real",
-    # "fuel_transport_share_ifls4": "expenditure_nonfood_total_mo_real",
-    # "fuel_transport_share_z_ifls4": "expenditure_nonfood_total_mo_real",
-    FUEL_SHARE_MAIN: expenditure_variable,
-    "urban_vehicle_hh_ifls4": expenditure_variable,
+    "urban_vehicle_hh_ifls4": vehicle_fuel_quantity_variable,
+    "urban_vehicle_transfer_nonrecipient_ifls4": vehicle_fuel_quantity_variable,
+    "urban_vehicle_transfer_recipient_ifls4": vehicle_fuel_quantity_variable,
     JOB_LOSS_MAIN: earnings_variable,
 }
 ECONOMIC_OUTCOMES = tuple(dict.fromkeys(outcome_dict.values()))
@@ -43,8 +40,6 @@ def make_specs():
         assert isinstance(old_spec, RegressionSpec)
         df = old_spec.df.copy()  # ty:ignore[unresolved-attribute]
         df[outcome] = winsorized(df[outcome])
-        if "usd" not in outcome:
-            df[outcome] = df[outcome] / 1000  # rescale to thousands of IDR
         dv_mean = df[outcome].mean()
         # If jobloss spec, then no post so handle that
         rhs = group if post is None else f"{group} * {post}"
@@ -63,7 +58,7 @@ def make_specs():
                 "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
             )
         )
-    order = [0, 1, 2, 5, 3, 4]  # move job loss specs to the end
+    order = [0, 1, 2, 6, 3, 4, 5]
     reordered_specs = [economic_specs[i] for i in order]
     return reordered_specs
 

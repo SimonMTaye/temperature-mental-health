@@ -6,7 +6,6 @@ from library.specs import (
     JOB_LOSS_MAIN,
     MAIN_TEMP_MEASURE,
     FE_WAVE,
-    FUEL_SHARE_MAIN,
 )
 from library.dictionary import VARIABLE_LABELS
 from library.render import RegressionSpec
@@ -23,13 +22,13 @@ balance_variables = [
 ]
 
 TABLE_TEMPLATE = r"""
-\begin{tabular}{@{}lccccc}
+\begin{tabular}{@{}lcccc}
 \toprule
- & & \multicolumn{4}{c}{Regressor} \\
-\cmidrule(lr){3-6}
- & Mean (SD) & Temperature & Job Loss &  Fuel Share &  \shortstack{Vehicle Owners\\Post Subsidy} \\ 
-\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} 
- & (1) & (2) & (3) & (4) & (5) \\
+ & & \multicolumn{3}{c}{Regressor} \\
+\cmidrule(lr){3-5}
+ & Mean (SD) & Temperature & Job Loss & \shortstack{Vehicle Owners\\Post Subsidy} \\ 
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} 
+ & (1) & (2) & (3) & (4) \\
 \midrule\addlinespace[2.5pt]
 {coefficient_rows}
 \midrule\addlinespace[2.5pt]
@@ -45,7 +44,6 @@ TABLE_TEMPLATE = r"""
 #   Temperature -> MAIN_TEMPERATURE_MEASURE
 #   Job Loss -> JOB_LOSS_MAIN
 #   Palm Farmers -> palm_farmer_hh_ifls4
-#   Fuel Share -> fuel_share_ifls4
 #   Urban Vehicle Owners (coefficient, se, p-value) -> urban_vehicle_hh_ifls4
 #   Post Subsidy -> post_subsidy (data should be limited to wave 5)
 
@@ -75,7 +73,6 @@ def make_table() -> None:
         tests = [
             (MAIN_TEMP_MEASURE, balance_df),
             (JOB_LOSS_MAIN, balance_df),
-            (FUEL_SHARE_MAIN, balance_df),
             (
                 "post_subsidy",
                 balance_df[

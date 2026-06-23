@@ -12,13 +12,12 @@ from library.config import TABLE_OUTPUT
 from library.specs import (
     JOB_LOSS_MAIN,
     MAIN_TEMP_MEASURE,
-    fuel_shock_fuel_share,
     fuel_shock_urban_vehicle,
+    wave5_df,
     jobloss,
     palm_shock,
     palm_shock_panel,
     update_formula_search_replace,
-    FUEL_SHARE_MAIN,
 )
 from library.table_builder import make_row, coefficient_rows
 
@@ -31,6 +30,35 @@ PALM_PRICE_SHOCK = update_formula_search_replace(
     palm_shock,
     "palm_farmer_hh_ifls4",
     "palm_price_gap_z",
+)
+
+urban_vehicle = wave5_df["urban_vehicle_hh_ifls4"]
+transfer_recipient = wave5_df["cash_transfer_recipient"]
+wave5 = wave5_df.assign(
+    urban_vehicle_transfer_recipient_ifls4=(urban_vehicle * transfer_recipient).astype(
+        "Int32"
+    ),
+    urban_vehicle_transfer_nonrecipient_ifls4=(
+        urban_vehicle * (1 - transfer_recipient)
+    ).astype("Int32"),
+)
+
+urban_nocash = replace(
+    update_formula_search_replace(
+        fuel_shock_urban_vehicle,
+        "urban_vehicle_hh_ifls4",
+        "urban_vehicle_transfer_nonrecipient_ifls4",
+    ),
+    df=wave5,
+)
+
+urban_cash = replace(
+    update_formula_search_replace(
+        fuel_shock_urban_vehicle,
+        "urban_vehicle_hh_ifls4",
+        "urban_vehicle_transfer_recipient_ifls4",
+    ),
+    df=wave5,
 )
 
 TABLE_SPECS = [
@@ -60,14 +88,21 @@ TABLE_SPECS = [
         "group": "urban_vehicle_hh_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
-        "label": r"\shortstack{Fuel Cut\\Urban Vehicle Owners}",
+        "label": r"Urban Vehicle Owners",
     },
     {
-        "spec": fuel_shock_fuel_share,
-        "group": FUEL_SHARE_MAIN,
+        "spec": urban_nocash,
+        "group": "urban_vehicle_transfer_nonrecipient_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
-        "label": r"\shortstack{Fuel Cut\\Fuel Share}",
+        "label": r"\shortstack{Urban Vehicle Owners\\No Cash Transfer}",
+    },
+    {
+        "spec": urban_cash,
+        "group": "urban_vehicle_transfer_recipient_ifls4",
+        "post": "post_subsidy",
+        "heat": MAIN_TEMP_MEASURE,
+        "label": r"\shortstack{Urban Vehicle Owners\\Cash Transfer}",
     },
     {
         "spec": jobloss,
@@ -80,23 +115,23 @@ TABLE_SPECS = [
 
 # \resizebox{\linewidth}{!}{%
 TABLE_TEMPLATE = r"""
-\begin{tabular}{@{}lcccccc}
+\begin{tabular}{@{}lccccccc}
 \toprule
- & \multicolumn{6}{c}{CES-D z-score} \\
-\cmidrule(lr){2-7}
- & Palm Shock & \shortstack{Palm Shock\\Panel} & \shortstack{Palm Shock\\Price Drop} & \shortstack{Fuel Cut\\Urban Vehicle Owners} & \shortstack{Fuel Cut\\Fuel Share} &  Job Loss \\
-\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} \cmidrule(lr){7-7}
- & (1) & (2) & (3) & (4) & (5) & (6) \\
+ & \multicolumn{7}{c}{CES-D z-score} \\
+\cmidrule(lr){2-8}
+ & Palm Shock & \shortstack{Palm Shock\\Panel} & \shortstack{Palm Shock\\Price Drop} & Urban Vehicle Owners & \shortstack{Urban Vehicle Owners\\No Cash Transfer} & \shortstack{Urban Vehicle Owners\\Cash Transfer} & Job Loss \\
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} \cmidrule(lr){7-7} \cmidrule(lr){8-8}
+ & (1) & (2) & (3) & (4) & (5) & (6) & (7) \\
 \midrule\addlinespace[2.5pt]
 {temperature_panel}
 \midrule\addlinespace[2.5pt]
 {wetbulb_panel}
 \midrule\addlinespace[2.5pt]
-Kecamatan & x & x & x & x & x & x \\
-Wave & x & x & x & - & - & x \\
-Month & x & x & x & x & x & x \\
-Individual & - & x & - & - & - & - \\
-Year  & x & x & x & x & x & x \\
+Kecamatan & x & x & x & x & x & x & x \\
+Wave & x & x & x & - & - & - & x \\
+Month & x & x & x & x & x & x & x \\
+Individual & - & x & - & - & - & - & - \\
+Year  & x & x & x & x & x & x & x \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
 {group_mean_row}
@@ -200,7 +235,7 @@ def panel_rows(label: str, models) -> str:
     )
     return "\n".join(
         [
-            rf"\multicolumn{{7}}{{l}}{{\text{{{label}}}}} \\",
+            rf"\multicolumn{{8}}{{l}}{{\text{{{label}}}}} \\",
             r"\midrule",
             differential_coefs,
             differential_ses,
