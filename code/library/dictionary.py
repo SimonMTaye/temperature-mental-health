@@ -116,6 +116,12 @@ VARIABLE_LABELS: dict[str, str] = {
     "expenditure_nonfood_total_mo_real_usd": "Nonfood Expenditure (USD)",
     "expenditure_transport_fuel_total_mo_real_usd": "Monthly Transport Expenditure (USD)",
     "expenditure_transport_fuel_total_mo_real_usd_asinh": "Monthly Transport Spending (USD, asinh)",
+    "travel_market_distance": "Market Distance (km)",
+    "travel_market_distance_z": "Market Distance (z-score)",
+    "travel_districtcapital_distance": "District Capital Distance (km)",
+    "travel_districtcapital_distance_z": "District Capital Distance (z-score)",
+    "travel_provincecapital_distance": "Province Distance (km)",
+    "travel_provincecapital_distance_z": "Province Distance (z-score)",
 }
 
 HEAT_TERMS = [

@@ -615,22 +615,23 @@ def community_hh_map() -> pd.DataFrame:
         Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "htrack.dta",
         convert_categoricals=False,
     )
-    ifls4_map = htrack_data[["commid07hhid07"]].copy()
-    ifls4_map = ifls4_map.rename(columns={"commid07": "community_id", "hhid07": "hhid"})
-    ifls4_map["wave"] = "IFLS4"
-    ifls5_map = htrack_data[["commid14, hhid14"]].copy()
-    ifls5_map = ifls5_map.rename(columns={"commid14": "community_id", "hhid14": "hhid"})
-    ifls5_map["wave"] = "IFLS5"
-    for ifls in ifls4_map, ifls5_map:
-        # Drop duplicates
-        ifls = ifls.drop_duplicates(subset=["community_id", "hhid"])
-        # Drop instances where hhid07 is missing
-        ifls = ifls.dropna(subset=["hhid"])
-        # Assert map is one to one
-        assert ifls.groupby("hhid")["community_id"].nunique().max() == 1
-    community_hh_map: pd.DataFrame = pd.concat(
-        [ifls4_map, ifls5_map], ignore_index=True
-    )
+    maps = []
+    for wave, community_column, household_column in [
+        ("IFLS4", "commid07", "hhid07"),
+        ("IFLS5", "commid14", "hhid14"),
+    ]:
+        mapping = (
+            htrack_data[[community_column, household_column]]
+            .rename(
+                columns={community_column: "community_id", household_column: "hhid"}
+            )
+            .dropna()
+            .drop_duplicates()
+        )
+        assert mapping.groupby("hhid")["community_id"].nunique().max() == 1
+        mapping["wave"] = wave
+        maps.append(mapping)
+    return pd.concat(maps, ignore_index=True)
 
     return community_hh_map
 

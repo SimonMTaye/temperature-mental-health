@@ -1,6 +1,6 @@
 """Clean community travel information from IFLS4 and IFLS5.
 
-Output: data/generated/03_community_info.parquet
+Output: data/generated/04_community_info.parquet
 Row level: one community-wave record, keyed by community_id + wave.
 """
 

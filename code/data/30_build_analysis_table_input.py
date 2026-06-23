@@ -23,6 +23,7 @@ CESD_FACTOR_COLUMNS = [
     "depraffect_z",
     "posaffect_z",
 ]
+ALLOWED_TRAVEL_METHODS = {1, 2, 3, 4, 8, 9}
 
 
 def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -90,10 +91,31 @@ def deflate(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return df
 
 
+def add_travel_distance_z_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """Standardize eligible community travel distances within wave."""
+    places = {
+        "market": "market",
+        "districtcapital": "district_capital",
+        "provincecapital": "provincial_capital",
+    }
+    for output_place, source_place in places.items():
+        distance = df[f"community_travel_{source_place}_distance"].where(
+            df[f"community_travel_{source_place}_method"].isin(ALLOWED_TRAVEL_METHODS)
+        )
+        df[f"travel_{output_place}_distance"] = distance.fillna(0)
+        wave_distance = distance.groupby(df["wave"])
+        df[f"travel_{output_place}_distance_z"] = (
+            (distance - wave_distance.transform("mean"))
+            / wave_distance.transform("std")
+        ).fillna(0)
+    return df
+
+
 def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
     df = build_core_panel()
+    community_info = pd.read_parquet(GENERATED_DATA / "04_community_info.parquet")
     conversions = CURRENCY_CONVERSIONS_SCHEMA.validate(
         pd.read_parquet(GENERATED_DATA / "03_currency_conversions.parquet")
     )
@@ -101,6 +123,12 @@ def main() -> None:
     expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
     asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
 
+    df = df.merge(
+        community_info,
+        on=["community_id", "wave"],
+        how="left",
+        validate="m:1",
+    )
     df = df.merge(conversions, on=["year", "month"], how="left", validate="m:1")
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
@@ -144,7 +172,8 @@ def main() -> None:
                 "palm_farmer_individual",
                 "fuel_share",
                 "fuel_share_100",
-                "fuel_transport_share",
+                "fuel_transport_share_100",
+                "transport_share_100",
                 "fuel_share_z",
                 "fuel_transport_share_z",
                 "fuel_share_quartile",
@@ -193,6 +222,7 @@ def main() -> None:
                 "expenditure_transport_fuel_total_mo",
             ],
         )
+        .pipe(add_travel_distance_z_scores)
     )
 
     int_cols = [
