@@ -5,7 +5,7 @@ This table tests whether the effect concentrates in urban+vehicle HHs that did N
 have a cash-transfer buffer (PSKS / BLT card) at the time of the Nov 2014 fuel hike.
 
 Cash-transfer buffer at IFLS5 interview:
-  has_fuel_buffer = (cash_transfer_recipient == 1) OR (blt_card == 1)
+  has_fuel_buffer = cash_transfer_recipient == 1
   no_fuel_buffer  = 1 - has_fuel_buffer
 
 Specifications (IFLS5 only, kecamatan FE, kabupaten-clustered SE):
@@ -54,10 +54,7 @@ REQUIRED_BASE = [
 def build_buffer_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["cash_transfer_recipient"] = df["cash_transfer_recipient"].fillna(0).astype(int)
-    df["blt_card"] = df["blt_card"].fillna(0).astype(int)
-    df["has_fuel_buffer"] = (
-        ((df["cash_transfer_recipient"] == 1) | (df["blt_card"] == 1))
-    ).astype(int)
+    df["has_fuel_buffer"] = (df["cash_transfer_recipient"] == 1).astype(int)
     df["no_fuel_buffer"] = (1 - df["has_fuel_buffer"]).astype(int)
     return df
 

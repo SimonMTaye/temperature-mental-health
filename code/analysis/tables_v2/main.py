@@ -14,6 +14,7 @@ from analysis.tables_v2.table_k_jobloss_voluntary import make_table as table_k
 from analysis.tables_v2.table_l_temperature_shock_cesd_breakdown import (
     make_table as table_l,
 )
+from analysis.tables_v2.table_m_fuel_share_het import make_table as table_m
 
 from library.log import log
 
@@ -55,6 +56,9 @@ def main() -> None:
     log("Table L Started")
     table_l()
     log("Table L completed")
+    log("Table M Started")
+    table_m()
+    log("Table M completed")
 
 
 if __name__ == "__main__":

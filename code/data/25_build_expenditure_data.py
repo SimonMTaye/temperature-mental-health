@@ -37,6 +37,7 @@ HHID_COLUMNS = {
 MONTHS_PER_YEAR = 12
 WEEKS_PER_MONTH = 4.33
 COOKING_OIL_FOOD_TYPE = "Y"
+VEHICLE_FUEL_QUANTITY_SENTINELS = {9.98, 98.0, 99.8, 99.98, 999.98}
 
 
 def _grouped_money_sum(
@@ -61,6 +62,11 @@ def _sum_clean_money_columns(df: pd.DataFrame, columns: list[str]) -> pd.Series:
     return cleaned.sum(axis=1, min_count=1)
 
 
+def _clean_vehicle_fuel_quantity(s: pd.Series) -> pd.Series:
+    s = pd.to_numeric(s, errors="coerce")
+    return s.where(~s.isin(VEHICLE_FUEL_QUANTITY_SENTINELS))
+
+
 def vehicle_fuel_expenditure(
     ks4: pd.DataFrame,
     hhid_column: str,
@@ -68,20 +74,53 @@ def vehicle_fuel_expenditure(
     """Build the IFLS5 last-purchase vehicle-fuel expenditure proxy."""
     out = ks4.loc[
         ks4["ks4type"].eq("L"),
-        [hhid_column, "ks13a", "ks15"],
+        [
+            hhid_column,
+            "ks13a",
+            "ks13",
+            "ks14",
+            "ks14a",
+            "ks14b",
+            "ks15",
+            "ks13x",
+        ],
     ].copy()
     out["expenditure_nonfood_vehicle_fuel_mo"] = np.nan
+    out["vehicle_fuel_quantity_liters"] = np.nan
+    out["vehicle_fuel_price_per_litre"] = np.nan
+    purchased_vehicle_fuel = out["ks13a"].eq(1)
     out.loc[
-        out["ks13a"].eq(1),
+        purchased_vehicle_fuel,
         "expenditure_nonfood_vehicle_fuel_mo",
-    ] = clean_money(out.loc[out["ks13a"].eq(1), "ks15"])
+    ] = clean_money(out.loc[purchased_vehicle_fuel, "ks15"])
+    direct_liters = purchased_vehicle_fuel & out["ks13x"].eq(1) & out["ks14"].eq(2)
+    out.loc[direct_liters, "vehicle_fuel_quantity_liters"] = (
+        _clean_vehicle_fuel_quantity(out.loc[direct_liters, "ks13"])
+    )
+    estimated_liters = purchased_vehicle_fuel & ~out["ks14"].eq(2) & out["ks14b"].eq(2)
+    out.loc[estimated_liters, "vehicle_fuel_quantity_liters"] = (
+        _clean_vehicle_fuel_quantity(out.loc[estimated_liters, "ks14a"])
+    )
+    valid_price = purchased_vehicle_fuel & out["vehicle_fuel_quantity_liters"].gt(0)
+    out.loc[valid_price, "vehicle_fuel_price_per_litre"] = (
+        out.loc[valid_price, "expenditure_nonfood_vehicle_fuel_mo"]
+        / out.loc[valid_price, "vehicle_fuel_quantity_liters"]
+    )
     out.loc[
         out["ks13a"].eq(3),
-        "expenditure_nonfood_vehicle_fuel_mo",
+        [
+            "expenditure_nonfood_vehicle_fuel_mo",
+            "vehicle_fuel_quantity_liters",
+        ],
     ] = 0.0
-    return out[[hhid_column, "expenditure_nonfood_vehicle_fuel_mo"]].rename(
-        columns={hhid_column: "hhid"}
-    )
+    return out[
+        [
+            hhid_column,
+            "expenditure_nonfood_vehicle_fuel_mo",
+            "vehicle_fuel_quantity_liters",
+            "vehicle_fuel_price_per_litre",
+        ]
+    ].rename(columns={hhid_column: "hhid"})
 
 
 def food_expenditure(
@@ -263,6 +302,8 @@ def expenditure_data() -> pd.DataFrame:
             )
         else:
             expenditure["expenditure_nonfood_vehicle_fuel_mo"] = np.nan
+            expenditure["vehicle_fuel_quantity_liters"] = np.nan
+            expenditure["vehicle_fuel_price_per_litre"] = np.nan
         expenditure["expenditure_total_mo"] = expenditure[
             ["expenditure_food_total_mo", "expenditure_nonfood_total_mo"]
         ].sum(axis=1, min_count=1)

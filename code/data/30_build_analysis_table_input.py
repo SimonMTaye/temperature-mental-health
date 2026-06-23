@@ -10,10 +10,16 @@ import numpy as np
 import pandas as pd
 
 from data.config import GENERATED_DATA, IDR_2007_TO_2014_INFLATOR
-from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA, CURRENCY_CONVERSIONS_SCHEMA
+from data._schemas import (
+    ANALYSIS_TABLE_INPUT_SCHEMA,
+    CASH_TRANSFER_CARD_COLUMNS,
+    CURRENCY_CONVERSIONS_SCHEMA,
+)
 from library.log import log
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
+REFORM_DATE = pd.Timestamp("2015-01-01")
+
 HAZE_MONTHS = {(2015, 9), (2015, 10), (2015, 11)}
 CESD_FACTOR_COLUMNS = [
     "somatic",
@@ -24,9 +30,25 @@ CESD_FACTOR_COLUMNS = [
     "posaffect_z",
 ]
 ALLOWED_TRAVEL_METHODS = {1, 2, 3, 4, 8, 9}
+IFLS4_COLUMNS = [
+    "urban_vehicle_hh",
+    "coal_worker_hh",
+    "coal_worker_individual",
+    "palm_farmer_hh",
+    "palm_farmer_individual",
+    "fuel_share",
+    "fuel_share_100",
+    "fuel_transport_share_100",
+    "transport_share_100",
+    "fuel_share_z",
+    "fuel_transport_share_z",
+    "fuel_share_quartile",
+    "cash_transfer_recipient",
+    *CASH_TRANSFER_CARD_COLUMNS,
+]
 
 
-def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+def add_ifls4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     wave4 = (
         df
         # Filter to rows where wave = ifls4
@@ -69,6 +91,7 @@ def build_core_panel() -> pd.DataFrame:
     log(f"core analysis sample: {len(df):,} adults")
 
     df["post_subsidy"] = (df.interview_date >= POST_SUBSIDY_DATE).astype(int)
+    df["post_reform"] = (df.interview_date >= REFORM_DATE).astype(int)
     df["haze_2015"] = df.interview_date.apply(
         lambda d: int((d.year, d.month) in HAZE_MONTHS)
     )
@@ -163,21 +186,8 @@ def main() -> None:
 
     df = (
         df.pipe(
-            add_ifsl4_measurements,
-            columns=[
-                "urban_vehicle_hh",
-                "coal_worker_hh",
-                "coal_worker_individual",
-                "palm_farmer_hh",
-                "palm_farmer_individual",
-                "fuel_share",
-                "fuel_share_100",
-                "fuel_transport_share_100",
-                "transport_share_100",
-                "fuel_share_z",
-                "fuel_transport_share_z",
-                "fuel_share_quartile",
-            ],
+            add_ifls4_measurements,
+            columns=IFLS4_COLUMNS,
         )
         .assign(
             female=lambda df: df["sex"].eq("F").astype(int),
