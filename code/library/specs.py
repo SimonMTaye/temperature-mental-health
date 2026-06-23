@@ -10,8 +10,8 @@ FE_WAVE = "month+year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month+year+gadm_fullcode"
 MAIN_TEMP_MEASURE = "tmean_7d"
 JOB_LOSS_MAIN = "job_loss_180d"
-FUEL_SHARE_MAIN = "vehicle_fuel_share_100"
-FUEL_SHARE_MAIN_SUMSTATS = FUEL_SHARE_MAIN
+FUEL_SHARE_MAIN = "fuel_transport_share_100_ifls4"
+FUEL_SHARE_MAIN_SUMSTATS = "fuel_transport_share_100"
 
 
 def update_formula_search_replace(

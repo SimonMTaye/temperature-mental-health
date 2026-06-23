@@ -10,10 +10,16 @@ import numpy as np
 import pandas as pd
 
 from data.config import GENERATED_DATA, IDR_2007_TO_2014_INFLATOR
-from data._schemas import ANALYSIS_TABLE_INPUT_SCHEMA, CURRENCY_CONVERSIONS_SCHEMA
+from data._schemas import (
+    ANALYSIS_TABLE_INPUT_SCHEMA,
+    CASH_TRANSFER_CARD_COLUMNS,
+    CURRENCY_CONVERSIONS_SCHEMA,
+)
 from library.log import log
 
 POST_SUBSIDY_DATE = pd.Timestamp("2014-11-18")
+REFORM_DATE = pd.Timestamp("2015-01-01")
+
 HAZE_MONTHS = {(2015, 9), (2015, 10), (2015, 11)}
 CESD_FACTOR_COLUMNS = [
     "somatic",
@@ -23,9 +29,26 @@ CESD_FACTOR_COLUMNS = [
     "depraffect_z",
     "posaffect_z",
 ]
+ALLOWED_TRAVEL_METHODS = {1, 2, 3, 4, 8, 9}
+IFLS4_COLUMNS = [
+    "urban_vehicle_hh",
+    "coal_worker_hh",
+    "coal_worker_individual",
+    "palm_farmer_hh",
+    "palm_farmer_individual",
+    "fuel_share",
+    "fuel_share_100",
+    "fuel_transport_share_100",
+    "transport_share_100",
+    "fuel_share_z",
+    "fuel_transport_share_z",
+    "fuel_share_quartile",
+    "cash_transfer_recipient",
+    *CASH_TRANSFER_CARD_COLUMNS,
+]
 
 
-def add_ifsl4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+def add_ifls4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     wave4 = (
         df
         # Filter to rows where wave = ifls4
@@ -68,6 +91,7 @@ def build_core_panel() -> pd.DataFrame:
     log(f"core analysis sample: {len(df):,} adults")
 
     df["post_subsidy"] = (df.interview_date >= POST_SUBSIDY_DATE).astype(int)
+    df["post_reform"] = (df.interview_date >= REFORM_DATE).astype(int)
     df["haze_2015"] = df.interview_date.apply(
         lambda d: int((d.year, d.month) in HAZE_MONTHS)
     )
@@ -90,10 +114,31 @@ def deflate(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return df
 
 
+def add_travel_distance_z_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """Standardize eligible community travel distances within wave."""
+    places = {
+        "market": "market",
+        "districtcapital": "district_capital",
+        "provincecapital": "provincial_capital",
+    }
+    for output_place, source_place in places.items():
+        distance = df[f"community_travel_{source_place}_distance"].where(
+            df[f"community_travel_{source_place}_method"].isin(ALLOWED_TRAVEL_METHODS)
+        )
+        df[f"travel_{output_place}_distance"] = distance.fillna(0)
+        wave_distance = distance.groupby(df["wave"])
+        df[f"travel_{output_place}_distance_z"] = (
+            (distance - wave_distance.transform("mean"))
+            / wave_distance.transform("std")
+        ).fillna(0)
+    return df
+
+
 def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
     df = build_core_panel()
+    community_info = pd.read_parquet(GENERATED_DATA / "04_community_info.parquet")
     conversions = CURRENCY_CONVERSIONS_SCHEMA.validate(
         pd.read_parquet(GENERATED_DATA / "03_currency_conversions.parquet")
     )
@@ -101,6 +146,12 @@ def main() -> None:
     expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
     asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
 
+    df = df.merge(
+        community_info,
+        on=["community_id", "wave"],
+        how="left",
+        validate="m:1",
+    )
     df = df.merge(conversions, on=["year", "month"], how="left", validate="m:1")
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
@@ -135,20 +186,8 @@ def main() -> None:
 
     df = (
         df.pipe(
-            add_ifsl4_measurements,
-            columns=[
-                "urban_vehicle_hh",
-                "coal_worker_hh",
-                "coal_worker_individual",
-                "palm_farmer_hh",
-                "palm_farmer_individual",
-                "fuel_share",
-                "fuel_share_100",
-                "fuel_transport_share",
-                "fuel_share_z",
-                "fuel_transport_share_z",
-                "fuel_share_quartile",
-            ],
+            add_ifls4_measurements,
+            columns=IFLS4_COLUMNS,
         )
         .assign(
             female=lambda df: df["sex"].eq("F").astype(int),
@@ -193,6 +232,7 @@ def main() -> None:
                 "expenditure_transport_fuel_total_mo",
             ],
         )
+        .pipe(add_travel_distance_z_scores)
     )
 
     int_cols = [

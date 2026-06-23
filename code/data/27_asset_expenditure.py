@@ -27,6 +27,46 @@ HHID_COLUMNS = {
     "IFLS5": "hhid14",
 }
 
+CASH_TRANSFER_CARD_FIELDS = {
+    "kr26": "cash_transfer_health_card",
+    "kr27": "cash_transfer_dana_sehat",
+    "kr27a": "cash_transfer_poverty_certificate",
+    "kr27b": "cash_transfer_blt_blsm_card",
+    "kr27d": "cash_transfer_bsm",
+    "kr27e": "cash_transfer_jslu",
+    "kr27f": "cash_transfer_disability",
+    "kr27g": "cash_transfer_child_welfare",
+    "kr27h": "cash_transfer_troubled_youth",
+    "kr27i": "cash_transfer_social_security_card",
+    "kr27j1x": "cash_transfer_bpjs_health",
+    "kr27j2x": "cash_transfer_bpjs_accident",
+    "kr27j3x": "cash_transfer_bpjs_retirement",
+    "kr27j4x": "cash_transfer_bpjs_life",
+    "kr27k": "cash_transfer_family_card",
+}
+CASH_TRANSFER_CARD_COLUMNS = list(CASH_TRANSFER_CARD_FIELDS.values())
+
+
+def _clean_binary_response(values: pd.Series) -> pd.Series:
+    return values.map({1: 1, 3: 0, 6: 0, 8: pd.NA, 9: pd.NA}).astype("Int32")
+
+
+def _collapse_binary_response(values: pd.Series) -> object:
+    clean = _clean_binary_response(values)
+    if clean.eq(1).any():
+        return 1
+    if clean.isna().any():
+        return pd.NA
+    return 0
+
+
+def _any_nullable_binary(df: pd.DataFrame, columns: list[str]) -> pd.Series:
+    values = df[columns].astype("Int32")
+    out = pd.Series(0, index=df.index, dtype="Int32")
+    out[values.isna().any(axis=1)] = pd.NA
+    out[values.eq(1).any(axis=1)] = 1
+    return out
+
 
 def _farm_profit(wave: str) -> pd.DataFrame:
     hhid_col = HHID_COLUMNS[wave]
@@ -92,18 +132,20 @@ def _cash_transfer_from_frames(
     if ksr is not None and "ksr17" in ksr.columns:
         rec = (
             ksr.groupby(hhid_col_name)["ksr17"]
-            .apply(lambda x: int((x == 1).any()))
+            .apply(_collapse_binary_response)
             .reset_index()
         )
         rec.columns = ["hhid", "any_cash_transfer_ksr"]
+        rec["any_cash_transfer_ksr"] = rec["any_cash_transfer_ksr"].astype("Int32")
         rows.append(rec)
 
     if kr is not None:
         cols = {"hhid": kr[hhid_col_name]}
-        if "kr27b" in kr.columns:
-            cols["blt_card"] = kr.kr27b == 1
-        if "kr26" in kr.columns:
-            cols["health_card"] = kr.kr26 == 1
+        for raw_col, clean_col in CASH_TRANSFER_CARD_FIELDS.items():
+            if raw_col in kr.columns:
+                cols[clean_col] = _clean_binary_response(kr[raw_col])
+            else:
+                cols[clean_col] = pd.Series(0, index=kr.index, dtype="Int32")
         rows.append(pd.DataFrame(cols).drop_duplicates("hhid"))
 
     if not rows:
@@ -112,30 +154,25 @@ def _cash_transfer_from_frames(
     out = rows[0]
     for row in rows[1:]:
         out = out.merge(row, on="hhid", how="outer", validate="1:1")
-    for col in ["any_cash_transfer_ksr", "blt_card", "health_card"]:
-        if col in out.columns:
-            out[col] = out[col].fillna(0).astype(int)
-    out["cash_transfer_recipient"] = (
-        out.filter(items=["any_cash_transfer_ksr", "blt_card"])
-        .max(axis=1)
-        .fillna(0)
-        .astype(int)
-    )
+    component_cols = ["any_cash_transfer_ksr", *CASH_TRANSFER_CARD_COLUMNS]
+    for col in component_cols:
+        if col not in out.columns:
+            out[col] = pd.Series(0, index=out.index, dtype="Int32")
+        out[col] = out[col].astype("Int32")
+    out["cash_transfer_recipient"] = _any_nullable_binary(out, component_cols)
     out["wave"] = wave
     return out
 
 
 def _fill_household_binary_exposures(out: pd.DataFrame) -> pd.DataFrame:
-    return out.assign(
+    out = out.assign(
         vehicle_owner=lambda df: df.vehicle_owner.fillna(0).astype(int),
         urban=lambda df: df.urban.fillna(0).astype(int),
         urban_vehicle_hh=lambda df: df.urban * df.vehicle_owner,
-        cash_transfer_recipient=lambda df: df.cash_transfer_recipient.fillna(0).astype(
-            int
-        ),
-        blt_card=lambda df: df.blt_card.fillna(0).astype(int),
-        health_card=lambda df: df.health_card.fillna(0).astype(int),
     )
+    for col in ["cash_transfer_recipient", *CASH_TRANSFER_CARD_COLUMNS]:
+        out[col] = out[col].astype("Int32")
+    return out
 
 
 def _vehicle_owner(wave: str) -> pd.DataFrame:

@@ -1,6 +1,6 @@
 """Clean community travel information from IFLS4 and IFLS5.
 
-Output: data/generated/03_community_info.parquet
+Output: data/generated/04_community_info.parquet
 Row level: one community-wave record, keyed by community_id + wave.
 """
 
@@ -83,7 +83,7 @@ def build_community_info() -> pd.DataFrame:
 
 def main() -> None:
     community_info = build_community_info()
-    output_path = GENERATED_DATA / "03_community_info.parquet"
+    output_path = GENERATED_DATA / "04_community_info.parquet"
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
     community_info.to_parquet(output_path, index=False)
     log(f"wrote {len(community_info):,} rows to {output_path}")

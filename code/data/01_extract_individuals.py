@@ -605,6 +605,37 @@ def parse_ifls5_survey_info() -> pd.DataFrame:
     return survey_info[DATE_COLUMNS]
 
 
+def community_hh_map() -> pd.DataFrame:
+    """
+    Returns a tuple of two DataFrames:
+    1. A DataFrame mapping community IDs to household IDs for IFLS4 and IFLS5.
+    2. A DataFrame mapping community IDs to household IDs for IFLS5 only.
+    """
+    htrack_data = read_stata_df(
+        Path(RAW_IFLS_EXTRACTED) / "IFLS5" / "hh14" / "htrack.dta",
+        convert_categoricals=False,
+    )
+    maps = []
+    for wave, community_column, household_column in [
+        ("IFLS4", "commid07", "hhid07"),
+        ("IFLS5", "commid14", "hhid14"),
+    ]:
+        mapping = (
+            htrack_data[[community_column, household_column]]
+            .rename(
+                columns={community_column: "community_id", household_column: "hhid"}
+            )
+            .dropna()
+            .drop_duplicates()
+        )
+        assert mapping.groupby("hhid")["community_id"].nunique().max() == 1
+        mapping["wave"] = wave
+        maps.append(mapping)
+    return pd.concat(maps, ignore_index=True)
+
+    return community_hh_map
+
+
 def main() -> None:
     survey_datetime_ifls4 = parse_ifls4_survey_info()
     survey_datetime_ifls5 = parse_ifls5_survey_info()
@@ -625,10 +656,11 @@ def main() -> None:
         kabupaten_full_code=lambda df: df.gadm_fullcode.astype(int) // 1000,
         kecamatan_full_code=lambda df: df.gadm_fullcode.astype(int),
     )
+    community_map = community_hh_map()
 
     out = survey_both.merge(
         geo_both, on=["hhid", "wave"], how="left", validate="many_to_one"
-    )
+    ).merge(community_map, on=["hhid", "wave"], how="left", validate="many_to_one")
 
     # Validate against schema
     out = INDIVIDUALS_SCHEMA.validate(out)

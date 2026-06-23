@@ -69,7 +69,7 @@ PANELS = [
         [
             ("Post-subsidy-cut interview", "post_subsidy"),
             ("Cash-transfer recipient", "cash_transfer_recipient"),
-            ("BLT card holder", "blt_card"),
+            ("BLT/BLSM card holder", "cash_transfer_blt_blsm_card"),
         ],
         "ifls5",
     ),
