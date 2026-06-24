@@ -6,14 +6,14 @@ table, and figure scripts.
 Output: data/generated/30_analysis_table_input.parquet
 """
 
-import numpy as np
 import pandas as pd
 
-from data.config import GENERATED_DATA, IDR_2007_TO_2014_INFLATOR
+from data.config import GENERATED_DATA
 from data._schemas import (
     ANALYSIS_TABLE_INPUT_SCHEMA,
     CASH_TRANSFER_CARD_COLUMNS,
     CURRENCY_CONVERSIONS_SCHEMA,
+    US_CPI_SCHEMA,
 )
 from library.log import log
 
@@ -118,12 +118,20 @@ def build_core_panel() -> pd.DataFrame:
     return df
 
 
-def deflate(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    """Deflate nominal values to real using wave-level CPI."""
-    df["deflator"] = np.where(df.wave == "IFLS4", IDR_2007_TO_2014_INFLATOR, 1)
+def adjust_currencies(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Deflate nominal values to real using wave-level IDR CPI and convert to USD.
+
+    Produces three variants for each monetary column:
+      - ``{col}_real``: Real 2014 IDR (nominal IDR × wave-level IDR deflator)
+      - ``{col}_real_usd``: Nominal USD at the interview-month exchange rate
+      - ``{col}_real_2010_usd``: Constant 2010 USD (nominal USD deflated by US CPI-U)
+    """
     for col in columns:
         df[f"{col}_real"] = df[col] * df.deflator
-        df[f"{col}_real_usd"] = df[f"{col}_real"] * df.conversion_factor
+        df[f"{col}_nominal_usd"] = df[f"{col}"] * df.conversion_factor
+        df[f"{col}_real_usd"] = (
+            df[f"{col}"] * df.conversion_factor * df.cpi_deflator_2010base
+        )
     df = df.drop(columns=["deflator"])
     return df
 
@@ -156,6 +164,9 @@ def main() -> None:
     conversions = CURRENCY_CONVERSIONS_SCHEMA.validate(
         pd.read_parquet(GENERATED_DATA / "03_currency_conversions.parquet")
     )
+    us_cpi = US_CPI_SCHEMA.validate(
+        pd.read_parquet(GENERATED_DATA / "04_us_cpi.parquet")
+    )
     economic = pd.read_parquet(GENERATED_DATA / "20_economic_exposures.parquet")
     expenditure = pd.read_parquet(GENERATED_DATA / "25_expenditure_data.parquet")
     asset_expenditure = pd.read_parquet(GENERATED_DATA / "27_asset_expenditure.parquet")
@@ -167,6 +178,7 @@ def main() -> None:
         validate="m:1",
     )
     df = df.merge(conversions, on=["year", "month"], how="left", validate="m:1")
+    df = df.merge(us_cpi, on=["year", "month"], how="left", validate="m:1")
     df = df.merge(economic, on=["pidlink", "wave"], how="left", validate="1:1")
     df = df.merge(
         expenditure,
@@ -234,7 +246,7 @@ def main() -> None:
             # Deflate total expenditure and job income variables and non labor income
         )
         .pipe(
-            deflate,
+            adjust_currencies,
             columns=[
                 "job_earnings_individual",
                 "job_earnings_hh",
