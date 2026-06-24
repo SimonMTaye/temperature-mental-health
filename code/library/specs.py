@@ -57,6 +57,9 @@ def bare_spec(rhs: str = "PLACEHOLDER") -> RegressionSpec:
 
 
 analysis_df = pd.read_parquet(ANALYSIS_INPUT)
+analysis_df["vehicle_fuel_extensive_margin"] = (
+    analysis_df["vehicle_fuel_quantity_liters"] > 0
+)
 analysis_df["ifls5"] = analysis_df["wave"] == "IFLS5"
 wave5_df = analysis_df[analysis_df["ifls5"]].copy()
 

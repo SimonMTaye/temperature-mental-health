@@ -1296,6 +1296,8 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "high_med_oop": _binary_column(nullable=True),
         # Add IFLS4 indicators
         "urban_vehicle_hh_ifls4": _binary_column(nullable=True),
+        "urban_vehicle_transfer_recipient_ifls4": _binary_column(nullable=True),
+        "urban_vehicle_transfer_nonrecipient_ifls4": _binary_column(nullable=True),
         "coal_worker_hh_ifls4": _binary_column(nullable=True),
         "coal_worker_individual_ifls4": _binary_column(nullable=True),
         "palm_farmer_hh_ifls4": _binary_column(nullable=True),

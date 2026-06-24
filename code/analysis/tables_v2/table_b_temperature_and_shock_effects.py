@@ -32,24 +32,13 @@ PALM_PRICE_SHOCK = update_formula_search_replace(
     "palm_price_gap_z",
 )
 
-urban_vehicle = wave5_df["urban_vehicle_hh_ifls4"]
-transfer_recipient = wave5_df["cash_transfer_recipient"]
-wave5 = wave5_df.assign(
-    urban_vehicle_transfer_recipient_ifls4=(urban_vehicle * transfer_recipient).astype(
-        "Int32"
-    ),
-    urban_vehicle_transfer_nonrecipient_ifls4=(
-        urban_vehicle * (1 - transfer_recipient)
-    ).astype("Int32"),
-)
-
 urban_nocash = replace(
     update_formula_search_replace(
         fuel_shock_urban_vehicle,
         "urban_vehicle_hh_ifls4",
         "urban_vehicle_transfer_nonrecipient_ifls4",
     ),
-    df=wave5,
+    df=wave5_df,
 )
 
 urban_cash = replace(
@@ -58,7 +47,7 @@ urban_cash = replace(
         "urban_vehicle_hh_ifls4",
         "urban_vehicle_transfer_recipient_ifls4",
     ),
-    df=wave5,
+    df=wave5_df,
 )
 
 TABLE_SPECS = [
