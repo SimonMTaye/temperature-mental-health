@@ -27,9 +27,8 @@ TABLE_TEMPLATE = r"""
 \midrule\addlinespace[2.5pt]
 Kecamatan & x & x & x & x & x & x & x \\
 Wave & x & x & x & - & - & - & x \\
-Month & x & x & x & x & x & x & x \\
+Month-Year & x & x & x & x & x & x & x \\
 Individual & - & x & - & - & - & - & - \\
-Year  & x & x & x & x & x & x & x \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
 {group_mean_row}

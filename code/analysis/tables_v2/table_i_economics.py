@@ -44,7 +44,7 @@ def make_specs():
         old_spec = spec_data["spec"]
         assert isinstance(old_spec, RegressionSpec)
         df = old_spec.df.copy()  # ty:ignore[unresolved-attribute]
-        # df[outcome] = winsorized(df[outcome])
+        df[outcome] = winsorized(df[outcome])
         dv_mean = df[outcome].mean()
         # If jobloss spec, then no post so handle that
         rhs = group if post is None else f"{group} * {post}"
