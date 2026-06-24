@@ -11,13 +11,13 @@ from analysis.tables_v2.table_b_temperature_and_shock_effects import (
 )
 
 TABLE_TEMPLATE = r"""
-\begin{tabular}{@{}lcccccc}
+\begin{tabular}{@{}lccccccc}
 \toprule
- & \multicolumn{6}{c}{CES-D z-score} \\
-\cmidrule(lr){2-7}
- & Palm Shock & \shortstack{Palm Shock\\Panel} & \shortstack{Palm Shock\\Price Drop} & \shortstack{Fuel Cut\\Urban Vehicle Owners} & \shortstack{Fuel Cut\\Fuel Share} &  Job Loss \\
-\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} \cmidrule(lr){7-7}
- & (1) & (2) & (3) & (4) & (5) & (6) \\
+ & \multicolumn{7}{c}{CES-D z-score} \\
+\cmidrule(lr){2-8}
+ & Palm Shock & \shortstack{Palm Shock\\Panel} & \shortstack{Palm Shock\\Price Drop} & Urban Vehicle Owners & \shortstack{Urban Vehicle Owners\\No Cash Transfer} & \shortstack{Urban Vehicle Owners\\Cash Transfer} & Job Loss \\
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} \cmidrule(lr){7-7} \cmidrule(lr){8-8}
+ & (1) & (2) & (3) & (4) & (5) & (6) & (7) \\
 \midrule\addlinespace[2.5pt]
 {somatic}
 \midrule\addlinespace[2.5pt]
@@ -25,11 +25,11 @@ TABLE_TEMPLATE = r"""
 \midrule\addlinespace[2.5pt]
 {positive}
 \midrule\addlinespace[2.5pt]
-Kecamatan & x & x & x & x & x & x \\
-Wave & x & x & x & - & - & x \\
-Month & x & x & x & x & x & x \\
-Individual & - & x & - & - & - & - \\
-Year  & x & x & x & x & x & x \\
+Kecamatan & x & x & x & x & x & x & x \\
+Wave & x & x & x & - & - & - & x \\
+Month & x & x & x & x & x & x & x \\
+Individual & - & x & - & - & - & - & - \\
+Year  & x & x & x & x & x & x & x \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
 {group_mean_row}

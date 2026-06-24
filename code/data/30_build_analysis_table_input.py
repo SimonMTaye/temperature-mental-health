@@ -65,6 +65,20 @@ def add_ifls4_measurements(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame
     return df.merge(wave4, on="pidlink", how="left", validate="m:1")
 
 
+def add_urban_vehicle_transfer_groups(df: pd.DataFrame) -> pd.DataFrame:
+    """Split baseline urban vehicle owners by current cash-transfer receipt."""
+    urban_vehicle = df["urban_vehicle_hh_ifls4"]
+    transfer_recipient = df["cash_transfer_recipient"]
+    return df.assign(
+        urban_vehicle_transfer_recipient_ifls4=(
+            urban_vehicle * transfer_recipient
+        ).astype("Int32"),
+        urban_vehicle_transfer_nonrecipient_ifls4=(
+            urban_vehicle * (1 - transfer_recipient)
+        ).astype("Int32"),
+    )
+
+
 def build_core_panel() -> pd.DataFrame:
     """Merge person, CES-D, covariate, and processed temperature inputs."""
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
@@ -189,6 +203,7 @@ def main() -> None:
             add_ifls4_measurements,
             columns=IFLS4_COLUMNS,
         )
+        .pipe(add_urban_vehicle_transfer_groups)
         .assign(
             female=lambda df: df["sex"].eq("F").astype(int),
             cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
