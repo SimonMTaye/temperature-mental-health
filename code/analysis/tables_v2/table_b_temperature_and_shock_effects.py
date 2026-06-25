@@ -254,7 +254,7 @@ def build_table() -> str:
             "{temperature_panel}",
             panel_rows("7-day mean Temperature", temperature_models),
         )
-        .replace("{wetbulb_panel}", panel_rows("7-day mean Wet Bulb", wetbulb_models))
+        .replace("{wetbulb_panel}", panel_rows("7-day mean Wet-bulb", wetbulb_models))
         .replace("{observations_row}", observations_rows)
         .replace("{group_mean_row}", stressed_group_proportion_row(TABLE_SPECS))
     )

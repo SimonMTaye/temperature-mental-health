@@ -23,7 +23,7 @@ PANELS = [
             ("Daily mean temperature", "tmean_c"),
             ("7-day mean temperature", "tmean_7d"),
             ("30-day mean temperature", "tmean_30d"),
-            ("7-day mean wet bulb ", "wetbulb_7d"),
+            ("7-day mean wet-bulb ", "wetbulb_7d"),
         ],
     ),
     (
