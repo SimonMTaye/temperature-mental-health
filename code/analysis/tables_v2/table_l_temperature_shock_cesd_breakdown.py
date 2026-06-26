@@ -26,7 +26,6 @@ TABLE_TEMPLATE = r"""
 {positive}
 \midrule\addlinespace[2.5pt]
 Kecamatan & x & x & x & x & x & x & x \\
-Wave & x & x & x & - & - & - & x \\
 Month-Year & x & x & x & x & x & x & x \\
 Individual & - & x & - & - & - & - & - \\
 \midrule\addlinespace[2.5pt]
