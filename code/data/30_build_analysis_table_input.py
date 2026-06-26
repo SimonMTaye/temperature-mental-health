@@ -127,12 +127,10 @@ def adjust_currencies(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
       - ``{col}_real_2010_usd``: Constant 2010 USD (nominal USD deflated by US CPI-U)
     """
     for col in columns:
-        df[f"{col}_real"] = df[col] * df.deflator
         df[f"{col}_nominal_usd"] = df[f"{col}"] * df.conversion_factor
         df[f"{col}_real_usd"] = (
             df[f"{col}"] * df.conversion_factor * df.cpi_deflator_2010base
         )
-    df = df.drop(columns=["deflator"])
     return df
 
 
@@ -217,10 +215,6 @@ def main() -> None:
         )
         .pipe(add_urban_vehicle_transfer_groups)
         .assign(
-            female=lambda df: df["sex"].eq("F").astype(int),
-            cesd_z=lambda df: df.groupby("wave")["cesd_raw"].transform(
-                lambda s: (s - s.mean()) / s.std()
-            ),
             palm_price_wave5=lambda df: (
                 df["palm_price_usd_mt"]
                 .where(df["wave"] == "IFLS5")
@@ -233,8 +227,10 @@ def main() -> None:
                 .groupby(df["pidlink"])
                 .transform("max")
             ),
-            palm_price_gap=lambda df: (
-                (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
+            palm_price_gap_all=lambda df: df.palm_price_wave4 - df.palm_price_wave5,
+            # Replace with missing if palm_farmer_hh_ifls4 is 0, to avoid dividing by zero
+            palm_price_gap=lambda df: df["palm_price_gap_all"].where(
+                df["palm_farmer_hh_ifls4"] == 1
             ),
             palm_price_gap_z=lambda df: (
                 (
@@ -242,7 +238,7 @@ def main() -> None:
                     / df.palm_price_gap.std()
                 )
                 * df.palm_farmer_hh_ifls4
-            ),
+            ).fillna(0),
             # Deflate total expenditure and job income variables and non labor income
         )
         .pipe(

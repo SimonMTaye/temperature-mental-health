@@ -137,9 +137,7 @@ US_CPI_SCHEMA = pa.DataFrameSchema(
         "month": pa.Column(
             int, checks=pa.Check.between(1, 12), nullable=False, coerce=True
         ),
-        "cpi_u": pa.Column(
-            float, checks=pa.Check.gt(0), nullable=False, coerce=True
-        ),
+        "cpi_u": pa.Column(float, checks=pa.Check.gt(0), nullable=False, coerce=True),
         "cpi_deflator_2010base": pa.Column(
             float, checks=pa.Check.gt(0), nullable=False, coerce=True
         ),
@@ -218,6 +216,7 @@ CESD_SCORES_SCHEMA = pa.DataFrameSchema(
         "cesd_raw": pa.Column(
             float, checks=pa.Check.between(0, 30), nullable=False, coerce=True
         ),
+        "cesd_z": pa.Column(float, nullable=False, coerce=True),
         # IFLS4 screener count of endorsed CES-D items; missing for IFLS5.
         "cesd10_count": pa.Column(
             float, checks=pa.Check.between(0, 10), nullable=True, coerce=True
@@ -274,14 +273,30 @@ STRESSORS_SCHEMA = pa.DataFrameSchema(
         "sex": pa.Column(
             str, checks=pa.Check.isin(["F", "M"]), nullable=False, coerce=True
         ),
+        "female": _binary_column(),
+        "female_missing": _binary_column(),
         # Indicator for currently married marital status.
         "married": _binary_column(),
         # Indicator for widowed marital status.
         "widowed": _binary_column(),
-        # Approximate years of schooling mapped from IFLS education level.
+        "divorced": _binary_column(),
+        # Approximate years of schooling mapped from IFLS AR16/AR17.
+        # -100 is the explicit missing sentinel for unknown education level/grade.
         "edu_yrs": pa.Column(
-            "Int64", checks=pa.Check.ge(0), nullable=True, coerce=True
+            "Int64",
+            checks=pa.Check(lambda s: s.isna() | s.eq(-100) | s.ge(0)),
+            nullable=False,
+            coerce=True,
         ),
+        "edu_yrs_missing": _binary_column(),
+        # IFLS AR15 religion code, with cleaned missing values retained as -99.
+        "religion": pa.Column("Int64", nullable=False, coerce=True),
+        # Indicator for a cleaned missing religion code.
+        "religion_missing": _binary_column(),
+        # IFLS AR15D ethnicity code, with cleaned missing values retained as -99.
+        "ethnicity": pa.Column("Int64", nullable=False, coerce=True),
+        # Indicator for a cleaned missing ethnicity code.
+        "ethnicity_missing": _binary_column(),
         # IFLS survey wave for the stressor/covariate record.
         "wave": _wave_column(),
         # Household size used in per-capita expenditure calculations.
@@ -762,27 +777,7 @@ FINANCE_DISTRESS_SHOCKS_SCHEMA = pa.DataFrameSchema(
 # model/table-specific variables.
 ANALYSIS_BASE_COLUMNS = {
     **INDIVIDUALS_SCHEMA.columns,
-    **_schema_columns(
-        CESD_SCORES_SCHEMA,
-        ["cesd_raw", "cesd10_count", "depressed", "n_items"],
-    ),
-    **_schema_columns(
-        STRESSORS_SCHEMA,
-        [
-            "age",
-            "sex",
-            "married",
-            "widowed",
-            "edu_yrs",
-            "hhsize",
-            "pce",
-            "pce_log",
-            "pce_quintile",
-            "disaster_5yr",
-            "disaster_severe_5yr",
-            "loan_rejected",
-        ],
-    ),
+    **STRESSORS_SCHEMA.columns,
     # Final analysis sample is restricted to adults with non-missing age.
     "age": pa.Column(
         float, checks=pa.Check.between(15, 120), nullable=False, coerce=True
@@ -1112,8 +1107,6 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
     {
         **ANALYSIS_BASE_COLUMNS,
         "conversion_factor": CURRENCY_CONVERSIONS_SCHEMA.columns["conversion_factor"],
-        # Female indicator used by the table/regression controls.
-        "female": _binary_column(),
         # CES-D total standardized within wave for pooled IFLS4/IFLS5 specifications.
         "cesd_z": pa.Column(float, nullable=False, coerce=True),
         "travel_market_distance": pa.Column(
@@ -1262,33 +1255,33 @@ ANALYSIS_TABLE_INPUT_SCHEMA = pa.DataFrameSchema(
         "palm_price_gap": pa.Column(float, nullable=True, coerce=True),
         "palm_price_gap_z": pa.Column(float, nullable=True, coerce=True),
         # Wave-deflated real monetary variables generated in the final analysis table.
-        "job_earnings_individual_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "job_earnings_hh_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "hh_nonlabor_income_mo_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "expenditure_nonfood_fuel_mo_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "expenditure_nonfood_vehicle_fuel_mo_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "expenditure_food_total_mo_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "expenditure_nonfood_total_mo_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "expenditure_total_mo_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
-        "expenditure_transport_fuel_total_mo_real": pa.Column(
-            float, checks=pa.Check.ge(0), nullable=True, coerce=True
-        ),
+        # "job_earnings_individual_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "job_earnings_hh_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "hh_nonlabor_income_mo_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "expenditure_nonfood_fuel_mo_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "expenditure_nonfood_vehicle_fuel_mo_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "expenditure_food_total_mo_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "expenditure_nonfood_total_mo_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "expenditure_total_mo_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
+        # "expenditure_transport_fuel_total_mo_real": pa.Column(
+        #     float, checks=pa.Check.ge(0), nullable=True, coerce=True
+        # ),
         "job_earnings_individual_real_usd": pa.Column(
             float, checks=pa.Check.ge(0), nullable=True, coerce=True
         ),
