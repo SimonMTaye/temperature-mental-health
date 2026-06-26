@@ -53,7 +53,7 @@ def shock_triple_diff_panel(outcome: str, heat: str, group: str, post: str) -> s
 def bare_spec(rhs: str = "PLACEHOLDER") -> RegressionSpec:
     return RegressionSpec(
         title="",
-        formula=f"{rhs} + {CONTROLS} | {FE_WAVE}",
+        formula=f"{rhs} + {CONTROLS} | {FE_NO_WAVE}",
         df=analysis_df,
         tags=frozenset(),
         show_terms=frozenset(),
@@ -70,7 +70,7 @@ wave5_df = analysis_df[analysis_df["ifls5"]].copy()
 
 temperature_spec = RegressionSpec(
     title="Main Effects of Temperature",
-    formula=f"cesd_z ~ {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["mean-daily-temp", "temperature-effect"]),
     show_terms=frozenset([MAIN_TEMP_MEASURE]),
@@ -78,7 +78,7 @@ temperature_spec = RegressionSpec(
 
 palm_shock = RegressionSpec(
     title="Palm Shock",
-    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["palm-shock", "mean-daily-temp"]),
     show_terms=frozenset([f"palm_farmer_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
@@ -111,7 +111,7 @@ coal_shock = RegressionSpec(
 
 jobloss = RegressionSpec(
     title="Job Loss",
-    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["job-loss", "mean-daily-temp"]),
     show_terms=frozenset([f"{JOB_LOSS_MAIN}:{MAIN_TEMP_MEASURE}"]),
@@ -159,7 +159,7 @@ coal_shock_panel = RegressionSpec(
 
 jobloss_panel = RegressionSpec(
     title="Job Loss - Panel",
-    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}+pidlink",
+    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}+pidlink",
     df=analysis_df,
     tags=frozenset(["job-loss", "mean-daily-temp", "panel"]),
     show_terms=frozenset([f"{JOB_LOSS_MAIN}:{MAIN_TEMP_MEASURE}"]),

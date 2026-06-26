@@ -219,15 +219,17 @@ def define_windows(ind: pd.DataFrame) -> list[tuple[str, pd.Timestamp, pd.Timest
     dated = ind.assign(interview_date=interview_date)
     w4 = dated[dated.wave == "IFLS4"]
     w5 = dated[dated.wave == "IFLS5"]
+    # Pull one extra leading UTC day so the first local-day baseline date is complete.
+    leading_window = timedelta(days=31)
     return [
         (
             "IFLS4",
-            w4.interview_date.min() - timedelta(days=30),
+            w4.interview_date.min() - leading_window,
             w4.interview_date.max() + timedelta(days=7),
         ),
         (
             "IFLS5",
-            w5.interview_date.min() - timedelta(days=30),
+            w5.interview_date.min() - leading_window,
             w5.interview_date.max() + timedelta(days=7),
         ),
     ]
