@@ -5,7 +5,7 @@ from library.specs import (
     MAIN_TEMP_MEASURE,
     analysis_df,
     CONTROLS,
-    FE_WAVE,
+    FE_NO_WAVE,
     RegressionSpec,
 )
 from library.render import make_regression_table, render_table_to_latex
@@ -34,7 +34,7 @@ def make_table() -> None:
             title="+ Sector x Heat",
             formula=(
                 f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
-                f"+ {occupation_sector_slope_terms} + {CONTROLS} | {FE_WAVE}"
+                f"+ {occupation_sector_slope_terms} + {CONTROLS} | {FE_NO_WAVE}"
             ),
             df=analysis_df,
             tags=frozenset(["job-loss", "slope-robustness", "occupation-sector"]),
@@ -44,7 +44,7 @@ def make_table() -> None:
             title="+ Age x Heat",
             formula=(
                 f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
-                f"+ age:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
+                f"+ age:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}"
             ),
             df=analysis_df,
             tags=frozenset(["job-loss", "slope-robustness", "age-slope"]),
@@ -54,7 +54,7 @@ def make_table() -> None:
             title="+ Education x Heat",
             formula=(
                 f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
-                f"+ edu_yrs:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}"
+                f"+ edu_yrs:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}"
             ),
             df=analysis_df,
             tags=frozenset(["job-loss", "slope-robustness", "education-slope"]),

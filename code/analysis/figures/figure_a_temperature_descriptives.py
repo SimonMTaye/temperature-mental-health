@@ -1,8 +1,8 @@
 """Build Figure A: temperature descriptives in the IFLS analysis sample.
 
 The figure describes interview-day temperature variation using the canonical
-analysis input. The descriptives are kabupaten-date weighted: each unique
-kabupaten_code x interview_date x wave observation contributes once.
+analysis input. The descriptives are kecamatan-date weighted: each unique
+kecamatan_full_code x interview_date x wave observation contributes once.
 
 Outputs:
   output/figures/figure_a_temperature_descriptives.pdf
@@ -34,7 +34,7 @@ PDF_OUTPUT = FIGURE_OUTPUT / "figure_a_temperature_descriptives.pdf"
 PNG_OUTPUT = FIGURE_OUTPUT / "figure_a_temperature_descriptives.png"
 
 REQUIRED_COLUMNS = [
-    "kabupaten_code",
+    "kecamatan_full_code",
     "interview_datetime",
     "wave",
     "month",
@@ -61,15 +61,14 @@ if __name__ == "__main__":
     df: pd.DataFrame = pd.read_parquet(ANALYSIS_INPUT)
     df = (
         df[REQUIRED_COLUMNS]
-        .dropna(subset=["kabupaten_code", "interview_datetime", "wave", "tmean_c"])
+        .dropna(subset=["kecamatan_full_code", "interview_datetime", "wave", "tmean_c"])
         .copy()
     )
     df = df[df["tmean_c"] > 0].copy()
     df["interview_date"] = pd.to_datetime(df["interview_datetime"]).dt.normalize()
     df["month"] = df["month"].astype(int)
     df["year"] = df["year"].astype(int)
-    df["kabupaten_code"] = df["kabupaten_code"].astype(int)
-    df = df.drop_duplicates(["kabupaten_code", "interview_date", "wave"])
+    df = df.drop_duplicates(["kecamatan_full_code", "interview_date", "wave"])
 
     monthly = (
         df.groupby("month", observed=True)
@@ -84,7 +83,7 @@ if __name__ == "__main__":
     )
 
     kab_month_wave = (
-        df.groupby(["kabupaten_code", "month", "wave"], observed=True)["tmean_c"]
+        df.groupby(["kecamatan_full_code", "month", "wave"], observed=True)["tmean_c"]
         .mean()
         .unstack("wave")
     )
