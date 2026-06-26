@@ -58,6 +58,8 @@ EDU_LEVEL_YEARS = {
     4: 9,  # Vocational junior high
     12: 9,  # Education B / Paket B, SMP equivalent
     73: 9,  # Madrasah Tsanawiyah, SMP equivalent
+    14: 9,  # Moslem School (Pesantren), treated as S1-equivalent
+    17: 9,  # School for the disabled, treated as S1-equivalent
     5: 12,  # General senior high / SMA
     6: 12,  # Vocational senior high / SMK
     15: 12,  # Education C / Paket C, SMA equivalent
@@ -67,9 +69,7 @@ EDU_LEVEL_YEARS = {
     62: 18,  # University S2
     63: 21,  # University S3
     13: 16,  # Open University, treated as S1-equivalent
-    14: 16,  # Moslem School (Pesantren), treated as S1-equivalent
-    17: 16,  # School for the disabled, treated as S1-equivalent
-    95: 16,  # Other, specify; treated as S1-equivalent
+    95: np.nan,  # Other, specify; treated as S1-equivalent
 }
 
 # For non-graduated AR17 values, use the largest observed AR17 grade below 7 for
@@ -84,21 +84,21 @@ EDU_LEVEL_MAX_GRADE = {
     4: 3,
     5: 3,
     6: 3,
-    11: 1,
+    11: 6,
     12: 3,
-    13: 5,
+    13: 4,
     14: 6,
     15: 3,
-    17: 5,
-    60: 5,
-    61: 6,
-    62: 3,
+    17: 6,
+    60: 3,
+    61: 4,
+    62: 2,
     63: 3,
     72: 6,
     73: 3,
-    74: 4,
-    90: 6,
-    95: 4,
+    74: 3,
+    90: 0,
+    95: np.nan,
 }
 
 ##AR15               Religion of HH member
@@ -269,18 +269,22 @@ def _demographics_from_roster(ar: pd.DataFrame, *, hhid_col_name: str) -> pd.Dat
     )
     ar["edu_yrs"] = _education_years(ar.edu_lvl, ar.edu_grade)
     ar["edu_yrs_missing"] = (ar.edu_yrs.eq(MISSING_EDU_YEARS)).astype(int)
+    ar["edu_yrs_nullable"] = ar.edu_yrs.mask(ar.edu_yrs.eq(MISSING_EDU_YEARS))
     ar["religion"] = (
         clean_categorical(ar.religion_raw, digits=2)
         .fillna(MISSING_CATEGORY)
         .astype("Int64")
     )
+    ar["religion_missing"] = ar.religion.eq(MISSING_CATEGORY).astype(int)
+    ar["religion_nullable"] = ar.religion.mask(ar.religion.eq(MISSING_CATEGORY))
     ar["ethnicity"] = (
         clean_categorical(ar.ethnicity_raw, digits=2)
         .fillna(MISSING_CATEGORY)
         .astype("Int64")
     )
-    ar["religion_missing"] = ar.religion.eq(MISSING_CATEGORY).astype(int)
     ar["ethnicity_missing"] = ar.ethnicity.eq(MISSING_CATEGORY).astype(int)
+    ar["ethnicity_nullable"] = ar.ethnicity.mask(ar.ethnicity.eq(MISSING_CATEGORY))
+    # Create nullable versions of the data
 
     return ar[
         [
@@ -295,10 +299,13 @@ def _demographics_from_roster(ar: pd.DataFrame, *, hhid_col_name: str) -> pd.Dat
             "divorced",
             "edu_yrs",
             "edu_yrs_missing",
+            "edu_yrs_nullable",
             "religion",
             "religion_missing",
+            "religion_nullable",
             "ethnicity",
             "ethnicity_missing",
+            "ethnicity_nullable",
         ]
     ]
 

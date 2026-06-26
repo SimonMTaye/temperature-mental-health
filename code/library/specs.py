@@ -5,7 +5,11 @@ from library.render import RegressionSpec, search_replace_term
 
 PROJECT = Path(__file__).parent.parent.parent
 ANALYSIS_INPUT = PROJECT / "data" / "generated" / "30_analysis_table_input.parquet"
-CONTROLS = "age + female + edu_yrs + married + widowed"
+CONTROLS_NO_NUL = "age + female + edu_yrs + edu_yrs_missing + married + widowed + divorced + ethnicity + ethnicity_missing + religion + religion_missing"
+CONTROLS_NULLABLE = "age + female + edu_yrs_nullable +  married + widowed + divorced + ethnicity_nullable + religion_nullable"
+CONTROLS = CONTROLS_NULLABLE
+# CONTROLS_PANEL = "age + married + widowed + divorced +  ethnicity + ethnicity_missing + religion + religion_missing"
+CONTROLS_PANEL = CONTROLS
 FE_WAVE = "month*year+ifls5+gadm_fullcode"
 FE_NO_WAVE = "month*year+gadm_fullcode"
 MAIN_TEMP_MEASURE = "tmean_7d"
@@ -42,7 +46,7 @@ def update_formula_search_replace(
 def shock_triple_diff_panel(outcome: str, heat: str, group: str, post: str) -> str:
     """Return a formula for a triple-difference specification of shock effects in the IFLS5 panel."""
     return f"""
-      {outcome} ~ {heat} + {group}:{post}:{heat} + {group}:{heat} + {post}:{heat} + {group}:{post} + {CONTROLS} | {FE_NO_WAVE}+pidlink+{post}
+      {outcome} ~ {heat} + {group}:{post}:{heat} + {group}:{heat} + {post}:{heat} + {group}:{post} + {CONTROLS_PANEL} | {FE_NO_WAVE}+pidlink+{post}
     """
 
 
