@@ -229,8 +229,8 @@ def main() -> None:
             ),
             palm_price_gap_all=lambda df: df.palm_price_wave4 - df.palm_price_wave5,
             # Replace with missing if palm_farmer_hh_ifls4 is 0, to avoid dividing by zero
-            palm_price_gap=lambda df: df["palm_price_gap_all"].where(
-                df["palm_farmer_hh_ifls4"] == 1
+            palm_price_gap=lambda df: (
+                (df.palm_price_wave4 - df.palm_price_wave5) * df.palm_farmer_hh_ifls4
             ),
             palm_price_gap_z=lambda df: (
                 (
@@ -238,7 +238,7 @@ def main() -> None:
                     / df.palm_price_gap.std()
                 )
                 * df.palm_farmer_hh_ifls4
-            ).fillna(0),
+            ),
             # Deflate total expenditure and job income variables and non labor income
         )
         .pipe(

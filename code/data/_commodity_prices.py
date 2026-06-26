@@ -193,7 +193,7 @@ PALM_PROVS = {
     17,
     18,
     19,
-    # 21, -> not actually a palm region
+    21,
     61,
     62,
     63,
