@@ -15,6 +15,9 @@ from analysis.tables_v2.table_l_temperature_shock_cesd_breakdown import (
     make_table as table_l,
 )
 from analysis.tables_v2.table_m_fuel_share_het import make_table as table_m
+from analysis.tables_v2.table_n_sleep_interaction_wave5 import (
+    make_table as table_n,
+)
 
 from library.log import log
 
@@ -59,6 +62,9 @@ def main() -> None:
     log("Table M Started")
     table_m()
     log("Table M completed")
+    log("Table N started")
+    table_n()
+    log("Table N completed")
 
 
 if __name__ == "__main__":

@@ -145,6 +145,24 @@ def relative_humidity_from_dewpoint(
     return (100.0 * actual_vapor_pressure / saturation_vapor_pressure).clip(0, 100)
 
 
+def heat_index_c(temp_c: pd.Series, rh_pct: pd.Series) -> pd.Series:
+    """Steadman/NWS heat-index approximation in Celsius."""
+    temp_f = temp_c * 9 / 5 + 32
+    heat_index_f = (
+        -42.379
+        + 2.04901523 * temp_f
+        + 10.14333127 * rh_pct
+        - 0.22475541 * temp_f * rh_pct
+        - 6.83783e-3 * temp_f**2
+        - 5.481717e-2 * rh_pct**2
+        + 1.22874e-3 * temp_f**2 * rh_pct
+        + 8.5282e-4 * temp_f * rh_pct**2
+        - 1.99e-6 * temp_f**2 * rh_pct**2
+    )
+    heat_index_f = heat_index_f.where(temp_f >= 80, temp_f)
+    return (heat_index_f - 32) * 5 / 9
+
+
 def wetbulb_stull_c(temp_c: pd.Series, rh_pct: pd.Series) -> pd.Series:
     """Stull (2011) wet-bulb approximation using temperature in C and RH percent."""
     # Stull 2011, Journal of Applied Meteorology and Climatology.
@@ -166,6 +184,7 @@ def load_hourly_temperature() -> pd.DataFrame:
     required = [
         "gadm_fullcode",
         "province_code",
+        "match_level",
         "datetime_utc",
         "tmean_c_hour",
         "dewp_c_hour",
@@ -187,8 +206,8 @@ def add_hourly_wetbulb(hourly: pd.DataFrame) -> pd.DataFrame:
     return hourly
 
 
-def build_daily_wetbulb(hourly: pd.DataFrame) -> pd.DataFrame:
-    """Compute local-day wet-bulb means from hourly temperature and dewpoint."""
+def build_daily_temperature_from_hourly(hourly: pd.DataFrame) -> pd.DataFrame:
+    """Compute local-day daily weather variables from hourly temperature rows."""
     hourly = hourly.copy()
     utc_offset = hourly["province_code"].map(_utc_offset_hours)
     hourly["date"] = (
@@ -197,12 +216,31 @@ def build_daily_wetbulb(hourly: pd.DataFrame) -> pd.DataFrame:
         .dt.tz_localize(None)
         .dt.normalize()
     )
+    day_counts = hourly.groupby(["gadm_fullcode", "date"]).size()
+    incomplete = day_counts[day_counts.ne(24)]
+    if not incomplete.empty:
+        log(
+            f"built {len(incomplete):,} local geography-days with fewer than 24 hourly "
+            "observations; existing hourly pull did not include the extra boundary UTC day",
+            "WARNING",
+        )
     daily = (
-        hourly.groupby(["gadm_fullcode", "date"], as_index=False)["wetbulb_c_hour"]
-        .mean()
-        .rename(columns={"wetbulb_c_hour": "wetbulb_c"})
+        hourly.groupby(["gadm_fullcode", "date"], as_index=False)
+        .agg(
+            province_code=("province_code", "first"),
+            match_level=("match_level", "first"),
+            tmean_c=("tmean_c_hour", "mean"),
+            tmax_c=("tmean_c_hour", "max"),
+            tmin_c=("tmean_c_hour", "min"),
+            dewp_c=("dewp_c_hour", "mean"),
+            wetbulb_c=("wetbulb_c_hour", "mean"),
+        )
+        .sort_values(["gadm_fullcode", "date"], kind="stable")
+        .reset_index(drop=True)
     )
-    log(f"built daily wet-bulb means for {len(daily):,} geography-days")
+    daily["rh_pct"] = relative_humidity_from_dewpoint(daily["tmean_c"], daily["dewp_c"])
+    daily["heat_idx_c"] = heat_index_c(daily["tmean_c"], daily["rh_pct"])
+    log(f"built local-day temperature aggregates for {len(daily):,} geography-days")
     return daily
 
 
@@ -271,7 +309,6 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         "tmin_c",
         "heat_idx_c",
         "rh_pct",
-        "precip_mm",
         "tmean_lag1",
         "tmean_lag3",
         "tmean_lag7",
@@ -305,7 +342,6 @@ def merge_daily(ind: pd.DataFrame, temp: pd.DataFrame) -> pd.DataFrame:
         how="left",
         validate="m:1",
     ).drop(columns=["date"])
-    out["precip_mm"] = out.precip_mm.clip(lower=0)
     out["t_anom_today"] = out.tmean_c - out.tmean_base30
     out["t_anom_lag1"] = out.tmean_lag1 - out.tmean_base30
     out["heat_bin"] = pd.cut(
@@ -377,13 +413,8 @@ def add_hourly_temperature(df: pd.DataFrame, hourly: pd.DataFrame) -> pd.DataFra
 
 def build_processed_temperature() -> pd.DataFrame:
     ind = pd.read_parquet(GENERATED_DATA / "01_individuals.parquet")
-    temp = pd.read_parquet(GENERATED_DATA / "10_daily_temperature_kab.parquet")
     hourly = add_hourly_wetbulb(load_hourly_temperature())
-    wetbulb_daily = build_daily_wetbulb(hourly)
-    temp["date"] = pd.to_datetime(temp.date)
-    temp = temp.merge(
-        wetbulb_daily, on=["gadm_fullcode", "date"], how="left", validate="1:1"
-    )
+    temp = build_daily_temperature_from_hourly(hourly)
     temp = add_daily_features(temp)
     temp = add_temperature_quantile_day_counts(temp)
     temp = add_past30_bin_counts(temp, source_col="tmean_c")

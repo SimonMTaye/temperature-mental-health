@@ -21,10 +21,10 @@ def make_table() -> None:
         .merge(wave4, on="pidlink", how="left", validate="m:1")
         .assign(
             palm_farmer_self_employed=lambda df: (
-                df["palm_farmer_hh_ifls4"] & df["job_self_employed_ifls4"]
+                df["palm_farmer_hh_ifls4"] & df["job_self_employed_ifls4"].fillna(0)
             ).astype("Int32"),
             palm_farmer_wage=lambda df: (
-                df["palm_farmer_hh_ifls4"] & ~df["job_self_employed_ifls4"]
+                df["palm_farmer_hh_ifls4"] & ~df["job_self_employed_ifls4"].fillna(0)
             ).astype("Int32"),
         )
     )

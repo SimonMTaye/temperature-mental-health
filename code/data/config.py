@@ -20,10 +20,6 @@ ANALYSIS_CODE = CODE / "analysis"
 DATA = PROJECT / "data"
 GENERATED_DATA = DATA / "generated"
 
-# Approximate 2007-to-2014 IDR inflation factor already used for inter-wave PCE
-# changes. Review against a documented CPI series before treating it as final.
-IDR_2007_TO_2014_INFLATOR = 1.7
-
 RESULTS = GENERATED_DATA / "results"
 TMP_TEMPERATURE = GENERATED_DATA / "_tmp_temperature"
 TMP_TEMPERATURE_HOURLY = GENERATED_DATA / "_tmp_temperature_hourly"

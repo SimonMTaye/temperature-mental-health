@@ -68,6 +68,7 @@ COMPLETE_SCORE_COLUMNS = [
     "somatic_z",
     "depraffect_z",
     "posaffect_z",
+    "cesd_z",
 ]
 
 
@@ -81,7 +82,6 @@ def score_item_frame(df: pd.DataFrame, wave: str) -> pd.DataFrame:
         df["score"] = 0.0
         has_freq = df.kp01.eq(1) & df.kp02.between(1, 4)
         df.loc[has_freq, "score"] = df.loc[has_freq, "kp02"] - 1
-        df.loc[df.kp01.eq(1) & df.kp02.isna(), "score"] = 1.5
 
     rev = df.kptype.isin(REVERSE_ITEMS)
     df.loc[rev, "score"] = 3 - df.loc[rev, "score"]
@@ -125,6 +125,9 @@ def add_factor_z_scores(df: pd.DataFrame) -> pd.DataFrame:
         out[f"{factor_name}_z"] = out.groupby("wave")[factor_name].transform(
             lambda s: (s - s.mean()) / s.std()
         )
+    out["cesd_z"] = out.groupby("wave")["cesd_raw"].transform(
+        lambda s: (s - s.mean()) / s.std()
+    )
     return out
 
 

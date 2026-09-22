@@ -5,9 +5,13 @@ from library.render import RegressionSpec, search_replace_term
 
 PROJECT = Path(__file__).parent.parent.parent
 ANALYSIS_INPUT = PROJECT / "data" / "generated" / "30_analysis_table_input.parquet"
-CONTROLS = "age + female + edu_yrs + married + widowed"
-FE_WAVE = "month+year+ifls5+gadm_fullcode"
-FE_NO_WAVE = "month+year+gadm_fullcode"
+CONTROLS_NO_NUL = "age + female + edu_yrs + edu_yrs_missing + married + widowed + divorced + ethnicity + ethnicity_missing + religion + religion_missing"
+CONTROLS_NULLABLE = "age + female + edu_yrs_nullable +  married + widowed + divorced + ethnicity_nullable + religion_nullable"
+CONTROLS = CONTROLS_NULLABLE
+# CONTROLS_PANEL = "age + married + widowed + divorced +  ethnicity + ethnicity_missing + religion + religion_missing"
+CONTROLS_PANEL = CONTROLS
+FE_WAVE = "month*year+ifls5+gadm_fullcode"
+FE_NO_WAVE = "month*year+gadm_fullcode"
 MAIN_TEMP_MEASURE = "tmean_7d"
 JOB_LOSS_MAIN = "job_loss_180d"
 FUEL_SHARE_MAIN = "fuel_transport_share_100_ifls4"
@@ -42,14 +46,14 @@ def update_formula_search_replace(
 def shock_triple_diff_panel(outcome: str, heat: str, group: str, post: str) -> str:
     """Return a formula for a triple-difference specification of shock effects in the IFLS5 panel."""
     return f"""
-      {outcome} ~ {heat} + {group}:{post}:{heat} + {group}:{heat} + {post}:{heat} + {group}:{post} + {CONTROLS} | {FE_NO_WAVE}+pidlink+{post}
+      {outcome} ~ {heat} + {group}:{post}:{heat} + {group}:{heat} + {post}:{heat} + {group}:{post} + {CONTROLS_PANEL} | {FE_NO_WAVE}+pidlink+{post}
     """
 
 
 def bare_spec(rhs: str = "PLACEHOLDER") -> RegressionSpec:
     return RegressionSpec(
         title="",
-        formula=f"{rhs} + {CONTROLS} | {FE_WAVE}",
+        formula=f"{rhs} + {CONTROLS} | {FE_NO_WAVE}",
         df=analysis_df,
         tags=frozenset(),
         show_terms=frozenset(),
@@ -66,7 +70,7 @@ wave5_df = analysis_df[analysis_df["ifls5"]].copy()
 
 temperature_spec = RegressionSpec(
     title="Main Effects of Temperature",
-    formula=f"cesd_z ~ {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["mean-daily-temp", "temperature-effect"]),
     show_terms=frozenset([MAIN_TEMP_MEASURE]),
@@ -74,7 +78,7 @@ temperature_spec = RegressionSpec(
 
 palm_shock = RegressionSpec(
     title="Palm Shock",
-    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ palm_farmer_hh_ifls4 * ifls5 * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["palm-shock", "mean-daily-temp"]),
     show_terms=frozenset([f"palm_farmer_hh_ifls4:ifls5:{MAIN_TEMP_MEASURE}"]),
@@ -107,7 +111,7 @@ coal_shock = RegressionSpec(
 
 jobloss = RegressionSpec(
     title="Job Loss",
-    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}",
+    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",
     df=analysis_df,
     tags=frozenset(["job-loss", "mean-daily-temp"]),
     show_terms=frozenset([f"{JOB_LOSS_MAIN}:{MAIN_TEMP_MEASURE}"]),
@@ -155,7 +159,7 @@ coal_shock_panel = RegressionSpec(
 
 jobloss_panel = RegressionSpec(
     title="Job Loss - Panel",
-    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_WAVE}+pidlink",
+    formula=f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}+pidlink",
     df=analysis_df,
     tags=frozenset(["job-loss", "mean-daily-temp", "panel"]),
     show_terms=frozenset([f"{JOB_LOSS_MAIN}:{MAIN_TEMP_MEASURE}"]),

@@ -9,17 +9,6 @@ import pandas as pd
 
 TABLE = "table_d_sumstats"
 
-analysis_df["job_earnings_hh_real_usd"] = (
-    analysis_df["job_earnings_hh_real"] * analysis_df["conversion_factor"]
-)
-analysis_df["expenditure_nonfood_total_mo_real_usd"] = (
-    analysis_df["expenditure_nonfood_total_mo_real"] * analysis_df["conversion_factor"]
-)
-analysis_df["expenditure_food_total_mo_real_usd"] = (
-    analysis_df["expenditure_food_total_mo_real"] * analysis_df["conversion_factor"]
-)
-
-
 PANELS = [
     (
         "A. Mental-health outcome",
@@ -34,7 +23,7 @@ PANELS = [
             ("Daily mean temperature", "tmean_c"),
             ("7-day mean temperature", "tmean_7d"),
             ("30-day mean temperature", "tmean_30d"),
-            ("7-day mean wet bulb ", "wetbulb_7d"),
+            ("7-day mean wet-bulb ", "wetbulb_7d"),
         ],
     ),
     (
@@ -48,12 +37,15 @@ PANELS = [
     (
         "D. Economic outcomes",
         [
-            ("Monthly Work Income (USD)", "job_earnings_hh_real_usd"),
+            ("Monthly Work Income (2010 USD)", "job_earnings_hh_real_usd"),
             (
-                "Monthly Nonfood Expenditure (USD)",
+                "Monthly Nonfood Expenditure (2010 USD)",
                 "expenditure_nonfood_total_mo_real_usd",
             ),
-            ("Monthly Food Expenditure (USD)", "expenditure_food_total_mo_real_usd"),
+            (
+                "Monthly Food Expenditure (2010 USD)",
+                "expenditure_food_total_mo_real_usd",
+            ),
         ],
     ),
 ]

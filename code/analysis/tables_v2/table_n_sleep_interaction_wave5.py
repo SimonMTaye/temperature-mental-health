@@ -1,5 +1,4 @@
 from __future__ import annotations
-from library.render import RegressionSpec
 
 from dataclasses import replace
 import re
@@ -16,12 +15,11 @@ from library.specs import (
     wave5_df,
     jobloss,
     palm_shock,
-    palm_shock_panel,
     update_formula_search_replace,
 )
 from library.table_builder import make_row, coefficient_rows
 
-TABLE_FILE = TABLE_OUTPUT / "table_b_temperature_and_shock_effects.tex"
+TABLE_FILE = TABLE_OUTPUT / "table_n_interaction_effects_sleep.tex"
 KABUPATEN_CLUSTER = "kabupaten_full_code"
 WETBULB_MEASURE = "wetbulb_7d"
 FORMULA_SPLIT_PATTERN = re.compile(r"(\s+|[~+*:/|()])")
@@ -50,48 +48,13 @@ urban_cash = replace(
     df=wave5_df,
 )
 
-TABLE_SPECS = [
-    {
-        "spec": palm_shock,
-        "group": "palm_farmer_hh_ifls4",
-        "post": "ifls5",
-        "heat": MAIN_TEMP_MEASURE,
-        "label": r"Palm Shock",
-    },
-    {
-        "spec": palm_shock_panel,
-        "group": "palm_farmer_hh_ifls4",
-        "post": "ifls5",
-        "heat": MAIN_TEMP_MEASURE,
-        "label": r"\shortstack{Palm Shocks\\Panel}",
-    },
-    {
-        "spec": PALM_PRICE_SHOCK,
-        "group": "palm_price_gap_z",
-        "post": "ifls5",
-        "heat": MAIN_TEMP_MEASURE,
-        "label": r"\shortstack{Palm Shock\\Price Drop}",
-    },
+SLEEP_TABLE_SPECS = [
     {
         "spec": fuel_shock_urban_vehicle,
         "group": "urban_vehicle_hh_ifls4",
         "post": "post_subsidy",
         "heat": MAIN_TEMP_MEASURE,
         "label": r"Urban Vehicle Owners",
-    },
-    {
-        "spec": urban_nocash,
-        "group": "urban_vehicle_transfer_nonrecipient_ifls4",
-        "post": "post_subsidy",
-        "heat": MAIN_TEMP_MEASURE,
-        "label": r"\shortstack{Urban Vehicle Owners\\No Cash Transfer}",
-    },
-    {
-        "spec": urban_cash,
-        "group": "urban_vehicle_transfer_recipient_ifls4",
-        "post": "post_subsidy",
-        "heat": MAIN_TEMP_MEASURE,
-        "label": r"\shortstack{Urban Vehicle Owners\\Cash Transfer}",
     },
     {
         "spec": jobloss,
@@ -104,21 +67,17 @@ TABLE_SPECS = [
 
 # \resizebox{\linewidth}{!}{%
 TABLE_TEMPLATE = r"""
-\begin{tabular}{@{}lccccccc}
+\begin{tabular}{@{}lcc}
 \toprule
- & \multicolumn{7}{c}{CES-D z-score} \\
-\cmidrule(lr){2-8}
- & Palm Shock & \shortstack{Palm Shock\\Panel} & \shortstack{Palm Shock\\Price Drop} & Urban Vehicle Owners & \shortstack{Urban Vehicle Owners\\No Cash Transfer} & \shortstack{Urban Vehicle Owners\\Cash Transfer} & Job Loss \\
-\cmidrule(lr){2-2} \cmidrule(lr){3-3} \cmidrule(lr){4-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6} \cmidrule(lr){7-7} \cmidrule(lr){8-8}
- & (1) & (2) & (3) & (4) & (5) & (6) & (7) \\
-\midrule\addlinespace[2.5pt]
+ & \multicolumn{2}{c}{Sleep Hours} \\
+\cmidrule(lr){2-3}
+& Urban Vehicle Owners & Job Loss \\
+\cmidrule(lr){2-2} \cmidrule(lr){3-3} 
+ & (1) & (2) \\
 {temperature_panel}
 \midrule\addlinespace[2.5pt]
-{wetbulb_panel}
-\midrule\addlinespace[2.5pt]
-Kecamatan & x & x & x & x & x & x & x \\
-Month-Year & x & x & x & x & x & x & x \\
-Individual & - & x & - & - & - & - & - \\
+Kecamatan & x & x \\
+Month-Year & x & x \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
 {group_mean_row}
@@ -192,37 +151,13 @@ def differential_impact_row(models) -> tuple[str, str]:
     return coefficient_rows("Differential Impact of Heat", stats)
 
 
-def wetbulb_specs(
-    original_specs: list[
-        dict[str, RegressionSpec | str | None] | dict[str, RegressionSpec | str]
-    ] = TABLE_SPECS,
-) -> list[dict]:
-    specs = []
-    for spec_data in original_specs:
-        old_spec = spec_data["spec"]
-        assert isinstance(old_spec, RegressionSpec)
-        specs.append(
-            {
-                **spec_data,
-                "spec": update_formula_search_replace(
-                    old_spec,
-                    MAIN_TEMP_MEASURE,
-                    WETBULB_MEASURE,
-                ),
-                "heat": WETBULB_MEASURE,
-            }
-        )
-    return specs
-
-
-def panel_rows(label: str, models) -> str:
+def panel_rows(models) -> str:
     differential_coefs, differential_ses = differential_impact_row(models)
     heat_coefs, heat_ses = coefficient_rows(
         "Heat", [coefficient_stats(model, "heat") for model in models]
     )
     return "\n".join(
         [
-            rf"\multicolumn{{8}}{{l}}{{\text{{{label}}}}} \\",
             r"\midrule",
             differential_coefs,
             differential_ses,
@@ -243,19 +178,28 @@ def stressed_group_proportion_row(specs: list[dict]) -> str:
 
 
 def build_table() -> str:
-    temperature_models = regression_runner(TABLE_SPECS)
-    wetbulb_models = regression_runner(wetbulb_specs())
+    sleep_specs = [
+        {
+            **spec_data,
+            "spec": update_formula_search_replace(
+                spec_data["spec"],  # ty:ignore[invalid-argument-type]
+                "cesd_z",
+                "sleep_dur_h",
+            ),
+        }
+        for spec_data in SLEEP_TABLE_SPECS
+    ]
+    sleep_models = regression_runner(sleep_specs)
     observations_rows = make_row(
-        "Observations", [f"{int(model.stats['N']):,}" for model in temperature_models]
+        "Observations", [f"{int(model.stats['N']):,}" for model in sleep_models]
     )
     return (
         TABLE_TEMPLATE.replace(
             "{temperature_panel}",
-            panel_rows("7-day mean Temperature", temperature_models),
+            panel_rows(sleep_models),
         )
-        .replace("{wetbulb_panel}", panel_rows("7-day mean Wet-bulb", wetbulb_models))
         .replace("{observations_row}", observations_rows)
-        .replace("{group_mean_row}", stressed_group_proportion_row(TABLE_SPECS))
+        .replace("{group_mean_row}", stressed_group_proportion_row(sleep_specs))
     )
 
 

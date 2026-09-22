@@ -3,7 +3,11 @@ from dataclasses import replace
 import pandas as pd
 
 from library.render import make_regression_table, render_table_to_latex, RegressionSpec
-from library.specs import JOB_LOSS_MAIN, CONTROLS, FE_NO_WAVE
+from library.specs import (
+    JOB_LOSS_MAIN,
+    CONTROLS,
+    FE_NO_WAVE,
+)
 from library.config import TABLE_OUTPUT
 from analysis.tables_v2.table_b_temperature_and_shock_effects import TABLE_SPECS
 
@@ -19,8 +23,8 @@ outcome_dict = {
     "palm_farmer_hh_ifls4": earnings_variable,
     "palm_price_gap_z": earnings_variable,
     "urban_vehicle_hh_ifls4": transportation_spending_variable,
-    "urban_vehicle_transfer_nonrecipient_ifls4": vehicle_fuel_price_variable,
-    "urban_vehicle_transfer_recipient_ifls4": vehicle_fuel_price_variable,
+    "urban_vehicle_transfer_nonrecipient_ifls4": transportation_spending_variable,
+    "urban_vehicle_transfer_recipient_ifls4": transportation_spending_variable,
     JOB_LOSS_MAIN: earnings_variable,
 }
 ECONOMIC_OUTCOMES = tuple(dict.fromkeys(outcome_dict.values()))
@@ -44,16 +48,17 @@ def make_specs():
         old_spec = spec_data["spec"]
         assert isinstance(old_spec, RegressionSpec)
         df = old_spec.df.copy()  # ty:ignore[unresolved-attribute]
-        # df[outcome] = winsorized(df[outcome])
+        df[outcome] = winsorized(df[outcome])
         dv_mean = df[outcome].mean()
         # If jobloss spec, then no post so handle that
         rhs = group if post is None else f"{group} * {post}"
         effect_term = group if post is None else f"{group}:{post}"
         post_term = post if post is not None else "post"
+        FE = FE_NO_WAVE
         spec = replace(
             old_spec,
             df=df,
-            formula=f"{outcome} ~ {rhs} + {CONTROLS} | {FE_NO_WAVE}",
+            formula=f"{outcome} ~ {rhs} + {CONTROLS} | {FE}",
             show_terms=frozenset([effect_term]),
         )
         economic_specs.append(
@@ -64,7 +69,7 @@ def make_specs():
                 "-" if pd.isna(dv_mean) else f"{dv_mean:.2f}",
             )
         )
-    order = [0, 1, 2, 6, 3]
+    order = [0, 6]
     reordered_specs = [economic_specs[i] for i in order]
     return reordered_specs
 

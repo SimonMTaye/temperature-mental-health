@@ -38,6 +38,13 @@ MONTHS_PER_YEAR = 12
 WEEKS_PER_MONTH = 4.33
 COOKING_OIL_FOOD_TYPE = "Y"
 VEHICLE_FUEL_QUANTITY_SENTINELS = {9.98, 98.0, 99.8, 99.98, 999.98}
+NONFOOD_TOTAL_COMPONENTS = [
+    "expenditure_nonfood_ks2_mo",
+    "expenditure_nonfood_children_education_mo",
+    "expenditure_nonfood_food_gift_mo",
+    "expenditure_nonfood_ks3_mo",
+    "expenditure_nonfood_rent_mo",
+]
 
 
 def _grouped_money_sum(
@@ -121,6 +128,30 @@ def vehicle_fuel_expenditure(
             "vehicle_fuel_price_per_litre",
         ]
     ].rename(columns={hhid_column: "hhid"})
+
+
+def rent_expenditure(
+    kr: pd.DataFrame,
+    hhid_column: str,
+) -> pd.DataFrame:
+    """Build monthly actual rent expenditure from IFLS Book 2 KR."""
+    out = kr[[hhid_column, "kr03", "kr04a", "kr04ax"]].copy()
+    rent = clean_money(out["kr04a"])
+    unit = pd.to_numeric(out["kr04ax"], errors="coerce")
+    renter = out["kr03"].eq(5)
+
+    out["expenditure_nonfood_rent_mo"] = np.nan
+    out.loc[~renter, "expenditure_nonfood_rent_mo"] = 0.0
+    out.loc[renter & unit.eq(1), "expenditure_nonfood_rent_mo"] = (
+        rent.loc[renter & unit.eq(1)] / MONTHS_PER_YEAR
+    )
+    out.loc[renter & unit.eq(2), "expenditure_nonfood_rent_mo"] = rent.loc[
+        renter & unit.eq(2)
+    ]
+
+    return out[[hhid_column, "expenditure_nonfood_rent_mo"]].rename(
+        columns={hhid_column: "hhid"}
+    )
 
 
 def food_expenditure(
@@ -231,12 +262,7 @@ def non_food_expenditure(
         .assign(
             expenditure_nonfood_kerosene_mo=np.nan,
             expenditure_nonfood_total_mo=lambda df: df[
-                [
-                    "expenditure_nonfood_ks2_mo",
-                    "expenditure_nonfood_children_education_mo",
-                    "expenditure_nonfood_food_gift_mo",
-                    "expenditure_nonfood_ks3_mo",
-                ]
+                [col for col in NONFOOD_TOTAL_COMPONENTS if col in df.columns]
             ].sum(axis=1, min_count=1),
         )
     )
@@ -290,9 +316,17 @@ def expenditure_data() -> pd.DataFrame:
         ks4 = read_stata_df(
             IFLS_FOLDERS[wave] / "b1_ks4.dta", convert_categoricals=False
         )
+        kr = read_stata_df(
+            IFLS_FOLDERS[wave] / "b2_kr.dta", convert_categoricals=False
+        )
         food = food_expenditure(ks1, hhid_column=hhid_col)
         non_food = non_food_expenditure(ks0, ks2, ks3, hhid_column=hhid_col)
+        rent = rent_expenditure(kr, hhid_column=hhid_col)
         expenditure = food.merge(non_food, on=["hhid"], how="outer", validate="1:1")
+        expenditure = expenditure.merge(rent, on="hhid", how="outer", validate="1:1")
+        expenditure["expenditure_nonfood_total_mo"] = expenditure[
+            NONFOOD_TOTAL_COMPONENTS
+        ].sum(axis=1, min_count=1)
         if wave == "IFLS5":
             expenditure = expenditure.merge(
                 vehicle_fuel_expenditure(ks4, hhid_col),
