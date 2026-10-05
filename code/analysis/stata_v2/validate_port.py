@@ -18,7 +18,7 @@ from analysis.tables_v2 import table_d_palm_farmer_alt_definitions as d
 from library.specs import temperature_spec, update_formula_search_replace
 
 OUT = Path('.cache/stata_port')
-DELIVERY = Path('code/analysis/stata_v2/validation')
+DELIVERY = OUT / 'validation'
 
 
 def collect_actual_specs():

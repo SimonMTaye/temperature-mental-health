@@ -1,5 +1,29 @@
 # Stata port and validation
 
+## Python exports
+
+Exports contain the final `spec.df`, including Python derived variables and restrictions, before engine complete-case or singleton handling. All original columns and rows are preserved. The sleep specifications retain both waves in the input; missing outcomes select the estimation sample. D uses the merged `palm_df`.
+
+Run from the repository root (no raw-data pipeline):
+
+```sh
+mkdir -p output/tables
+uv run python code/analysis/tables_v2/table_a_temperature_effects.py
+uv run python code/analysis/tables_v2/table_b_temperature_and_shock_effects.py
+uv run python code/analysis/tables_v2/table_d_palm_farmer_alt_definitions.py
+```
+
+Set `OUTPUT_DATA = False` in `code/library/port_helper.py` to disable writes. Calls precede cache lookup. B exports only inside its own table builder, so other users of `regression_runner` do not export.
+
+Files live in `data/generated/stata_port/` and are generated, uncommitted inputs. Each file has a `{table}_{id}_mapping.json` sidecar with the complete original/export name mapping, row count, and numeric identifier dictionaries. Names over 32 characters use their first 23 characters plus `_` and 8 SHA-256 hex digits; collisions raise an error. No silent Stata writer renaming occurs.
+
+Nullable numeric/boolean values become Stata numeric doubles with ordinary numeric missing values. Existing floats keep precision. Strings retain values; missing strings become Stata empty strings (Stata string missing). Categorical values retain their labels, not category codes. Datetimes use Stata `%tc` milliseconds. `pidlink`, `wave`, and all original identifiers remain present. `stata_source_row` is the zero-based row position in the exported final dataframe, enabling direct estimation-sample reconciliation. `stata_pidlink` and `stata_gadm_fullcode` provide 1-based sorted numeric identifier aliases, with missing identifiers left missing. `stata_month_times_year` is the numeric product `month * year`, preserving missingness: pyfixest's fixed-effect syntax categorizes that product; it is not a month-by-year interaction. Regression covariates are never replaced by identifier codes.
+
+Every model uses the actual covariance call `vcov={"CRV1": "kabupaten_full_code"}` through the caching helper (B passes the same setting explicitly). Existing cache keys omit covariance, so port validation must use fresh estimates.
+
+
+Regression IDs and resolved formulas are documented before each model in `port_tables.do`: A and A2 use IDs 1–6; B uses 1–7 for temperature and 8–14 for wet-bulb; D uses 1–3 for the active alternative definitions.
+
 From the repository root, after generating the Python exports:
 
 ```sh
@@ -19,7 +43,7 @@ net install ftools, from("https://raw.githubusercontent.com/sergiocorreia/ftools
 ssc install require, replace
 ```
 
-Ensure `.cache/stata_port/ado` exists first. A globally installed compatible dependency also works. In this managed workspace the Python commands used `UV_CACHE_DIR=/private/tmp/ifls-uv-cache MPLCONFIGDIR=/private/tmp/ifls-mpl`.
+Ensure `.cache/stata_port/ado` exists first. A globally installed compatible dependency also works.
 
 ## Translation decisions
 
@@ -29,11 +53,11 @@ All supplied controls, including ethnicity and religion codes, are numeric conti
 
 Only heat and differential heat are displayed by the active tables. There are no displayed linear combinations in these active table functions: `lincom` exports each displayed single coefficient with its standard error and unadjusted t p-value. The unused `make_shock_regression_table` helper has a treated-heat combination, but A/B/D do not call it.
 
-## Validation artifacts
+## Reproducing the comparison
 
-`validation/python_reference.csv`, `python_stata_comparison.csv`, `sample_comparison.csv`, and `validation_summary.json` record the default Python comparison. `validation/tight_projection/` records the separate tighter projection diagnostic. Comparison rows identify table, regression ID, coefficient/contrast, metric, Python value, Stata value, and difference. Full respondent-wave sample CSVs and raw Stata results stay in ignored `.cache/stata_port/` because they contain individual identifiers.
+The validator writes fresh Python references, coefficient comparisons, sample comparisons, and diagnostic JSON files under ignored `.cache/stata_port/validation/`. The `tight_projection/` subdirectory holds the separate tighter projection diagnostic. Full respondent-wave samples and raw Stata results also stay in `.cache/stata_port/`. Generated validation outputs are not tracked.
 
-Count/cluster/df tolerances are exact; coefficients and SE use absolute tolerance `1e-7`, p-values `1e-6`. These are far below the tables' three-decimal display precision and stringent enough to flag small solver/finite-sample differences. Passing a tolerance is a numerical comparison, not a claim of exact equality. Native default discrepancies remain visible, even when the tight diagnostic explains them.
+Count, cluster, and degree-of-freedom tolerances are exact; coefficient and SE absolute tolerance is `1e-7`, and p-value tolerance is `1e-6`. These tolerances flag small solver and finite-sample differences well below the tables’ display precision. Default discrepancies are retained separately from the tighter diagnostic.
 
 ## Coefficient targets for future multiple testing
 
@@ -65,6 +89,6 @@ No rwolf2/wyoung adjustments or hypothesis families are implemented. Separate pe
 
 All 29 models ran in Stata, following the initial A/1, B/1, B/2 reconciliation. Every respondent-wave estimation sample matched exactly, as did all observation counts, cluster counts, and t-test degrees of freedom.
 
-The reproducible default Python run (`PYTHONHASHSEED=1`, PyFixest 0.50.1, projection tolerance `1e-8`) passes 212/254 metric rows. Maximum absolute differences: coefficient 2.51e-07, SE 1.12e-06, p-value 4.54e-06; seven regressions have Python `df_k` one above Stata. The default engine numerically retains the fully absorbed `ifls5` regressor in B/1, B/3, B/8, B/10 and D/1–3, counting an extra parameter in its CRV1 finite-sample denominator. `estimation_diagnostics.json` records all retained terms and FE counts. FE terms are assembled through a Python set, so hash order can affect projection and this borderline collinearity detection. The scientific specification was left unchanged.
+The reproducible default Python run (`PYTHONHASHSEED=1`, PyFixest 0.50.1, projection tolerance `1e-8`) passes 212/254 metric rows. Maximum absolute differences: coefficient 2.51e-07, SE 1.12e-06, p-value 4.54e-06; seven regressions have Python `df_k` one above Stata. The default engine numerically retains the fully absorbed `ifls5` regressor in B/1, B/3, B/8, B/10 and D/1–3, counting an extra parameter in its CRV1 finite-sample denominator. The validator records retained terms and FE counts in `estimation_diagnostics.json`. FE terms are assembled through a Python set, so hash order can affect projection and this borderline collinearity detection. The scientific specification was left unchanged.
 
 The separate diagnostic (`PYTHONHASHSEED=0`, projection tolerance `1e-10`, maximum 100000 iterations) passes **254/254 metrics** and all **29/29 exact samples**. Maximum absolute differences: coefficient 6.46e-12, SE 1.32e-10, p-value 1.56e-09; all `df_k` values match. Tightening projection removes the absorbed wave regressor and explains the native default discrepancies. This establishes equivalent regression translation at tighter numerical precision; exact parity with every default/cached Python result is not claimed. Existing Python table settings and caches were not modified.
