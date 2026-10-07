@@ -37,3 +37,5 @@ preview.log
 preview.aux
 preview.out
 preview.toc
+.claude/worktrees/
+.claude/settings.local.json
