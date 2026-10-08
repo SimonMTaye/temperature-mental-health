@@ -23,7 +23,8 @@ Old calculation (paper text, Table B paragraph)
 Updated calculation (this script)
     1. Regress temperature on everything else in the headline model:
        `heat ~ controls | month*year + kecamatan`, same controls, FEs and
-       sample as the Table A regression.
+       sample as the main-effect regression. A wave-FE version is also
+       printed; it is identical because waves never share a calendar year.
     2. Keep the residuals: how much hotter or cooler that respondent's week was
        than usual for that kecamatan and month-year. By Frisch-Waugh-Lovell,
        this is exactly the variation the coefficient comes from.
@@ -50,6 +51,7 @@ from library.caching import run_regression_with_caching
 from library.specs import (
     CONTROLS,
     FE_NO_WAVE,
+    FE_WAVE,
     MAIN_TEMP_MEASURE,
     analysis_df,
     temperature_spec,
@@ -68,26 +70,18 @@ PAPER_RANGE_COLUMNS = [
     "Job Loss",
 ]
 
-TABLE_A_SPECS = [
+MAIN_EFFECT_SPECS = [
     {
         "spec": temperature_spec,
         "group": None,
         "post": None,
         "heat": MAIN_TEMP_MEASURE,
-        "label": "Table A main effect",
+        "label": "Main effect",
     },
 ]
 
 
-def plain_label(label: str) -> str:
-    return label.replace(r"\shortstack{", "").replace(r"\\", " ").replace("}", "")
-
-
-def p90_p10(values: np.ndarray) -> float:
-    return float(np.quantile(values, 0.9) - np.quantile(values, 0.1))
-
-
-def full_sample_heat_ranges(heat: str) -> dict[str, float]:
+def full_sample_heat_ranges(heat: str, fixed_effects: str) -> dict[str, float]:
     """Raw and residual p90 - p10 of heat on the full headline-spec sample.
 
     Identification assumes daily weather deviations around the kecamatan and
@@ -95,13 +89,13 @@ def full_sample_heat_ranges(heat: str) -> dict[str, float]:
     the residuals are the variation that identifies the heat coefficients.
     """
     sample = analysis_df.dropna(subset=[OUTCOME, heat])
-    model = pf.feols(f"{heat} ~ {CONTROLS} | {FE_NO_WAVE}", data=sample)
+    model = pf.feols(f"{heat} ~ {CONTROLS} | {fixed_effects}", data=sample)
     raw, residual = model._data[heat].to_numpy(), model.resid()
     return {
         "raw_sd": raw.std(),
-        "raw_p90_p10": p90_p10(raw),
+        "raw_p90_p10": np.quantile(raw, 0.9) - np.quantile(raw, 0.1),
         "resid_sd": residual.std(),
-        "resid_p90_p10": p90_p10(residual),
+        "resid_p90_p10": np.quantile(residual, 0.9) - np.quantile(residual, 0.1),
     }
 
 
@@ -119,7 +113,10 @@ def magnitude_rows(specs: list[dict], models: list, ranges: dict) -> pd.DataFram
         heat_range = ranges[spec_data["heat"]]
         rows.append(
             {
-                "column": plain_label(spec_data["label"]),
+                "column": spec_data["label"]
+                .replace(r"\shortstack{", "")
+                .replace(r"\\", " ")
+                .replace("}", ""),
                 "heat": spec_data["heat"],
                 "coef_per_degree": coefficient,
                 "old_effect": coefficient * heat_range["raw_p90_p10"],
@@ -144,33 +141,39 @@ def print_paper_range(results: pd.DataFrame, heat: str) -> None:
 
 
 def main() -> None:
-    table_a_models = [
-        run_regression_with_caching(spec_data["spec"]) for spec_data in TABLE_A_SPECS
+    main_effect_models = [
+        run_regression_with_caching(spec_data["spec"])
+        for spec_data in MAIN_EFFECT_SPECS
     ]
     temperature_models = regression_runner(TABLE_SPECS)
     wetbulb_models = regression_runner(wetbulb_specs())
-    ranges = {
-        heat: full_sample_heat_ranges(heat)
-        for heat in [MAIN_TEMP_MEASURE, WETBULB_MEASURE]
-    }
 
-    results = pd.concat(
-        [
-            magnitude_rows(TABLE_A_SPECS, table_a_models, ranges),
-            magnitude_rows(TABLE_SPECS, temperature_models, ranges),
-            magnitude_rows(wetbulb_specs(), wetbulb_models, ranges),
-        ],
-        ignore_index=True,
-    )
+    # The outcome regressions use FE_NO_WAVE. Waves never share a calendar
+    # year (IFLS4: 2007-08, IFLS5: 2014-15), so year FEs already absorb wave
+    # and both residualizations should give the same ranges.
+    for fe_label, fixed_effects in [("no wave FE", FE_NO_WAVE), ("wave FE", FE_WAVE)]:
+        ranges = {
+            heat: full_sample_heat_ranges(heat, fixed_effects)
+            for heat in [MAIN_TEMP_MEASURE, WETBULB_MEASURE]
+        }
+        results = pd.concat(
+            [
+                magnitude_rows(MAIN_EFFECT_SPECS, main_effect_models, ranges),
+                magnitude_rows(TABLE_SPECS, temperature_models, ranges),
+                magnitude_rows(wetbulb_specs(), wetbulb_models, ranges),
+            ],
+            ignore_index=True,
+        )
 
-    with pd.option_context("display.width", 200, "display.precision", 3):
-        print("Full-sample heat variation (°C):")
-        print(pd.DataFrame(ranges).T.to_string())
-        print("\nEffect of a p10 -> p90 week (CES-D SD):")
-        print(results.to_string(index=False))
-    print("\nRange quoted in the paper (binary indicators, excl. cash recipients):")
-    print_paper_range(results, MAIN_TEMP_MEASURE)
-    print_paper_range(results, WETBULB_MEASURE)
+        print(f"\n===== Residualized on: {fixed_effects} ({fe_label}) =====")
+        with pd.option_context("display.width", 200, "display.precision", 3):
+            print("Full-sample heat variation (°C):")
+            print(pd.DataFrame(ranges).T.to_string())
+            print("\nEffect of a p10 -> p90 week (CES-D SD):")
+            print(results.to_string(index=False))
+        print("\nRange quoted in the paper (binary indicators, excl. cash recipients):")
+        print_paper_range(results, MAIN_TEMP_MEASURE)
+        print_paper_range(results, WETBULB_MEASURE)
 
 
 if __name__ == "__main__":
