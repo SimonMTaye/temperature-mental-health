@@ -1,0 +1,94 @@
+# Stata port and validation
+
+## Python exports
+
+Exports contain the final `spec.df`, including Python derived variables and restrictions, before engine complete-case or singleton handling. All original columns and rows are preserved. The sleep specifications retain both waves in the input; missing outcomes select the estimation sample. D uses the merged `palm_df`.
+
+Run from the repository root (no raw-data pipeline):
+
+```sh
+mkdir -p output/tables
+uv run python code/analysis/tables_v2/table_a_temperature_effects.py
+uv run python code/analysis/tables_v2/table_b_temperature_and_shock_effects.py
+uv run python code/analysis/tables_v2/table_d_palm_farmer_alt_definitions.py
+```
+
+Set `OUTPUT_DATA = False` in `code/library/port_helper.py` to disable writes. Calls precede cache lookup. B exports only inside its own table builder, so other users of `regression_runner` do not export.
+
+Files live in `data/generated/stata_port/` and are generated, uncommitted inputs. Each file has a `{table}_{id}_mapping.json` sidecar with the complete original/export name mapping, row count, and numeric identifier dictionaries. Names over 32 characters use their first 23 characters plus `_` and 8 SHA-256 hex digits; collisions raise an error. No silent Stata writer renaming occurs.
+
+Nullable numeric/boolean values become Stata numeric doubles with ordinary numeric missing values. Existing floats keep precision. Strings retain values; missing strings become Stata empty strings (Stata string missing). Categorical values retain their labels, not category codes. Datetimes use Stata `%tc` milliseconds. `pidlink`, `wave`, and all original identifiers remain present. `stata_source_row` is the zero-based row position in the exported final dataframe, enabling direct estimation-sample reconciliation. `stata_pidlink` and `stata_gadm_fullcode` provide 1-based sorted numeric identifier aliases, with missing identifiers left missing. `stata_month_times_year` is the numeric product `month * year`, preserving missingness: pyfixest's fixed-effect syntax categorizes that product; it is not a month-by-year interaction. Regression covariates are never replaced by identifier codes.
+
+Every model uses the actual covariance call `vcov={"CRV1": "kabupaten_full_code"}` through the caching helper (B passes the same setting explicitly). Existing cache keys omit covariance, so port validation must use fresh estimates.
+
+
+Regression IDs and resolved formulas are documented before each model in `port_tables.do`: A and A2 use IDs 1–6; B uses 1–7 for temperature and 8–14 for wet-bulb; D uses 1–3 for the active alternative definitions.
+
+From the repository root, after generating the Python exports:
+
+```sh
+/Applications/StataNow/StataMP.app/Contents/MacOS/stata-mp -b do code/analysis/stata_v2/reconcile_first.do
+/Applications/StataNow/StataMP.app/Contents/MacOS/stata-mp -b do code/analysis/stata_v2/port_tables.do
+PYTHONHASHSEED=1 uv run --no-sync python code/analysis/stata_v2/validate_port.py
+PYTHONHASHSEED=0 uv run --no-sync python code/analysis/stata_v2/validate_port.py --tight
+```
+
+The first command reconciles A/1, B/1, and B/2; the second contains all 29 explicit `use` and `reghdfe` commands. It must finish through `postclose` and the results export. Stata process exit status alone is insufficient: inspect `.cache/stata_port/port.log` for errors. The Python validator uses fresh `pyfixest.feols` calls, bypassing all regression caches. Its default output preserves the Python table engine defaults. `--tight` is a separately labeled numerical diagnostic using `fixef_tol=1e-10`, `fixef_maxiter=100000`, with the same formula, data, covariance, and singleton rules. It does not change the analysis scripts or their existing estimates.
+
+Stata requires `reghdfe`, `ftools`, and `require`. Installed versions used here: reghdfe 6.13.1, ftools 2.50.0, require 1.3.1, StataNow/MP 19.5. `ftools` and `require` were installed into workspace-local `.cache/stata_port/ado`; the do-files add that path for this run only. To reproduce the local dependency setup:
+
+```stata
+net set ado ".cache/stata_port/ado"
+net install ftools, from("https://raw.githubusercontent.com/sergiocorreia/ftools/master/src/") replace
+ssc install require, replace
+```
+
+Ensure `.cache/stata_port/ado` exists first. A globally installed compatible dependency also works.
+
+## Translation decisions
+
+`month*year` inside the installed PyFixest FE parser is a numeric multiplication before factorization. The port absorbs the exported `stata_month_times_year` product. It deliberately preserves this actual specification; an intended calendar month-year FE would require a separately authorized scientific change. `gadm_fullcode` is the community FE identifier; labels in rendered tables are not used to infer its meaning.
+
+All supplied controls, including ethnicity and religion codes, are numeric continuous regressors. Numeric 0/1 regressors and Python booleans retain their meanings; `c.` interaction notation yields products, with baseline 0. The panel models explicitly include only the manually requested five heat/group/post terms and controls; individual and wave FE are absorbed. Complete-case and recursive singleton selection are left to the engines. Kabupaten clusters apply to every model. `dof(clusters)` avoids Stata's additional pairwise FE rank adjustment and follows the Python `k_fixef="nonnested"` convention as closely as possible.
+
+Only heat and differential heat are displayed by the active tables. There are no displayed linear combinations in these active table functions: `lincom` exports each displayed single coefficient with its standard error and unadjusted t p-value. The unused `make_shock_regression_table` helper has a treated-heat combination, but A/B/D do not call it.
+
+## Reproducing the comparison
+
+The validator writes fresh Python references, coefficient comparisons, sample comparisons, and diagnostic JSON files under ignored `.cache/stata_port/validation/`. The `tight_projection/` subdirectory holds the separate tighter projection diagnostic. Full respondent-wave samples and raw Stata results also stay in `.cache/stata_port/`. Generated validation outputs are not tracked.
+
+Count, cluster, and degree-of-freedom tolerances are exact; coefficient and SE absolute tolerance is `1e-7`, and p-value tolerance is `1e-6`. These tolerances flag small solver and finite-sample differences well below the tables’ display precision. Default discrepancies are retained separately from the tighter diagnostic.
+
+## Coefficient targets for future multiple testing
+
+A/A2's displayed heat term is the corresponding heat variable in the explicit command. Other targets are:
+
+| Table / ID | Heat coefficient | Differential heat coefficient |
+|---|---|---|
+| table_b / 1 | `tmean_7d` | `c.palm_farmer_hh_ifls4#c.ifls5#c.tmean_7d` |
+| table_b / 2 | `tmean_7d` | `c.palm_farmer_hh_ifls4#c.ifls5#c.tmean_7d` |
+| table_b / 3 | `tmean_7d` | `c.palm_price_gap_z#c.ifls5#c.tmean_7d` |
+| table_b / 4 | `tmean_7d` | `c.urban_vehicle_hh_ifls4#c.post_subsidy#c.tmean_7d` |
+| table_b / 5 | `tmean_7d` | `c.urban_vehicle_transfer__0dc7241a#c.post_subsidy#c.tmean_7d` |
+| table_b / 6 | `tmean_7d` | `c.urban_vehicle_transfer__60e2d6a2#c.post_subsidy#c.tmean_7d` |
+| table_b / 7 | `tmean_7d` | `c.job_loss_180d#c.tmean_7d` |
+| table_b / 8 | `wetbulb_7d` | `c.palm_farmer_hh_ifls4#c.ifls5#c.wetbulb_7d` |
+| table_b / 9 | `wetbulb_7d` | `c.palm_farmer_hh_ifls4#c.ifls5#c.wetbulb_7d` |
+| table_b / 10 | `wetbulb_7d` | `c.palm_price_gap_z#c.ifls5#c.wetbulb_7d` |
+| table_b / 11 | `wetbulb_7d` | `c.urban_vehicle_hh_ifls4#c.post_subsidy#c.wetbulb_7d` |
+| table_b / 12 | `wetbulb_7d` | `c.urban_vehicle_transfer__0dc7241a#c.post_subsidy#c.wetbulb_7d` |
+| table_b / 13 | `wetbulb_7d` | `c.urban_vehicle_transfer__60e2d6a2#c.post_subsidy#c.wetbulb_7d` |
+| table_b / 14 | `wetbulb_7d` | `c.job_loss_180d#c.wetbulb_7d` |
+| table_d / 1 | `tmean_7d` | `c.palm_farmer_hh_ifls4#c.ifls5#c.tmean_7d` |
+| table_d / 2 | `tmean_7d` | `c.palm_farmer_both_waves#c.ifls5#c.tmean_7d` |
+| table_d / 3 | `tmean_7d` | `c.palm_farmer_hh_ifls5#c.ifls5#c.tmean_7d` |
+
+No rwolf2/wyoung adjustments or hypothesis families are implemented. Separate per-regression exports support this numerical port. Future family-level resampling needs jointly aligned data and shared bootstrap draws; independently bootstrapping separately loaded datasets is not a valid joint adjustment.
+
+## Completed validation results
+
+All 29 models ran in Stata, following the initial A/1, B/1, B/2 reconciliation. Every respondent-wave estimation sample matched exactly, as did all observation counts, cluster counts, and t-test degrees of freedom.
+
+The reproducible default Python run (`PYTHONHASHSEED=1`, PyFixest 0.50.1, projection tolerance `1e-8`) passes 212/254 metric rows. Maximum absolute differences: coefficient 2.51e-07, SE 1.12e-06, p-value 4.54e-06; seven regressions have Python `df_k` one above Stata. The default engine numerically retains the fully absorbed `ifls5` regressor in B/1, B/3, B/8, B/10 and D/1–3, counting an extra parameter in its CRV1 finite-sample denominator. The validator records retained terms and FE counts in `estimation_diagnostics.json`. FE terms are assembled through a Python set, so hash order can affect projection and this borderline collinearity detection. The scientific specification was left unchanged.
+
+The separate diagnostic (`PYTHONHASHSEED=0`, projection tolerance `1e-10`, maximum 100000 iterations) passes **254/254 metrics** and all **29/29 exact samples**. Maximum absolute differences: coefficient 6.46e-12, SE 1.32e-10, p-value 1.56e-09; all `df_k` values match. Tightening projection removes the absorbed wave regressor and explains the native default discrepancies. This establishes equivalent regression translation at tighter numerical precision; exact parity with every default/cached Python result is not claimed. Existing Python table settings and caches were not modified.
