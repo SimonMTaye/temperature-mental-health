@@ -1,4 +1,5 @@
 from library.config import TABLE_OUTPUT
+from library.port_helper import save_data
 from library.specs import (
     palm_shock,
     analysis_df,
@@ -62,6 +63,9 @@ def make_table() -> None:
         )
         for _, term in groups
     ]
+
+    for regression_id, spec in enumerate(specs, start=1):
+        save_data("table_d", regression_id, spec.df)
 
     table = make_shock_regression_table_trimmed(
         specs,

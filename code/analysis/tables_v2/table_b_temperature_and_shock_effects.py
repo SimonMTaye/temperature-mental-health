@@ -9,6 +9,7 @@ import pandas as pd
 
 from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
+from library.port_helper import save_data
 from library.specs import (
     JOB_LOSS_MAIN,
     MAIN_TEMP_MEASURE,
@@ -243,8 +244,13 @@ def stressed_group_proportion_row(specs: list[dict]) -> str:
 
 
 def build_table() -> str:
+    wetbulb_panel_specs = wetbulb_specs()
+    for regression_id, spec_data in enumerate(TABLE_SPECS, start=1):
+        save_data("table_b", regression_id, spec_data["spec"].df)
+    for regression_id, spec_data in enumerate(wetbulb_panel_specs, start=8):
+        save_data("table_b", regression_id, spec_data["spec"].df)
     temperature_models = regression_runner(TABLE_SPECS)
-    wetbulb_models = regression_runner(wetbulb_specs())
+    wetbulb_models = regression_runner(wetbulb_panel_specs)
     observations_rows = make_row(
         "Observations", [f"{int(model.stats['N']):,}" for model in temperature_models]
     )

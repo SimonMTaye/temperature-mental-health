@@ -1,4 +1,5 @@
 from library.config import TABLE_OUTPUT
+from library.port_helper import save_data
 from library.specs import (
     temperature_spec,
     MAIN_TEMP_MEASURE,
@@ -26,6 +27,10 @@ def make_temp_table(
         if outcome != "cesd_z":
             spec = update_formula_search_replace(spec, "cesd_z", outcome)
         specs.append(spec)
+
+    table_code = "table_a" if outcome == "cesd_z" else "table_a2"
+    for regression_id, spec in enumerate(specs, start=1):
+        save_data(table_code, regression_id, spec.df)
 
     table = make_regression_table(
         specs,
