@@ -35,5 +35,5 @@ GADM_PATH = RAW_ROOT / "gadm36_IDN.gpkg"
 
 # NOTE: these uses Simon's credentials tied to the cornell account. Please ask an LLM
 # on authenticating earthengine's python API for advice on setting up your own account and logging in
-GEE_PROEJCT_ID = "vip-inc-vol-anal"
+GEE_PROEJCT_ID = "temperature-mental-health"
 # GEE_ENV_PATH = Path("~/.config/earthengine/.env")
