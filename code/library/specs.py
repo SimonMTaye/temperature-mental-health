@@ -68,6 +68,44 @@ analysis_df["ifls5"] = analysis_df["wave"] == "IFLS5"
 wave5_df = analysis_df[analysis_df["ifls5"]].copy()
 
 
+def build_palm_df() -> pd.DataFrame:
+    """Return analysis_df plus alternative palm-farmer definitions (same rows, extra columns).
+
+    This is a superset of analysis_df and wave5_df, so it is also the single
+    dataset exported for the Stata port (see code/analysis/stata_v2).
+    """
+    wave5_palm = (
+        analysis_df.query("wave == 'IFLS5'")
+        .filter(items=["pidlink", "palm_farmer_hh"])
+        .add_suffix("_ifls5")
+        .rename(columns={"pidlink_ifls5": "pidlink"})
+        .assign(
+            palm_farmer_hh_ifls5=lambda df: (
+                df["palm_farmer_hh_ifls5"].astype("Int32").fillna(0)
+            )
+        )
+    )
+    wave4 = (
+        analysis_df.query("wave == 'IFLS4'")
+        .filter(items=["pidlink", "farmer_hh", "palm_region"])
+        .assign(
+            farmer_non_palm_ifls4=lambda df: (
+                df["farmer_hh"] & ~df["palm_region"]
+            ).astype("Int32"),
+        )
+        .filter(items=["pidlink", "farmer_non_palm_ifls4"])
+    )
+    return (
+        analysis_df.merge(wave4, on="pidlink", how="left", validate="m:1")
+        .merge(wave5_palm, on="pidlink", how="left", validate="m:1")
+        .assign(
+            palm_farmer_both_waves=lambda df: (
+                df["palm_farmer_hh_ifls5"] & df["palm_farmer_hh_ifls4"]
+            ).astype("Int32"),
+        )
+    )
+
+
 temperature_spec = RegressionSpec(
     title="Main Effects of Temperature",
     formula=f"cesd_z ~ {MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}",

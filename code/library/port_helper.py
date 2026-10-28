@@ -1,4 +1,9 @@
-"""Export final Python regression inputs for the explicit Stata port."""
+"""Export the single analysis dataset used by the explicit Stata port.
+
+One .dta (plus a name-mapping sidecar) covers every ported regression: the
+exported frame is `build_palm_df()`, a column superset of `analysis_df`, and
+the wave-5-only models restrict with `if ifls5 == 1` in Stata.
+"""
 import hashlib
 import json
 import re
@@ -11,10 +16,11 @@ from library.config import PROJECT
 
 OUTPUT_DATA = True
 EXPORT_DIR = PROJECT / "data" / "generated" / "stata_port"
+EXPORT_STEM = "analysis_port"
 
 
-def save_data(table_code_name: str, regression_id: int, dataset: pd.DataFrame):
-    """Save a copy, preserving rows; estimation sample selection stays with engines."""
+def save_data(dataset: pd.DataFrame):
+    """Save all rows and columns; estimation sample selection stays with engines."""
     if not OUTPUT_DATA:
         return
     data = dataset.copy(deep=True)
@@ -76,6 +82,5 @@ def save_data(table_code_name: str, regression_id: int, dataset: pd.DataFrame):
         else:
             raise TypeError(f"Unsupported export dtype: {column}: {series.dtype}")
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    stem = f"{table_code_name}_{regression_id}"
-    data.to_stata(EXPORT_DIR / f"{stem}.dta", write_index=False, version=118, convert_dates=date_columns)
-    (EXPORT_DIR / f"{stem}_mapping.json").write_text(json.dumps({"row_count": len(data), "column_names": names, "identifier_aliases": aliases, "string_missing_as_empty": string_missing}, indent=2) + "\n")
+    data.to_stata(EXPORT_DIR / f"{EXPORT_STEM}.dta", write_index=False, version=118, convert_dates=date_columns)
+    (EXPORT_DIR / f"{EXPORT_STEM}_mapping.json").write_text(json.dumps({"row_count": len(data), "column_names": names, "identifier_aliases": aliases, "string_missing_as_empty": string_missing}, indent=2) + "\n")

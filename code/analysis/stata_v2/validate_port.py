@@ -1,114 +1,121 @@
-"""Fresh Python references and numeric/sample comparison for the explicit Stata port.
+"""Compare the Stata port (esttab CSVs) against fresh pyfixest fits on the same single dataset.
 
-Run from the repository root after port_tables.do. No existing regression cache is read.
+Run from the repository root after export_port_data.py and port_tables.do.
+No regression cache is read; every model is re-fit here.
 """
-from pathlib import Path
-import json
 import argparse
-import os
-from unittest.mock import patch
+import json
+from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pyfixest as pf
 
 from analysis.tables_v2 import table_a_temperature_effects as a
 from analysis.tables_v2 import table_b_temperature_and_shock_effects as b
 from analysis.tables_v2 import table_d_palm_farmer_alt_definitions as d
-from library.specs import temperature_spec, update_formula_search_replace
+from library.port_helper import EXPORT_DIR, EXPORT_STEM
+from library.specs import build_palm_df, temperature_spec, update_formula_search_replace, wave5_df
 
-OUT = Path('.cache/stata_port')
-DELIVERY = OUT / 'validation'
+STATA_TABLES = Path("output/tables/stata_port")
+DELIVERY = Path(".cache/stata_port/validation")
+TOLERANCES = {"b": 1e-7, "se": 1e-7, "N": 0, "N_clust": 0}
+CLUSTER = {"CRV1": "kabupaten_full_code"}
 
 
-def collect_actual_specs():
+def stata_name(column: str) -> str:
+    """Exported (Stata-safe) name of a Python column, from the export mapping sidecar."""
+    mapping = json.loads((EXPORT_DIR / f"{EXPORT_STEM}_mapping.json").read_text())
+    return mapping["column_names"][column]
+
+
+def displayed_terms(heat, group=None, post=None) -> dict[str, str]:
+    """Map pyfixest term names to Stata coefficient names for the displayed terms."""
+    terms = {heat: heat}
+    if group:
+        parts = [x for x in [group, post, heat] if x]
+        terms[":".join(parts)] = "#".join(f"c.{stata_name(x)}" for x in parts)
+    return terms
+
+
+def collect_models() -> list[dict]:
+    """One entry per ported regression: esttab table, eststo name, formula, sample restriction, terms."""
     models = []
-    for code, outcome in [('table_a', 'cesd_z'), ('table_a2', 'sleep_dur_h')]:
+    for table, outcome in [("table_a", "cesd_z"), ("table_a2", "sleep_dur_h")]:
         for rid, (_, heat) in enumerate(a.OVERALL_HEAT_COLUMNS, 1):
-            spec = update_formula_search_replace(temperature_spec, 'tmean_7d', heat)
-            if outcome != 'cesd_z':
-                spec = update_formula_search_replace(spec, 'cesd_z', outcome)
-            models.append((code, rid, spec, heat, None, None))
+            spec = update_formula_search_replace(temperature_spec, "tmean_7d", heat)
+            if outcome != "cesd_z":
+                spec = update_formula_search_replace(spec, "cesd_z", outcome)
+            models.append(dict(table=table, name=f"{table}_{rid}", formula=spec.formula, wave5_only=False, terms=displayed_terms(heat)))
     for rid, item in enumerate(b.TABLE_SPECS + b.wetbulb_specs(), 1):
-        models.append(('table_b', rid, item['spec'], item['heat'], item['group'], item['post']))
-    palm_specs = []
-    # Execute D's existing Python preparation; suppress exports/regressions/rendering.
-    with patch.object(d, 'save_data'), patch.object(d, 'make_shock_regression_table_trimmed', side_effect=lambda specs, **kwargs: palm_specs.extend(specs)), patch.object(d, 'render_table_to_latex'):
-        d.make_table()
-    for rid, spec in enumerate(palm_specs, 1):
-        group = ['palm_farmer_hh_ifls4', 'palm_farmer_both_waves', 'palm_farmer_hh_ifls5'][rid - 1]
-        models.append(('table_d', rid, spec, 'tmean_7d', group, 'ifls5'))
+        table = "table_b_temperature" if rid <= 7 else "table_b_wetbulb"
+        models.append(dict(table=table, name=f"table_b_{rid}", formula=item["spec"].formula, wave5_only=item["spec"].df is wave5_df, terms=displayed_terms(item["heat"], item["group"], item["post"])))
+    for rid, (spec, (_, group)) in enumerate(zip(d.make_specs(None), d.GROUPS), 1):
+        models.append(dict(table="table_d", name=f"table_d_{rid}", formula=spec.formula, wave5_only=False, terms=displayed_terms("tmean_7d", group, "ifls5")))
     return models
 
 
-def estimate_fresh_references(tight=False):
-    OUT.mkdir(parents=True, exist_ok=True)
-    DELIVERY.mkdir(parents=True, exist_ok=True)
+def fit_python(models: list[dict], tight: bool) -> pd.DataFrame:
+    """Fresh pyfixest fits on the exported dataset; long rows of (table, name, term, metric, python_value)."""
+    port_df = build_palm_df()
+    options = {"fixef_tol": 1e-10, "fixef_maxiter": 100000} if tight else {}
     rows = []
-    diagnostics = []
-    for code, rid, spec, heat, group, post in collect_actual_specs():
-        options = {'fixef_tol': 1e-10, 'fixef_maxiter': 100000} if tight else {}
-        model = pf.feols(spec.formula, data=spec.df.copy(deep=True), vcov={'CRV1': 'kabupaten_full_code'}, **options)
-        tidy = model.tidy()
-        diagnostics.append(dict(table_code=code, regression_id=rid, formula=spec.formula, retained_terms=list(tidy.index), regressor_count=int(model._k), fixed_effect_levels={str(k): int(v) for k,v in model._k_fe.items()}, df_k=int(model._df_k), projection_tolerance=options.get('fixef_tol', 1e-8)))
-        def add(effect, metric, value):
-            rows.append(dict(table_code=code, regression_id=rid, coefficient=effect, metric=metric, python_value=float(value)))
-        for metric, value in [('N', model._N), ('n_clusters', model._G[0]), ('df_t', model._df_t), ('df_k', model._df_k)]:
-            add('__model__', metric, value)
-        effects = {'heat': heat}
-        if group:
-            effects['differential_impact_heat'] = ':'.join(x for x in [group, post, heat] if x)
-        for effect, term in effects.items():
-            for metric, column in [('b', 'Estimate'), ('se', 'Std. Error'), ('p', 'Pr(>|t|)')]:
-                add(effect, metric, tidy.loc[term, column])
-        kept = np.array([i for i in range(len(spec.df)) if i not in model._na_index])
-        sample = spec.df.iloc[kept][['pidlink', 'wave']].copy()
-        sample.insert(0, 'stata_source_row', kept)
-        sample.to_csv(OUT / f'{code}_{rid}_python_sample.csv', index=False)
-        print(f'{code}/{rid}: N={model._N}, clusters={model._G[0]}, df_k={model._df_k}', flush=True)
-    (DELIVERY / 'estimation_diagnostics.json').write_text(json.dumps(dict(pyfixest_version=pf.__version__, python_hash_seed=os.environ.get('PYTHONHASHSEED'), models=diagnostics), indent=2)+'\n')
-    reference = pd.DataFrame(rows)
-    reference.to_csv(DELIVERY / 'python_reference.csv', index=False)
-    return reference
+    for model in models:
+        data = port_df[port_df["ifls5"]] if model["wave5_only"] else port_df
+        fit = pf.feols(model["formula"], data=data.copy(), vcov=CLUSTER, **options)
+        tidy = fit.tidy()
+        rows.append(dict(table=model["table"], name=model["name"], term="N", metric="N", python_value=float(fit._N)))
+        rows.append(dict(table=model["table"], name=model["name"], term="N_clust", metric="N_clust", python_value=float(fit._G[0])))
+        for python_term, stata_term in model["terms"].items():
+            rows.append(dict(table=model["table"], name=model["name"], term=stata_term, metric="b", python_value=float(tidy.loc[python_term, "Estimate"])))
+            rows.append(dict(table=model["table"], name=model["name"], term=stata_term, metric="se", python_value=float(tidy.loc[python_term, "Std. Error"])))
+        print(f'{model["name"]}: N={fit._N}, clusters={fit._G[0]}', flush=True)
+    return pd.DataFrame(rows)
 
 
-def compare_with_stata(reference):
-    stata_path = OUT / 'stata_results.csv'
-    keys = ['table_code', 'regression_id', 'coefficient', 'metric']
-    if stata_path.exists():
-        stata = pd.read_csv(stata_path).rename(columns={'value': 'stata_value'})
-        comparison = reference.merge(stata, on=keys, how='outer', validate='one_to_one')
-    else:
-        comparison = reference.assign(stata_value=np.nan)
-    comparison['difference'] = comparison['stata_value'] - comparison['python_value']
-    # Tight enough to detect coding differences; accommodates iterative FE projection.
-    tolerances = {'N': 0, 'n_clusters': 0, 'df_t': 0, 'df_k': 0, 'b': 1e-7, 'se': 1e-7, 'p': 1e-6}
-    comparison['absolute_tolerance'] = comparison.metric.map(tolerances)
-    comparison['passed'] = comparison.difference.abs() <= comparison.absolute_tolerance
-    comparison.to_csv(DELIVERY / 'python_stata_comparison.csv', index=False)
-    samples = []
-    for code, rid in reference[['table_code', 'regression_id']].drop_duplicates().itertuples(index=False):
-        path = OUT / f'{code}_{rid}_sample.csv'
-        py = pd.read_csv(OUT / f'{code}_{rid}_python_sample.csv', dtype={'pidlink': str, 'wave': str})
-        if path.exists():
-            st = pd.read_csv(path, dtype={'pidlink': str, 'wave': str})
-            py_rows = set(py.stata_source_row); st_rows = set(st.stata_source_row)
-            joined = py.merge(st, on='stata_source_row', suffixes=('_py','_st'), how='inner')
-            identities = ((joined.pidlink_py == joined.pidlink_st) & (joined.wave_py == joined.wave_st)).all()
-            samples.append(dict(table_code=code, regression_id=rid, python_N=len(py), stata_N=len(st), python_only=len(py_rows-st_rows), stata_only=len(st_rows-py_rows), identifiers_match=bool(identities)))
-        else:
-            samples.append(dict(table_code=code, regression_id=rid, python_N=len(py), stata_N=np.nan, python_only=np.nan, stata_only=np.nan, identifiers_match=False))
-    sample_comparison = pd.DataFrame(samples)
-    sample_comparison.to_csv(DELIVERY / 'sample_comparison.csv', index=False)
-    summary = dict(models=len(samples), numerical_rows=len(comparison), numerical_passed=int(comparison.passed.sum()), numerical_unperformed=int(comparison.stata_value.isna().sum()), samples_matched=int(((sample_comparison.python_only == 0) & (sample_comparison.stata_only == 0) & sample_comparison.identifiers_match).sum()), tolerances=tolerances)
-    (DELIVERY / 'validation_summary.json').write_text(json.dumps(summary, indent=2)+'\n')
-    print(summary)
+def read_esttab_csv(table: str) -> pd.DataFrame:
+    """Parse an esttab csv written with cells("b se") into long rows of (table, name, term, metric, stata_value)."""
+    raw = pd.read_csv(STATA_TABLES / f"{table}.csv", header=None, dtype=str, keep_default_na=False)
+    rows = []
+    name = None
+    for column in raw.columns[1:]:
+        name = raw.loc[0, column] or name
+        metric = raw.loc[1, column]
+        for term, value in zip(raw.loc[2:, 0], raw.loc[2:, column]):
+            if value != "":
+                rows.append(dict(table=table, name=name, term=term, metric=term if term in ("N", "N_clust") else metric, stata_value=float(value)))
+    return pd.DataFrame(rows)
 
 
-if __name__ == '__main__':
+def compare(python: pd.DataFrame) -> None:
+    stata = pd.concat(read_esttab_csv(table) for table in python["table"].unique())
+    keys = ["table", "name", "term", "metric"]
+    comparison = python.merge(stata, on=keys, how="left", validate="one_to_one")
+    comparison["difference"] = comparison["stata_value"] - comparison["python_value"]
+    comparison["absolute_tolerance"] = comparison["metric"].map(TOLERANCES)
+    comparison["passed"] = comparison["difference"].abs() <= comparison["absolute_tolerance"]
+    DELIVERY.mkdir(parents=True, exist_ok=True)
+    comparison.to_csv(DELIVERY / "python_stata_comparison.csv", index=False)
+    max_abs = comparison.groupby("metric")["difference"].apply(lambda s: float(s.abs().max())).to_dict()
+    summary = dict(
+        models=int(comparison["name"].nunique()),
+        rows=len(comparison),
+        passed=int(comparison["passed"].sum()),
+        missing_in_stata=int(comparison["stata_value"].isna().sum()),
+        samples_matched=int(comparison.query("metric == 'N'")["passed"].sum()),
+        max_abs_difference=max_abs,
+        tolerances=TOLERANCES,
+    )
+    (DELIVERY / "validation_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    print(json.dumps(summary, indent=2))
+    failures = comparison[~comparison["passed"]]
+    if len(failures):
+        print(failures.to_string(index=False))
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tight', action='store_true', help='Diagnostic: tighten FE projection without changing scientific specification')
+    parser.add_argument("--tight", action="store_true", help="Diagnostic: fixef_tol=1e-10, fixef_maxiter=100000; same specification")
     args = parser.parse_args()
     if args.tight:
-        DELIVERY = DELIVERY / 'tight_projection'
-    compare_with_stata(estimate_fresh_references(tight=args.tight))
+        DELIVERY = DELIVERY / "tight_projection"
+    compare(fit_python(collect_models(), tight=args.tight))
