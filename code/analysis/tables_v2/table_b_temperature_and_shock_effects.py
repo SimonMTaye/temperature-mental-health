@@ -243,8 +243,9 @@ def stressed_group_proportion_row(specs: list[dict]) -> str:
 
 
 def build_table() -> str:
+    wetbulb_panel_specs = wetbulb_specs()
     temperature_models = regression_runner(TABLE_SPECS)
-    wetbulb_models = regression_runner(wetbulb_specs())
+    wetbulb_models = regression_runner(wetbulb_panel_specs)
     observations_rows = make_row(
         "Observations", [f"{int(model.stats['N']):,}" for model in temperature_models]
     )
