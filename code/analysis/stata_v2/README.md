@@ -15,7 +15,9 @@ Stata's exit status is unreliable in batch mode: check `.cache/stata_port/port.l
 
 ## Single dataset export
 
-`export_port_data.py` calls `library.port_helper.save_data(build_palm_df())`, which writes
+`export_port_data.py` calls `library.port_helper.save_data()` on `build_palm_df()` plus two
+port-only columns used by the MHT stage (`kabupaten_full_code_ifls4`, `interview_date`; see
+below), which writes
 
 - `data/generated/stata_port/analysis_port.dta` (all 60,419 respondent-waves, all columns), and
 - `data/generated/stata_port/analysis_port_mapping.json` (original-to-Stata column names,
@@ -28,7 +30,7 @@ every ported regression can be run from this one file. Table B's wave-5-only mod
 and 11-13). Nothing else is restricted before estimation: complete-case and recursive
 singleton dropping are left to the engines, as in Python.
 
-Export conventions (unchanged from the per-regression version):
+Export conventions:
 
 - Names over 32 characters, or containing non-identifier characters, become the first 23
   characters plus `_` and 8 SHA-256 hex digits of the original name (for example
@@ -109,9 +111,6 @@ Results on the current data (29/29 models, N and N_clust exact everywhere):
   6.46e-12, SE 1.32e-10. This is the equivalence check; the analysis scripts and their
   cached estimates are unchanged.
 
-No multiple-testing adjustment (rwolf2/wyoung) is implemented. Because all models now sit on a
-single dataset, jointly aligned resampling is possible in a later stage.
-
 ## Multiple hypothesis testing
 
 Family-wise and FDR-adjusted inference for the two hypothesis families the paper reports,
@@ -123,6 +122,13 @@ all run on the same `analysis_port.dta`:
 | B (14) | `table_b_1`..`_14` | differential-heat interaction (`shock x post x heat`, or `job_loss_180d x heat`); 1-7 `tmean_7d`, 8-14 `wetbulb_7d` |
 
 Table A2 (sleep) and table D are excluded.
+
+**Status (v1, kept on a branch, not merged).** Settled for v1: Family B is one family of 14
+(temperature and wet-bulb pooled); Romano-Wolf reps stay at 500 (A) and 300 (B); FDR uses
+Anderson's sharpened q-values; the MHT cluster stays `kabupaten_full_code_ifls4`, which
+differs from the paper tables' cluster; family-wise RI stays single-step max-|t|. Open: the
+RI engine (`mht_ri.do` loop vs `randcmd`) and the RI design. Within-community x wave
+permutation has little power against the Family B interactions; see the report caveat.
 
 **Cluster.** All MHT models cluster on `kabupaten_full_code_ifls4`: each person's IFLS4
 kabupaten carried to both waves via `pidlink` (IFLS5-only entrants keep their own
@@ -146,6 +152,8 @@ unchanged; p-values move materially only for B/2 and B/9 (SE 0.0307 -> 0.0222 an
 | `mht_ri.do A|B perms [chunk]` | Randomisation inference: within each community x wave stratum the community x `interview_date` blocks' weather vectors (`$mht_weather`: `tmean_c tmax_c tmin_c heat_idx_c rh_pct tmean_7d tmin_7d tmean_30d wetbulb_c wetbulb_7d wetbulb_30d hot30_7d heatwave_7d`) are permuted among the stratum's dates, all columns together; every model in the family is refitted (same cluster, same `if`) and |t| of the target recorded. Per-model p compares the actual |t| with that model's permutation distribution; the family-wise p compares it with the distribution of max |t| over the family (single-step Westfall-Young). Without `chunk`: writes `ri_<family>_perms.dta`, `ri_<family>_checks.csv`, `ri_<family>.csv`. With `chunk`: see "Chunked RI runs" below. |
 | `mht_ri_combine.do A|B` | Appends the chunked `ri_<family>_perms_<chunk>.dta` files (plus `ri_<family>_perms.dta` if present) into `ri_<family>_allperms.dta`, refits the actual statistics once (tight tolerance) and writes `ri_<family>.csv` in the single-run format, with `perms` = total appended permutations. The p-value code (`mht_ri_pvalues`) and the actual-statistic code (`mht_ri_actual`) live in `mht_models.do` and are shared with `mht_ri.do`. |
 | `mht_tables.do` | Refits the 20 models with `eststo`, `estadd`s the adjusted p-values from the CSVs, and writes `output/tables/stata_port/table_mht_{rwolf,qvalues,ri}.tex` (Family A panel, 6 columns; Family B panel, 14 columns; coefficient rows renamed `heat` / `diff_heat`). |
+| `mht_report.py [--debug]` | Reads the result CSVs and writes the shareable preview `output/tables/stata_port/mht_report.pdf` (all corrections in one table per family). `--debug` writes `mht_report_debug.pdf` with extra red rows from `mht_ri_randcmd.do`. The summary and caveat paragraphs quote numbers by hand: update them after a rerun. |
+| `mht_ri_randcmd.do A|B reps ["models"]` | DEBUG cross-check of `mht_ri.do` with Alwyn Young's `randcmd` (SSC): same blocks, strata, seed and permutations. Reproduces `mht_ri.do` exactly for `table_a_1` (p = 0.908, 500 perms). Not used by the main outputs. |
 
 Exact commands (seed 20261009 everywhere; one `reghdfe` fit is about 0.6 s, so the long jobs
 are best run with `nohup ... &` and polled through their logs in `.cache/stata_port/mht/`):

@@ -66,12 +66,6 @@ forvalues i = 1/$mht_n {
     eststo ${mht_name`i'}
 }
 
-local A table_a_1 table_a_2 table_a_3 table_a_4 table_a_5 table_a_6
-local B table_b_1 table_b_2 table_b_3 table_b_4 table_b_5 table_b_6 table_b_7 table_b_8 table_b_9 table_b_10 table_b_11 table_b_12 table_b_13 table_b_14
-local renameA rename(tmean_7d heat hot30_7d heat wetbulb_7d heat tmean_c heat tmax_c heat wetbulb_c heat)
-local renameB rename(pf4_i5_tm7 diff_heat ppg_i5_tm7 diff_heat uv_ps_tm7 diff_heat uvn_ps_tm7 diff_heat uvr_ps_tm7 diff_heat jl_tm7 diff_heat pf4_i5_wb7 diff_heat ppg_i5_wb7 diff_heat uv_ps_wb7 diff_heat uvn_ps_wb7 diff_heat uvr_ps_wb7 diff_heat jl_wb7 diff_heat)
-local fmt se b(%9.4f) se(%9.4f) nonumbers mtitles nostar
-
 capture program drop mht_write_table
 program define mht_write_table
     args file stats labels
