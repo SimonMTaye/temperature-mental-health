@@ -6,14 +6,19 @@ is a candidate-cutoff sweep, not a lead/lag event-study regression.
 
 import pandas as pd
 import pyfixest as pf
-from plotnine import (
-    aes, geom_errorbar, geom_hline, geom_point, geom_vline, ggplot,
-    labs, scale_x_date, theme_minimal,
-)
-
 from library.config import FIGURE_OUTPUT
 from library.specs import CONTROLS, fuel_shock_urban_vehicle, wave5_df
-
+from plotnine import (
+    aes,
+    geom_errorbar,
+    geom_hline,
+    geom_point,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_x_date,
+    theme_minimal,
+)
 
 df = wave5_df.copy()  # Loaded from 30_analysis_table_input.parquet.
 df["interview_date"] = pd.to_datetime(df["interview_datetime"]).dt.normalize()
