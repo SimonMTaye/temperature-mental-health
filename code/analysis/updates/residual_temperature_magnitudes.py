@@ -40,7 +40,6 @@ Updated calculation (this script)
 import numpy as np
 import pandas as pd
 import pyfixest as pf
-
 from analysis.tables_v2.table_b_temperature_and_shock_effects import (
     TABLE_SPECS,
     regression_runner,
