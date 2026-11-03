@@ -43,31 +43,26 @@ from library.table_builder import make_row
 CUTOFFS = [8, 10, 12]
 
 
-def add_cutoff_outcome(df: pd.DataFrame, outcome: str, cutoff: int) -> pd.DataFrame:
-    """Add 1{cesd_raw >= cutoff}, missing where the CES-D score is missing."""
-    above = df["cesd_raw"].ge(cutoff).astype(float).where(df["cesd_raw"].notna())
-    return df.assign(**{outcome: above})
-
-
-def cutoff_specs(specs: list[dict], outcome: str, cutoff: int) -> list[dict]:
+def cutoff_specs(specs: list[dict], cutoff: int) -> list[dict]:
+    """Swap the cesd_z outcome for 1{cesd_raw >= cutoff} in each spec."""
+    outcome = f"cesd_ge{cutoff}"
     updated_specs = []
     for spec_data in specs:
         spec = update_formula_search_replace(spec_data["spec"], "cesd_z", outcome)
-        spec = replace(spec, df=add_cutoff_outcome(spec.df, outcome, cutoff))
-        updated_specs.append({**spec_data, "spec": spec})
+        df = spec.df.assign(**{outcome: spec.df["cesd_raw"].ge(cutoff).astype(int)})
+        updated_specs.append({**spec_data, "spec": replace(spec, df=df)})
     return updated_specs
 
 
-def outcome_mean_row(specs: list[dict], outcome: str) -> str:
+def outcome_mean_row(specs: list[dict], cutoff: int) -> str:
     return make_row(
         "Outcome Mean",
-        [f"{spec_data['spec'].df[outcome].mean():.3f}" for spec_data in specs],
+        [f"{spec_data['spec'].df[f'cesd_ge{cutoff}'].mean():.3f}" for spec_data in specs],
     )
 
 
 def build_table(cutoff: int) -> tuple[str, list, list]:
-    outcome = f"cesd_ge{cutoff}"
-    temperature_specs = cutoff_specs(TABLE_SPECS, outcome, cutoff)
+    temperature_specs = cutoff_specs(TABLE_SPECS, cutoff)
     temperature_models = regression_runner(temperature_specs)
     wetbulb_models = regression_runner(wetbulb_specs(temperature_specs))
     observations_row = make_row(
@@ -85,7 +80,7 @@ def build_table(cutoff: int) -> tuple[str, list, list]:
             "{group_mean_row}",
             stressed_group_proportion_row(temperature_specs)
             + "\n"
-            + outcome_mean_row(temperature_specs, outcome),
+            + outcome_mean_row(temperature_specs, cutoff),
         )
     )
     return table, temperature_models, wetbulb_models

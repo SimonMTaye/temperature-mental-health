@@ -31,9 +31,9 @@ from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
 from library.specs import (
     MAIN_TEMP_MEASURE,
-    analysis_df,
     fuel_shock_urban_vehicle,
     update_formula_search_replace,
+    wave5_df,
 )
 from library.table_builder import coefficient_rows, make_row
 
@@ -63,21 +63,6 @@ Month-Year & x & x & x & x & x & x \\
 \bottomrule
 \end{tabular}
 """
-
-
-def wave5_with_fuel_groups() -> pd.DataFrame:
-    """IFLS5 sample with the Table G cash-transfer splits."""
-    wave5 = analysis_df.copy().query("wave == 'IFLS5'")
-    urban_vehicle = wave5["urban_vehicle_hh_ifls4"]
-    transfer_recipient = wave5["cash_transfer_recipient"]
-    return wave5.assign(
-        urban_vehicle_transfer_recipient_ifls4=(
-            urban_vehicle * transfer_recipient
-        ).astype("Int32"),
-        urban_vehicle_transfer_nonrecipient_ifls4=(
-            urban_vehicle * (1 - transfer_recipient)
-        ).astype("Int32"),
-    )
 
 
 def keep_kecamatans_on_both_sides(wave5: pd.DataFrame) -> pd.DataFrame:
@@ -142,8 +127,7 @@ def build_table(specs: list[dict], models: list) -> str:
 
 
 def main() -> None:
-    wave5 = wave5_with_fuel_groups()
-    specs = interleaved_specs(wave5, keep_kecamatans_on_both_sides(wave5))
+    specs = interleaved_specs(wave5_df, keep_kecamatans_on_both_sides(wave5_df))
     models = run_models(specs)
 
     TABLE_OUTPUT.mkdir(parents=True, exist_ok=True)
