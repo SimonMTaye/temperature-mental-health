@@ -2,9 +2,9 @@
 
 Run from the repo root:
 
-    uv run python code/analysis/updates/cesd_threshold_table_b.py
+    uv run python code/analysis/updates/tables/table_rr_p_cesd_threshold_table_b_alt.py
 
-Writes one table per cutoff to output/tables/table_b_cesd_ge{cutoff}.tex and
+Writes one table per cutoff to output/tables/table_rr_p_cesd_threshold_table_b_alt_ge{cutoff}.tex and
 prints the differential-heat coefficients for a quick read.
 
 Cutoffs (IFLS uses the 10-item Andresen CES-D, raw score 0-30):
@@ -112,7 +112,7 @@ def main() -> None:
     summaries = []
     for cutoff in CUTOFFS:
         table, temperature_models, wetbulb_models = build_table(cutoff)
-        (TABLE_OUTPUT / f"table_b_cesd_ge{cutoff}.tex").write_text(
+        (TABLE_OUTPUT / f"table_rr_p_cesd_threshold_table_b_alt_ge{cutoff}.tex").write_text(
             table, encoding="utf-8"
         )
         summaries.append(differential_summary(cutoff, "tmean_7d", temperature_models))

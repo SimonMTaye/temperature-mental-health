@@ -14,7 +14,7 @@ from library.table_builder import coefficient_rows, make_row
 balance_variables = [
     "age",
     "female",
-    "edu_yrs",
+    "edu_yrs_nullable",  # raw edu_yrs codes missing as -100
     "married",
     "widowed",
     "cash_transfer_recipient",
