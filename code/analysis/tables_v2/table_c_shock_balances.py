@@ -65,7 +65,7 @@ def make_table() -> None:
             (
                 balance_df[balance_variable].mean(),
                 balance_df[balance_variable].std(),
-                0,
+                float("nan"),  # no test for the mean column, so no stars
             ),
         )
         observation_row.append(len(balance_df))
