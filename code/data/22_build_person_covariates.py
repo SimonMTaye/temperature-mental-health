@@ -36,6 +36,7 @@ HHID_COLUMNS = {
 }
 
 MISSING_CATEGORY = -99
+MISSING_CODE = str(MISSING_CATEGORY)
 
 # Distinct sentinel for education-year values whose AR16 level or AR17 grade is
 # unknown. This is separate from MISSING_CATEGORY because edu_yrs is a modeled
@@ -220,6 +221,22 @@ def _education_years(edu_lvl: pd.Series, edu_grade: pd.Series) -> pd.Series:
     return years
 
 
+
+def _category_codes(raw: pd.Series) -> pd.Series:
+    """Clean a 2-digit IFLS categorical code and return it as a string label.
+
+    Stored as strings (e.g. "1", "95", "-99" for missing) rather than numbers or
+    pandas categories: a parquet round trip turns pandas categories back into
+    plain numbers, which regressions then treat as one linear control. String
+    columns are read as categorical by pyfixest and fixest.
+    """
+    return (
+        clean_categorical(raw, digits=2)
+        .fillna(MISSING_CATEGORY)
+        .astype("Int64")
+        .astype(str)
+    )
+
 def _demographics_from_roster(ar: pd.DataFrame, *, hhid_col_name: str) -> pd.DataFrame:
     """Normalize IFLS roster demographics to person-wave covariates."""
     cols_keep = [
@@ -270,20 +287,12 @@ def _demographics_from_roster(ar: pd.DataFrame, *, hhid_col_name: str) -> pd.Dat
     ar["edu_yrs"] = _education_years(ar.edu_lvl, ar.edu_grade)
     ar["edu_yrs_missing"] = (ar.edu_yrs.eq(MISSING_EDU_YEARS)).astype(int)
     ar["edu_yrs_nullable"] = ar.edu_yrs.mask(ar.edu_yrs.eq(MISSING_EDU_YEARS))
-    ar["religion"] = (
-        clean_categorical(ar.religion_raw, digits=2)
-        .fillna(MISSING_CATEGORY)
-        .astype("Int64")
-    )
-    ar["religion_missing"] = ar.religion.eq(MISSING_CATEGORY).astype(int)
-    ar["religion_nullable"] = ar.religion.mask(ar.religion.eq(MISSING_CATEGORY))
-    ar["ethnicity"] = (
-        clean_categorical(ar.ethnicity_raw, digits=2)
-        .fillna(MISSING_CATEGORY)
-        .astype("Int64")
-    )
-    ar["ethnicity_missing"] = ar.ethnicity.eq(MISSING_CATEGORY).astype(int)
-    ar["ethnicity_nullable"] = ar.ethnicity.mask(ar.ethnicity.eq(MISSING_CATEGORY))
+    ar["religion"] = _category_codes(ar.religion_raw)
+    ar["religion_missing"] = ar.religion.eq(MISSING_CODE).astype(int)
+    ar["religion_nullable"] = ar.religion.mask(ar.religion.eq(MISSING_CODE))
+    ar["ethnicity"] = _category_codes(ar.ethnicity_raw)
+    ar["ethnicity_missing"] = ar.ethnicity.eq(MISSING_CODE).astype(int)
+    ar["ethnicity_nullable"] = ar.ethnicity.mask(ar.ethnicity.eq(MISSING_CODE))
     # Create nullable versions of the data
 
     return ar[
