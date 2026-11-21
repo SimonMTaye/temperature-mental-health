@@ -1,147 +1,123 @@
-* mht_ri.do - randomisation inference with date-block permutations, one family per run.
-*   stata-mp -b do code/analysis/stata_v2/mht_ri.do B 500          (single run, writes ri_B.csv)
-*   stata-mp -b do code/analysis/stata_v2/mht_ri.do B 125 <k>      (chunk k of the permutations)
+* mht_ri.do - randomisation inference with Alwyn Young's -randcmd- (SSC), one family per run.
+*   stata-mp -b do code/analysis/stata_v2/mht_ri.do A 500
+*   stata-mp -b do code/analysis/stata_v2/mht_ri.do B 500
 * Design: the randomised unit is the community x calendar-date interview block
 * (gadm_fullcode x interview_date; everyone interviewed in a community on a day shares one
-* weather vector). Within each community x wave stratum the blocks' weather vectors are
-* permuted among the stratum's dates, carrying ALL weather columns ($mht_weather) together,
-* so temperature and wet-bulb measures (used by different models of a family) move jointly.
-* Outcomes, controls, shock indicators, FE and the cluster variable are untouched.
-* For each permutation every model in the family is refitted (same cluster, same `if`) and
-* the studentized statistic |t*_j| = |b*_j / se*_j| of the target coefficient is recorded.
-*   per-model RI p_j      = (1 + #{p : |t*_jp| >= |t_j|}) / (P + 1)
-*   family-wise RI p_j    = (1 + #{p : max_k |t*_kp| >= |t_j|}) / (P + 1)   (single-step
-*                           Westfall-Young style: compares with the max-|t| distribution)
-* The p-values are computed by mht_ri_pvalues (mht_models.do), shared with mht_ri_combine.do.
-* Chunked runs: with a third argument `chunk' the permutation loop runs with
-* seed = 20261009 + chunk (base seed plus the chunk number, so chunks are reproducible and
-* draw different permutations), writes ri_<family>_perms_<chunk>.dta, ri_<family>_checks_<chunk>.csv
-* and ri_<family>_<chunk>.log, and stops without computing p-values. Run several chunks in
-* parallel, then `mht_ri_combine.do <family>` appends the chunk files and writes ri_<family>.csv.
-* Tolerance: the permuted refits use $mht_perm_opts (reghdfe default tolerance); the actual
-* statistics use the tight $mht_opts. See the comment at mht_perm_opts in mht_models.do.
-* Sanity checks for the first permutation are written to ri_<family>_checks[_<chunk>].csv: the
-* correlation between permuted and actual tmean_7d, the within-block SD of the permuted series
-* (must be 0), and the number of observations whose tmean_7d changed.
+* weather vector), passed to randcmd as groupvar(). Blocks are permuted within community x wave
+* strata, strata(). ALL weather columns ($mht_weather) move together, so temperature and
+* wet-bulb measures (used by different models of a family) are permuted jointly. Outcomes,
+* controls, shock indicators, FE and the cluster variable are untouched. On every draw randcmd
+* refits each model of the family (same cluster, same `if').
+* How: randcmd's treatvar is an integer "source block" id (wx_src, initially = own block).
+* randcmd permutes it across blocks within strata; calc1 (mht_ri_pull) then copies the whole
+* weather vector of the source block into each row and rebuilds the heat x shock products. The
+* weather columns are not passed as treatvars directly because randcmd's within-group constancy
+* check is egen sd() > 0, and sd() of bit-identical doubles returns ~1e-15 rounding noise, so it
+* rejects the design. An integer id has an exactly-zero sd.
+* p-values written to ri_<family>.csv:
+*   p_ri      = randcmd's randomization-t p (the "max-t" column of e(RCoef)):
+*               (1 + #{p : |t*_ip| >= |t_i|}) / (P + 1)
+*   p_ri_fwer = (1 + #{p : max_k |t*_kp| >= |t_i|}) / (P + 1), from the saved draws
+*               (single-step Westfall-Young style max-|t|; randcmd's own e(RMult) only gives
+*               one omnibus "any effect" p, not a per-hypothesis adjusted p)
+* Ties use randcmd's convention: |t*| counts as >= |t| if |t*| > 0.999999 |t|.
+* Tolerance: randcmd fits the actual and permuted models with the same command, so the equations
+* use $mht_perm_opts (reghdfe default tolerance; see mht_models.do). The b, se, t and p_unadj
+* written to ri_<family>.csv are refitted with the tight $mht_opts and match the port.
 version 19
 clear all
 set more off
-args family perms chunk
+args family reps
 if "`family'" == "" local family "A"
-if "`perms'" == "" local perms 500
+if "`reps'" == "" local reps 500
 local seed 20261009
-local sfx
-if "`chunk'" != "" {
-    local seed = `seed' + `chunk'
-    local sfx "_`chunk'"
-}
 adopath ++ ".cache/stata_port/ado"
 include "code/analysis/stata_v2/mht_models.do"
+capture mkdir ".cache"
+capture mkdir ".cache/stata_port"
 capture mkdir "$mht_dir"
-log using "$mht_dir/ri_`family'`sfx'.log", text replace
+log using "$mht_dir/ri_`family'.log", text replace
+which randcmd
 set rng mt64
-set seed `seed'
 mht_load
 
-* ---- hypotheses in this family and the actual studentized statistics (tight tolerance)
-mht_ri_actual `family'
-local idx $mht_ri_idx
-local tnames $mht_ri_tnames
-local k : word count `idx'
-display "Family `family': `k' hypotheses, `perms' permutations, seed `seed', chunk `chunk'"
-
-* ---- block frame: one row per community x wave x date, original order k within stratum
-foreach v of global mht_weather {
-    gen double orig_`v' = `v'
+* ---- models in this family
+local models
+forvalues i = 1/$mht_n {
+    if "${mht_fam`i'}" == "`family'" local models `models' `i'
 }
-frame put gadm_fullcode wave interview_date $mht_weather, into(blocks)
-frame blocks {
-    bysort gadm_fullcode wave interview_date: keep if _n == 1
-    egen long stratum = group(gadm_fullcode wave)
-    sort stratum interview_date
-    by stratum: gen long k = _n
-    count
-    display "blocks: " r(N)
-}
-frame copy blocks source
-frlink m:1 gadm_fullcode wave interview_date, frame(blocks) generate(blk)
+display "Family `family': models `models', `reps' permutations, seed `seed'"
 
-capture program drop mht_permute_blocks
-program define mht_permute_blocks
-    * Shuffle weather vectors among the blocks of each stratum, then pull them into the main frame.
-    frame blocks {
-        foreach v in u pk src $mht_weather {
-            capture drop `v'
-        }
-        gen double u = runiform()
-        sort stratum u
-        by stratum: gen long pk = _n
-        frlink m:1 stratum pk, frame(source stratum k) generate(src)
-        frget $mht_weather, from(src)
-    }
-    quietly frlink rebuild blk
+* ---- randomisation blocks, strata, and the block-level weather lookup
+egen long ri_block = group(gadm_fullcode wave interview_date)
+egen long ri_stratum = group(gadm_fullcode wave)
+gen long wx_src = ri_block
+frame put ri_block $mht_weather, into(wx_blocks)
+frame wx_blocks: bysort ri_block: keep if _n == 1
+
+capture program drop mht_ri_pull
+program define mht_ri_pull
+    * After randcmd permutes wx_src: give each row the weather vector of its source block.
+    capture drop wx_link
     drop $mht_weather
-    quietly frget $mht_weather, from(blk)
+    quietly frlink m:1 wx_src, frame(wx_blocks ri_block) generate(wx_link)
+    quietly frget $mht_weather, from(wx_link)
     quietly mht_build_interactions
 end
 
-local permsfile "$mht_dir/ri_`family'_perms`sfx'.dta"
-tempname post
-postfile `post' int perm double(`tnames') using "`permsfile'", replace
+* ---- randcmd equation list: ((target) reghdfe ..., $mht_perm_opts)
+local eqs
+foreach i of local models {
+    local cmd `"${mht_cmd`i'}"'
+    local cmd : subinstr local cmd "$mht_opts" "$mht_perm_opts"
+    local eqs `"`eqs' ((${mht_target`i'}) `cmd')"'
+}
+
 timer clear 1
 timer on 1
-forvalues p = 1/`perms' {
-    mht_permute_blocks
-    if `p' == 1 {
-        quietly correlate tmean_7d orig_tmean_7d
-        local corr = r(rho)
-        quietly bysort gadm_fullcode wave interview_date: egen double sd_block = sd(tmean_7d)
-        quietly summarize sd_block
-        local maxsd = r(max)
-        quietly count if tmean_7d != orig_tmean_7d
-        local nchanged = r(N)
-        quietly drop sd_block
-        display "check perm 1: corr(perm, actual tmean_7d) = `corr'; max within-block sd = `maxsd'; obs changed = `nchanged' of " _N
-        preserve
-        clear
-        set obs 1
-        gen corr_tmean_7d = `corr'
-        gen max_within_block_sd = `maxsd'
-        gen obs_changed = `nchanged'
-        export delimited using "$mht_dir/ri_`family'_checks`sfx'.csv", replace
-        restore
-    }
-    local row
-    foreach i of local idx {
-        mht_fit `i' perm
-        local tstar = abs(_b[${mht_target`i'}] / _se[${mht_target`i'}])
-        local row `row' (`tstar')
-    }
-    post `post' (`p') `row'
-    if mod(`p', 10) == 0 {
-        timer off 1
-        quietly timer list 1
-        display "permutation `p' done, elapsed " r(t1) " s"
-        timer on 1
-    }
-}
+randcmd `eqs', treatvars(wx_src) strata(ri_stratum) groupvar(ri_block) reps(`reps') seed(`seed') ///
+    saving("$mht_dir/ri_`family'_draws.dta", replace) calc1(mht_ri_pull)
 timer off 1
 quietly timer list 1
 local secs = r(t1)
-postclose `post'
-display "`perms' permutations in `secs' s"
+matrix R = e(RCoef)
+matrix list R
 
-if "`chunk'" != "" {
-    * Chunk run: stamp the runtime and seed on the permutation file for mht_ri_combine.do and stop.
-    use "`permsfile'", clear
-    char _dta[secs] `secs'
-    char _dta[seed] `seed'
-    char _dta[chunk] `chunk'
-    save "`permsfile'", replace
-    log close
-    exit
+* ---- actual estimates (tight tolerance) and randcmd's per-model p
+local k = 0
+foreach i of local models {
+    local ++k
+    mht_fit `i'
+    local b`k' = _b[${mht_target`i'}]
+    local se`k' = _se[${mht_target`i'}]
+    local t`k' = abs(`b`k'' / `se`k'')
+    local p_unadj`k' = 2 * ttail(e(df_r), `t`k'')
+    local p_ri`k' = R[`k', 5]
 }
 
-* ---- p-values (single, unchunked run)
-mht_ri_pvalues `family' "`permsfile'" `seed' `secs'
+* ---- family-wise p from the saved draws: compare each |t| with the max |t*| over the family
+use "$mht_dir/ri_`family'_draws.dta", clear
+local tstars
+forvalues j = 1/`k' {
+    gen double abst`j' = abs(ResB`j' / ResSE`j')
+    local tstars `tstars' abst`j'
+}
+egen double maxt = rowmax(`tstars')
+quietly count if maxt < .
+local P = r(N)
+
+tempname res
+postfile `res' str1 family int model str12 id str12 target double(b se t p_unadj p_ri p_ri_fwer) int perms long seed double secs ///
+    using "$mht_dir/ri_`family'.dta", replace
+local j = 0
+foreach i of local models {
+    local ++j
+    quietly count if maxt > 0.999999 * `t`j'' & maxt < .
+    local p_fw = (1 + r(N)) / (`P' + 1)
+    post `res' ("`family'") (`i') ("${mht_id`i'}") ("${mht_target`i'}") (`b`j'') (`se`j'') (`t`j'') (`p_unadj`j'') (`p_ri`j'') (`p_fw') (`P') (`seed') (`secs')
+}
+postclose `res'
+use "$mht_dir/ri_`family'.dta", clear
+list, noobs
+export delimited using "$mht_dir/ri_`family'.csv", replace
 log close

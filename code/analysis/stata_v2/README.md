@@ -126,9 +126,9 @@ Table A2 (sleep) and table D are excluded.
 **Status (v1, kept on a branch, not merged).** Settled for v1: Family B is one family of 14
 (temperature and wet-bulb pooled); Romano-Wolf reps stay at 500 (A) and 300 (B); FDR uses
 Anderson's sharpened q-values; the MHT cluster stays `kabupaten_full_code_ifls4`, which
-differs from the paper tables' cluster; family-wise RI stays single-step max-|t|. Open: the
-RI engine (`mht_ri.do` loop vs `randcmd`) and the RI design. Within-community x wave
-permutation has little power against the Family B interactions; see the report caveat.
+differs from the paper tables' cluster; RI runs through Young's `randcmd`, and family-wise RI
+stays single-step max-|t|. Open: the RI design. Within-community x wave permutation has little
+power against the Family B interactions; see the report caveat.
 
 **Cluster.** All MHT models cluster on `kabupaten_full_code_ifls4`: each person's IFLS4
 kabupaten carried to both waves via `pidlink` (IFLS5-only entrants keep their own
@@ -149,11 +149,9 @@ unchanged; p-values move materially only for B/2 and B/9 (SE 0.0307 -> 0.0222 an
 | `mht_uncorrected.do` | Fits the 20 models, writes `.cache/stata_port/mht/uncorrected.csv` (b, se, t, clustered p, N, N_clust). |
 | `mht_rwolf.do A|B reps` | Romano-Wolf step-down via `rwolf2` (SSC, installed in `.cache/stata_port/ado`): cluster bootstrap `bsample, cluster(kabupaten_full_code_ifls4) idcluster(bs_cluster)`, centred studentized statistics, max-|t| step-down, plus Holm. Writes `rwolf_<family>.csv`. `vce()` is the last option of every command so `rwolf2`'s `idcluster()` regex rewrite only touches it. |
 | `mht_qvalues.do` | Anderson (2008) sharpened two-stage BKY q-values (`fdr_sharpened_qvalues.do` algorithm, step 0.001), applied family by family to `uncorrected.csv`. Writes `qvalues.csv`. |
-| `mht_ri.do A|B perms [chunk]` | Randomisation inference: within each community x wave stratum the community x `interview_date` blocks' weather vectors (`$mht_weather`: `tmean_c tmax_c tmin_c heat_idx_c rh_pct tmean_7d tmin_7d tmean_30d wetbulb_c wetbulb_7d wetbulb_30d hot30_7d heatwave_7d`) are permuted among the stratum's dates, all columns together; every model in the family is refitted (same cluster, same `if`) and |t| of the target recorded. Per-model p compares the actual |t| with that model's permutation distribution; the family-wise p compares it with the distribution of max |t| over the family (single-step Westfall-Young). Without `chunk`: writes `ri_<family>_perms.dta`, `ri_<family>_checks.csv`, `ri_<family>.csv`. With `chunk`: see "Chunked RI runs" below. |
-| `mht_ri_combine.do A|B` | Appends the chunked `ri_<family>_perms_<chunk>.dta` files (plus `ri_<family>_perms.dta` if present) into `ri_<family>_allperms.dta`, refits the actual statistics once (tight tolerance) and writes `ri_<family>.csv` in the single-run format, with `perms` = total appended permutations. The p-value code (`mht_ri_pvalues`) and the actual-statistic code (`mht_ri_actual`) live in `mht_models.do` and are shared with `mht_ri.do`. |
+| `mht_ri.do A|B perms` | Randomisation inference with Alwyn Young's `randcmd` (SSC): `groupvar()` = community x `interview_date` block, `strata()` = community x wave. The treatvar is an integer source-block id; `calc1()` copies the source block's whole weather vector (`$mht_weather`: `tmean_c tmax_c tmin_c heat_idx_c rh_pct tmean_7d tmin_7d tmean_30d wetbulb_c wetbulb_7d wetbulb_30d hot30_7d heatwave_7d`) into each row and rebuilds the products, so all weather columns move together. Every model in the family is refitted on each draw. `p_ri` is `randcmd`'s randomization-t p (max-t column of `e(RCoef)`); `p_ri_fwer` compares each actual |t| with the draw-by-draw max |t*| over the family (single-step Westfall-Young), computed from the saved draws because `randcmd`'s own `e(RMult)` only gives an omnibus p. Writes `ri_<family>.csv` and `ri_<family>_draws.dta`. |
 | `mht_tables.do` | Refits the 20 models with `eststo`, `estadd`s the adjusted p-values from the CSVs, and writes `output/tables/stata_port/table_mht_{rwolf,qvalues,ri}.tex` (Family A panel, 6 columns; Family B panel, 14 columns; coefficient rows renamed `heat` / `diff_heat`). |
-| `mht_report.py [--debug]` | Reads the result CSVs and writes the shareable preview `output/tables/stata_port/mht_report.pdf` (all corrections in one table per family). `--debug` writes `mht_report_debug.pdf` with extra red rows from `mht_ri_randcmd.do`. The summary and caveat paragraphs quote numbers by hand: update them after a rerun. |
-| `mht_ri_randcmd.do A|B reps ["models"]` | DEBUG cross-check of `mht_ri.do` with Alwyn Young's `randcmd` (SSC): same blocks, strata, seed and permutations. Reproduces `mht_ri.do` exactly for `table_a_1` (p = 0.908, 500 perms). Not used by the main outputs. |
+| `mht_report.py` | Reads the result CSVs and writes the shareable previews to `output/tables/stata_port/`: `mht_report.pdf` (all corrections side by side), `mht_report_no_ri.pdf` (Romano-Wolf and q-values), and one per method: `mht_report_rwolf.pdf`, `mht_report_qvalues.pdf`, `mht_report_ri.pdf`. The Romano-Wolf and q-value summary sentences and the RI caveat quote numbers by hand: update them after a rerun. |
 
 Exact commands (seed 20261009 everywhere; one `reghdfe` fit is about 0.6 s, so the long jobs
 are best run with `nohup ... &` and polled through their logs in `.cache/stata_port/mht/`):
@@ -165,44 +163,34 @@ $S -b do code/analysis/stata_v2/mht_qvalues.do
 $S -b do code/analysis/stata_v2/mht_rwolf.do A 500
 $S -b do code/analysis/stata_v2/mht_rwolf.do B 300
 $S -b do code/analysis/stata_v2/mht_ri.do A 500
-$S -b do code/analysis/stata_v2/mht_ri.do B 500      # or the chunked recipe below
+$S -b do code/analysis/stata_v2/mht_ri.do B 500
 $S -b do code/analysis/stata_v2/mht_tables.do
 ```
 
-**Chunked RI runs.** Family B refits 14 models per permutation, so 500 permutations in one
-process take several hours. `mht_ri.do <family> <perms> <chunk>` runs `perms` permutations
-as chunk number `chunk` and stops before the p-values: the seed is `20261009 + chunk`
-(base seed plus the chunk number, so chunks are reproducible and draw disjoint random
-streams), and the outputs carry the chunk suffix (`ri_<family>_perms_<chunk>.dta`,
-`ri_<family>_checks_<chunk>.csv`, `ri_<family>_<chunk>.log`). Run the chunks in parallel
-(each Stata process uses about two cores), then combine. Stata's batch mode writes
-`<dofile>.log` in the working directory for every process, so launch each chunk through a
-one-line wrapper do-file with a distinct name rather than calling `mht_ri.do` directly:
+**RI runtime.** `randcmd` runs in one Stata process. Family A (6 models) takes about 20 minutes
+for 500 permutations; Family B (14 models, about 10 s per permutation) about 1.5 hours. To run both
+at once, launch each through a one-line wrapper do-file with a distinct name, because Stata's batch
+mode writes `<dofile>.log` in the working directory and two `mht_ri.do` processes would share it:
 
 ```sh
-S=/Applications/StataNow/StataMP.app/Contents/MacOS/stata-mp
 mkdir -p .cache/stata_port/mht/jobs
-for k in 1 2 3 4; do
-  echo "do code/analysis/stata_v2/mht_ri.do B 125 $k" > .cache/stata_port/mht/jobs/ri_B_chunk$k.do
-  nohup $S -b do .cache/stata_port/mht/jobs/ri_B_chunk$k.do > /dev/null 2>&1 &
+for f in A B; do
+  echo "do code/analysis/stata_v2/mht_ri.do $f 500" > .cache/stata_port/mht/jobs/ri_$f.do
+  nohup $S -b do .cache/stata_port/mht/jobs/ri_$f.do > /dev/null 2>&1 &
 done
-# wait until `pgrep -f ri_B_chunk` is empty and `grep -n "r([0-9]*);" .cache/stata_port/mht/ri_B_?.log` prints nothing, then
-$S -b do code/analysis/stata_v2/mht_ri_combine.do B
 ```
 
-`ri_B.csv` then reports `perms` = 500, `seed` = 20261009 (the base seed; chunk k used
-20261009 + k) and `secs` = the sum of the chunks' permutation-loop times. The combine step
-appends every `ri_<family>_perms_*.dta` it finds, so delete chunk files from an aborted or
-superseded run before combining.
+`randcmd` (seed 20261009, `set rng mt64`) draws the same permutations as the custom loop it
+replaced: the first draws match on all six Family A models to 6.5e-11.
 
 **Tolerance.** The permuted refits use `$mht_perm_opts` (`reghdfe`'s default
 `tolerance(1e-8)`); the actual estimates reported in `ri_<family>.csv` (b, se, t, p_unadj)
-use `$mht_opts` with `tolerance(1e-12)` and still match the port to 15 digits. The
-permutation distribution is only used to count exceedances of the actual |t|, so the
-trailing digits of each permuted t* are irrelevant, and the HDFE iteration dominates the
-per-fit cost: 14 Family B fits take about 54 s at 1e-12 and 11 s at the default (one
-permutation of Family B is about 10 s, so 125 permutations per chunk is roughly 25 minutes
-with four chunks in parallel).
+use `$mht_opts` with `tolerance(1e-12)` and still match the port to 15 digits. `randcmd`
+fits the actual and permuted models with the same command, so its equations use the looser
+options; the permutation distribution is only used to count exceedances of the actual |t|, so
+the trailing digits of each t* are irrelevant, and the HDFE iteration dominates the per-fit
+cost: 14 Family B fits take about 54 s at 1e-12 and 11 s at the default.
 
 Install `rwolf2` into the workspace ado directory with `net set ado ".cache/stata_port/ado"`
-then `ssc install rwolf2, replace` (version 1.0.0 used).
+then `ssc install rwolf2, replace` (version 1.0.0 used) and `ssc install randcmd, replace`
+(version 3.0.0 used).

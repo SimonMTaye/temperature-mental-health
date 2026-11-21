@@ -23,11 +23,11 @@ global mht_controls "age female edu_yrs_nullable married widowed divorced ethnic
 global mht_fe "stata_month_times_year stata_gadm_fullcode"
 global mht_cluster "kabupaten_full_code_ifls4"
 global mht_opts "dof(clusters) tolerance(1e-12) vce(cluster $mht_cluster)"
-* Permuted refits in mht_ri.do use reghdfe's default tolerance (1e-8) instead of 1e-12: the
-* permutation distribution of |t*| is only used to count exceedances of the actual |t|, so
+* The randcmd equations in mht_ri.do use reghdfe's default tolerance (1e-8) instead of 1e-12:
+* the permutation distribution of |t*| is only used to count exceedances of the actual |t|, so
 * the trailing digits of each permuted statistic are irrelevant, and the HDFE fixed-point
-* iteration is the bulk of the per-fit cost. The actual (unpermuted) estimates reported in
-* ri_<family>.csv always use $mht_opts so b/se/t still match the port to 15 digits.
+* iteration is the bulk of the per-fit cost. The b/se/t reported in ri_<family>.csv are
+* refitted with $mht_opts so they still match the port to 15 digits.
 global mht_perm_opts "dof(clusters) vce(cluster $mht_cluster)"
 * Weather columns that are permuted jointly (as one date block) by the RI procedure.
 global mht_weather "tmean_c tmax_c tmin_c heat_idx_c rh_pct tmean_7d tmin_7d tmean_30d wetbulb_c wetbulb_7d wetbulb_30d hot30_7d heatwave_7d"
@@ -135,58 +135,8 @@ end
 mht_define_models
 
 * Fit model i (quietly) and leave the estimate in e(); callers read _b/_se of $mht_target`i'.
-* `mht_fit i perm` swaps $mht_opts for $mht_perm_opts (looser tolerance, permuted refits only).
 capture program drop mht_fit
 program define mht_fit
-    args i mode
-    local cmd `"${mht_cmd`i'}"'
-    if "`mode'" == "perm" local cmd : subinstr local cmd "$mht_opts" "$mht_perm_opts"
-    quietly `cmd'
-end
-
-* ---- Randomisation-inference helpers shared by mht_ri.do and mht_ri_combine.do.
-* mht_ri_actual `family': fits every model of the family with the tight $mht_opts and stores
-* globals mht_ri_idx (model numbers), mht_ri_tnames (t<i> column names) and, per model i,
-* mht_ri_b`i', mht_ri_se`i', mht_ri_t`i' (= |t|) and mht_ri_p`i' (clustered two-sided p).
-capture program drop mht_ri_actual
-program define mht_ri_actual
-    args family
-    global mht_ri_idx
-    global mht_ri_tnames
-    forvalues i = 1/$mht_n {
-        if "${mht_fam`i'}" != "`family'" continue
-        mht_fit `i'
-        global mht_ri_b`i' = _b[${mht_target`i'}]
-        global mht_ri_se`i' = _se[${mht_target`i'}]
-        global mht_ri_t`i' = abs(${mht_ri_b`i'} / ${mht_ri_se`i'})
-        global mht_ri_p`i' = 2 * ttail(e(df_r), ${mht_ri_t`i'})
-        global mht_ri_idx $mht_ri_idx `i'
-        global mht_ri_tnames $mht_ri_tnames t`i'
-    }
-end
-
-* mht_ri_pvalues `family' `permsfile' `seed' `secs': reads the permutation table (one row per
-* permutation, columns t<i> = |t*_i|), sets P = number of rows and writes ri_<family>.dta/.csv:
-*   p_ri      = (1 + #{p : |t*_ip| >= |t_i|}) / (P + 1)
-*   p_ri_fwer = (1 + #{p : max_k |t*_kp| >= |t_i|}) / (P + 1)   (single-step max-|t|)
-* Requires mht_ri_actual to have run first. Replaces the data in memory.
-capture program drop mht_ri_pvalues
-program define mht_ri_pvalues
-    args family permsfile seed secs
-    use "`permsfile'", clear
-    local perms = _N
-    egen double tmax = rowmax($mht_ri_tnames)
-    tempname res
-    postfile `res' str1 family int model str12 id str12 target double(b se t p_unadj p_ri p_ri_fwer) int perms long seed double secs using "$mht_dir/ri_`family'.dta", replace
-    foreach i of global mht_ri_idx {
-        quietly count if t`i' >= ${mht_ri_t`i'}
-        local p_ri = (1 + r(N)) / (`perms' + 1)
-        quietly count if tmax >= ${mht_ri_t`i'}
-        local p_fw = (1 + r(N)) / (`perms' + 1)
-        post `res' ("`family'") (`i') ("${mht_id`i'}") ("${mht_target`i'}") (${mht_ri_b`i'}) (${mht_ri_se`i'}) (${mht_ri_t`i'}) (${mht_ri_p`i'}) (`p_ri') (`p_fw') (`perms') (`seed') (`secs')
-    }
-    postclose `res'
-    use "$mht_dir/ri_`family'.dta", clear
-    list, noobs
-    export delimited using "$mht_dir/ri_`family'.csv", replace
+    args i
+    quietly ${mht_cmd`i'}
 end
