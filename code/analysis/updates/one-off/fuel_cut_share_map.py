@@ -2,9 +2,9 @@
 
 Run from the repo root:
 
-    uv run python code/analysis/updates/fuel_cut_share_map.py
+    uv run python code/analysis/updates/one-off/fuel_cut_share_map.py
 
-Writes output/figures/fuel_cut_share_after_map.png.
+Writes output/figures/fuel_cut_share_map.png.
 
 Purpose: show where the pre/post comparison behind the fuel-shock columns can
 come from. With kecamatan fixed effects, only kecamatans interviewed on both
@@ -119,6 +119,6 @@ def share_after_map(kecamatans: gpd.GeoDataFrame):
 kecamatans = kecamatan_polygons().merge(kecamatan_summaries(), on="gadm_fullcode")
 FIGURE_OUTPUT.mkdir(parents=True, exist_ok=True)
 share_after_map(kecamatans).save(
-    FIGURE_OUTPUT / "fuel_cut_share_after_map.png",
+    FIGURE_OUTPUT / "fuel_cut_share_map.png",
     width=11, height=6, dpi=300, verbose=False,
 )

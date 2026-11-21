@@ -54,7 +54,7 @@ def make_table() -> None:
             title="+ Education x Heat",
             formula=(
                 f"cesd_z ~ {JOB_LOSS_MAIN} * {MAIN_TEMP_MEASURE} "
-                f"+ edu_yrs:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}"
+                f"+ edu_yrs_nullable:{MAIN_TEMP_MEASURE} + {CONTROLS} | {FE_NO_WAVE}"
             ),
             df=analysis_df,
             tags=frozenset(["job-loss", "slope-robustness", "education-slope"]),

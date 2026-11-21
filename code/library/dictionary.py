@@ -111,6 +111,7 @@ VARIABLE_LABELS: dict[str, str] = {
     "age": "Age",
     "female": "Female",
     "edu_yrs": "Years of education",
+    "edu_yrs_nullable": "Years of education",
     "married": "Married",
     "widowed": "Widowed",
     # Fixed effects, clusters, and identifiers that may appear in previews
