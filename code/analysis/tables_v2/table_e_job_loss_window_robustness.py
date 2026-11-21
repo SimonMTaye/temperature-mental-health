@@ -30,7 +30,7 @@ def make_table() -> None:
         MAIN_TEMP_MEASURE,
         "age",
         "female",
-        "edu_yrs",
+        "edu_yrs_nullable",
         "married",
         "widowed",
         "month",

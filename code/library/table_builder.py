@@ -1,3 +1,6 @@
+import math
+
+
 def make_row(label: str, coefficients: list[str] | list[int]) -> str:
     # handle string case
     if isinstance(coefficients[0], str):
@@ -6,9 +9,10 @@ def make_row(label: str, coefficients: list[str] | list[int]) -> str:
         return label + " & " + " & ".join(f"{coef:,}" for coef in coefficients) + r" \\"
 
 
-def stars(p_value: float) -> str:
-    # check if p_value is nan
-    if not p_value:
+def stars(p_value: float | None) -> str:
+    # Missing p-values (None/NaN) get no stars. Do not use `not p_value`: a
+    # p-value of exactly 0.0 (very large t-stats underflow) must get ***.
+    if p_value is None or math.isnan(p_value):
         return ""
     if p_value < 0.01:
         return "***"
