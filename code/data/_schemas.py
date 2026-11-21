@@ -295,16 +295,20 @@ STRESSORS_SCHEMA = pa.DataFrameSchema(
             nullable=True,
             coerce=True,
         ),
-        # IFLS AR15 religion code, with cleaned missing values retained as -99.
-        "religion": pa.Column(pa.Category, nullable=False, coerce=True),
+        # IFLS AR15 religion code as a string label, with cleaned missing values
+        # retained as "-99". Strings (not pa.Category) because parquet does not
+        # preserve the pandas category dtype; regressions read strings as
+        # categorical.
+        "religion": pa.Column(str, nullable=False, coerce=True),
         # Indicator for a cleaned missing religion code.
         "religion_missing": _binary_column(),
-        "religion_nullable": pa.Column(pa.Category, nullable=True, coerce=True),
-        # IFLS AR15D ethnicity code, with cleaned missing values retained as -99.
-        "ethnicity": pa.Column(pa.Category, nullable=False, coerce=True),
+        "religion_nullable": pa.Column(str, nullable=True, coerce=True),
+        # IFLS AR15D ethnicity code as a string label, with cleaned missing
+        # values retained as "-99".
+        "ethnicity": pa.Column(str, nullable=False, coerce=True),
         # Indicator for a cleaned missing ethnicity code.
         "ethnicity_missing": _binary_column(),
-        "ethnicity_nullable": pa.Column(pa.Category, nullable=True, coerce=True),
+        "ethnicity_nullable": pa.Column(str, nullable=True, coerce=True),
         # IFLS survey wave for the stressor/covariate record.
         "wave": _wave_column(),
         # Household size used in per-capita expenditure calculations.
