@@ -39,6 +39,11 @@ they read files from the Dropbox project folder and have their own paths.
 | R3.2c palm and rubber with crop controls | R3_2c_palm_rubber |
 | R3.3 both sides of the cut | R3_3_fuel_both_sides |
 | Joint test of the three interactions | joint_null_test |
+| R2.3 / R3.3 event-time figure, 15-day windows | R2_3_event_study_15day |
+| R3.1e panel ageing | R3_1e_panel_ageing |
+
+The last two are the exception in this folder: each is one script that needs only
+`data/generated/30_analysis_table_input.parquet` and runs from the repository root.
 
 ## Already on GitHub (Simon's scripts in code/analysis/updates/)
 
