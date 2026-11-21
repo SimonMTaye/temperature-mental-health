@@ -2,12 +2,12 @@
 
 Run from the repo root:
 
-    uv run python code/analysis/updates/cesd_wave_comparison.py
+    uv run python code/analysis/updates/figures/figure_rr_c_cesd_wave_comparison.py
 
-Writes three figures to output/figures/:
-    cesd_wave_z_distribution.png                     all respondents
-    cesd_wave_z_distribution_shocked.png             shocked vs not shocked
-    cesd_wave_z_distribution_temperature_quartile.png  hot vs cool week
+Writes three figures (PDF and PNG) to output/figures/:
+    figure_rr_c_cesd_wave_comparison                      all respondents
+    figure_rr_c_cesd_wave_comparison_shocked              shocked vs not shocked
+    figure_rr_c_cesd_wave_comparison_temperature_quartile hot vs cool week
 """
 
 import pandas as pd
@@ -93,6 +93,16 @@ temperature_plot = (
 )
 
 FIGURE_OUTPUT.mkdir(parents=True, exist_ok=True)
-z_plot.save(FIGURE_OUTPUT / "cesd_wave_z_distribution.png", width=8, height=4, dpi=300)
-shock_plot.save(FIGURE_OUTPUT / "cesd_wave_z_distribution_shocked.png", width=8, height=7, dpi=300)
-temperature_plot.save(FIGURE_OUTPUT / "cesd_wave_z_distribution_temperature_quartile.png", width=8, height=7, dpi=300)
+for extension in ["pdf", "png"]:
+    z_plot.save(
+        FIGURE_OUTPUT / f"figure_rr_c_cesd_wave_comparison.{extension}",
+        width=8, height=4, dpi=300,
+    )
+    shock_plot.save(
+        FIGURE_OUTPUT / f"figure_rr_c_cesd_wave_comparison_shocked.{extension}",
+        width=8, height=7, dpi=300,
+    )
+    temperature_plot.save(
+        FIGURE_OUTPUT / f"figure_rr_c_cesd_wave_comparison_temperature_quartile.{extension}",
+        width=8, height=7, dpi=300,
+    )

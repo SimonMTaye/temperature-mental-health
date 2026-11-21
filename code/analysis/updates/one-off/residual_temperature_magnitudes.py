@@ -2,7 +2,7 @@
 
 Run from the repo root to print the numbers:
 
-    uv run python code/analysis/updates/residual_temperature_magnitudes.py
+    uv run python code/analysis/updates/one-off/residual_temperature_magnitudes.py
 
 Responds to reviewer comment 6 ("Magnitude of the heat variation used for
 interpretation"): report the residual SD of temperature after the fixed effects
