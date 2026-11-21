@@ -14,7 +14,7 @@ from library.table_builder import coefficient_rows, make_row
 balance_variables = [
     "age",
     "female",
-    "edu_yrs",
+    "edu_yrs_nullable",  # raw edu_yrs codes missing as -100
     "married",
     "widowed",
     "cash_transfer_recipient",
@@ -65,7 +65,7 @@ def make_table() -> None:
             (
                 balance_df[balance_variable].mean(),
                 balance_df[balance_variable].std(),
-                0,
+                float("nan"),  # no test for the mean column, so no stars
             ),
         )
         observation_row.append(len(balance_df))
