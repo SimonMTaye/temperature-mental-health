@@ -10,10 +10,7 @@ from the canonical analysis table and join to GADM 3.6 by BPS code
 Needs data/raw/gadm36_IDN.gpkg (data.config.GADM_PATH).
 
 Colours each kabupaten by the number of IFLS person-wave observations in the
-pooled analysis sample (IFLS4 + IFLS5) who live there. Outlines the 13 original
-IFLS sampling-frame provinces (per RAND documentation) plus Banten (which
-split off from West Java in 2000 and is effectively in-sample for split-off
-households).
+pooled analysis sample (IFLS4 + IFLS5) who live there.
 
 Adapted from output/make_coverage_map.py; this version is the paper-appendix
 script — it writes BOTH `.png` (for the long note / web) AND `.pdf`
@@ -31,15 +28,11 @@ import pandas as pd
 from data.config import GADM_PATH
 from library.config import FIGURE_OUTPUT
 from library.specs import ANALYSIS_INPUT
-from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 OUT = FIGURE_OUTPUT
 OUT.mkdir(parents=True, exist_ok=True)
 
-# Original IFLS-13 sampling-frame provinces (per RAND IFLS documentation),
-# plus Banten (36) which split from Jabar (32) in 2000.
-IFLS13_PROVS = {12, 13, 16, 18, 31, 32, 33, 34, 35, 36, 51, 52, 63, 73}
 
 # Kabupaten created after GADM 3.6's boundaries, mapped to the kabupaten they
 # split from so their observations land on a polygon.
@@ -83,7 +76,7 @@ def main() -> None:
     g2["bin_idx"] = pd.cut(g2.n_ifls, bins=bins, labels=False, include_lowest=True, right=False)
     g2["color"] = g2["bin_idx"].apply(lambda i: bin_colors[int(i)] if pd.notna(i) else bin_colors[0])
 
-    # 6. Plot — focus on the IFLS-13 region (Sumatra to Sulawesi); Maluku/Papua
+    # 6. Plot — focus on Sumatra to Sulawesi; Maluku/Papua
     # contribute essentially zero observations to the sample and dominate the
     # figure if included.
     fig, ax = plt.subplots(1, 1, figsize=(13, 5.0), dpi=160)
@@ -94,17 +87,13 @@ def main() -> None:
     # Province outlines (light grey)
     g1.boundary.plot(ax=ax, edgecolor="#888", linewidth=0.4)
 
-    # Highlight original IFLS-13 provinces + Banten with thick green outline
-    g1_ifls = g1[g1["bps_code"].isin(IFLS13_PROVS)]
-    g1_ifls.boundary.plot(ax=ax, edgecolor="#1d6f42", linewidth=1.6, alpha=0.90)
-
-    # Crop to IFLS-13 region (Sumatra in west to Sulawesi/NTT in east).
+    # Crop to the sampled region (Sumatra in west to Sulawesi/NTT in east).
     # Excludes Maluku and Papua where IFLS has essentially no sample.
     ax.set_xlim(94.5, 126.5)
     ax.set_ylim(-11.0, 6.5)
     ax.set_aspect("equal")
 
-    # Sample-size & outline counts
+    # Sample-size counts
     n_kab_in_sample = (g2.n_ifls > 0).sum()
     n_kab_substantial = (g2.n_ifls >= 50).sum()
 
@@ -113,21 +102,12 @@ def main() -> None:
         Patch(facecolor=c, edgecolor="#777", linewidth=0.3, label=f"{lab} adults")
         for c, lab in zip(bin_colors, bin_labels)
     ]
-    outline_elements = [
-        Line2D([0], [0], color="#1d6f42", linewidth=1.6,
-               label="IFLS sampling-frame provinces"),
-    ]
-    leg1 = ax.legend(
+    ax.legend(
         handles=legend_elements, loc="upper left", bbox_to_anchor=(1.005, 1.0),
         title="IFLS adults per\nkabupaten",
         fontsize=8.5, title_fontsize=9, frameon=True, framealpha=0.95,
         edgecolor="#cccccc", labelspacing=0.35, handlelength=1.4,
     )
-    ax.legend(
-        handles=outline_elements, loc="lower left", bbox_to_anchor=(1.005, 0.0),
-        fontsize=8.5, frameon=True, framealpha=0.95, edgecolor="#cccccc",
-    )
-    ax.add_artist(leg1)
 
     # No in-plot title/caption (the figure caption lives in the LaTeX float).
     ax.set_xticks([])
