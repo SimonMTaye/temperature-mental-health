@@ -30,6 +30,22 @@ CESD_FACTOR_COLUMNS = [
     "posaffect_z",
 ]
 ALLOWED_TRAVEL_METHODS = {1, 2, 3, 4, 8, 9}
+# Columns of the headline regression in library/specs.py:
+# cesd_z ~ tmean_7d + CONTROLS | month*year + gadm_fullcode.
+# Kept in sync by hand because library.specs loads this table on import.
+ESTIMATION_COLUMNS = [
+    "cesd_z",
+    "tmean_7d",
+    "age",
+    "female",
+    "edu_yrs_nullable",
+    "married",
+    "widowed",
+    "divorced",
+    "ethnicity_nullable",
+    "religion_nullable",
+]
+ESTIMATION_FIXED_EFFECTS = [["gadm_fullcode"], ["month", "year"]]
 IFLS4_COLUMNS = [
     "urban_vehicle_hh",
     "coal_worker_hh",
@@ -154,6 +170,32 @@ def add_travel_distance_z_scores(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def restrict_to_estimation_sample(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only the person-waves that enter the headline regression.
+
+    Drops rows missing any regression variable (in practice years of education,
+    ethnicity, or religion), then repeatedly drops rows that are alone in a
+    kecamatan or month-by-year fixed-effect cell, mirroring pyfixest's singleton
+    removal. Every table then reports the same sample. Run after all
+    sample-wide derived variables so their values match earlier builds.
+    """
+    n_start = len(df)
+    df = df.dropna(subset=ESTIMATION_COLUMNS)
+    n_complete = len(df)
+    while True:
+        singleton = pd.Series(False, index=df.index)
+        for cell in ESTIMATION_FIXED_EFFECTS:
+            singleton |= df.groupby(cell)["pidlink"].transform("size").eq(1)
+        if not singleton.any():
+            break
+        df = df[~singleton]
+    log(
+        f"estimation sample: {n_start:,} rows -> {n_complete:,} with complete "
+        f"controls -> {len(df):,} after dropping singleton fixed-effect cells"
+    )
+    return df.copy()
+
+
 def main() -> None:
     GENERATED_DATA.mkdir(parents=True, exist_ok=True)
 
@@ -254,6 +296,7 @@ def main() -> None:
             ],
         )
         .pipe(add_travel_distance_z_scores)
+        .pipe(restrict_to_estimation_sample)
     )
 
     int_cols = [
