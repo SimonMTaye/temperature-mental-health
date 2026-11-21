@@ -6,6 +6,7 @@ import re
 
 import numpy as np
 import pandas as pd
+from sharp_q_values import compute_q
 
 from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
@@ -180,7 +181,7 @@ def coefficient_stats(model, term: str) -> tuple[float, float, float]:
     return coefficient, standard_error, p_value
 
 
-def differential_impact_row(models) -> tuple[str, str]:
+def differential_impact_stats(models) -> list[tuple[float, float, float]]:
     stats = []
     for model in models:
         term = (
@@ -189,7 +190,22 @@ def differential_impact_row(models) -> tuple[str, str]:
             else "group:heat"
         )
         stats.append(coefficient_stats(model, term))
-    return coefficient_rows("Differential Impact of Heat", stats)
+    return stats
+
+
+def sharpened_q_values(
+    temperature_models, wetbulb_models
+) -> tuple[list[str], list[str]]:
+    """Anderson (2008) sharpened FDR q-values for the differential impact of heat.
+
+    All 14 differential-impact coefficients (both panels) form one family.
+    """
+    stats = differential_impact_stats(temperature_models) + differential_impact_stats(
+        wetbulb_models
+    )
+    q_values = [f"[{q:.3f}]" for q in compute_q([p_value for _, _, p_value in stats])]
+    n_temperature = len(temperature_models)
+    return q_values[:n_temperature], q_values[n_temperature:]
 
 
 def wetbulb_specs(
@@ -215,8 +231,10 @@ def wetbulb_specs(
     return specs
 
 
-def panel_rows(label: str, models) -> str:
-    differential_coefs, differential_ses = differential_impact_row(models)
+def panel_rows(label: str, models, q_values: list[str]) -> str:
+    differential_coefs, differential_ses = coefficient_rows(
+        "Differential Impact of Heat", differential_impact_stats(models)
+    )
     heat_coefs, heat_ses = coefficient_rows(
         "Heat", [coefficient_stats(model, "heat") for model in models]
     )
@@ -226,6 +244,7 @@ def panel_rows(label: str, models) -> str:
             r"\midrule",
             differential_coefs,
             differential_ses,
+            make_row("", q_values),
             heat_coefs,
             heat_ses,
         ]
@@ -245,15 +264,23 @@ def stressed_group_proportion_row(specs: list[dict]) -> str:
 def build_table() -> str:
     temperature_models = regression_runner(TABLE_SPECS)
     wetbulb_models = regression_runner(wetbulb_specs())
+    temperature_q_values, wetbulb_q_values = sharpened_q_values(
+        temperature_models, wetbulb_models
+    )
     observations_rows = make_row(
         "Observations", [f"{int(model.stats['N']):,}" for model in temperature_models]
     )
     return (
         TABLE_TEMPLATE.replace(
             "{temperature_panel}",
-            panel_rows("7-day mean Temperature", temperature_models),
+            panel_rows(
+                "7-day mean Temperature", temperature_models, temperature_q_values
+            ),
         )
-        .replace("{wetbulb_panel}", panel_rows("7-day mean Wet-bulb", wetbulb_models))
+        .replace(
+            "{wetbulb_panel}",
+            panel_rows("7-day mean Wet-bulb", wetbulb_models, wetbulb_q_values),
+        )
         .replace("{observations_row}", observations_rows)
         .replace("{group_mean_row}", stressed_group_proportion_row(TABLE_SPECS))
     )
