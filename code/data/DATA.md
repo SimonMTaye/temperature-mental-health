@@ -106,6 +106,11 @@ when the interface fits.
 - `30_build_analysis_table_input.py`: merges outcomes, covariates, exposures,
   processed temperature, and mechanism sidecars into the canonical analysis
   table.
+  The table is restricted to the headline regression's estimation sample:
+  rows missing a regression control (years of education, ethnicity, religion)
+  are dropped, then singleton kecamatan and month-by-year cells are dropped
+  repeatedly. `ESTIMATION_COLUMNS` must stay in sync with `CONTROLS` in
+  `library/specs.py`.
 - `_schemas.py`: Pandera schemas for generated pipeline artifacts.
 - `_ifls_wave.py`: IFLS4/IFLS5 metadata for file paths, IDs, interview dates,
   and screening columns.
