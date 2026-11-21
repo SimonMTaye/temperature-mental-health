@@ -41,8 +41,9 @@ they read files from the Dropbox project folder and have their own paths.
 | Joint test of the three interactions | joint_null_test |
 | R2.3 / R3.3 event-time figure, 15-day windows | R2_3_event_study_15day |
 | R3.1e panel ageing | R3_1e_panel_ageing |
+| R2.4 equality of the three heat interactions | R2_4_equality_test |
 
-The last two are the exception in this folder: each is one script that needs only
+The last three are the exception in this folder: each is one script that needs only
 `data/generated/30_analysis_table_input.parquet` and runs from the repository root.
 
 ## Already on GitHub (Simon's scripts in code/analysis/updates/)
