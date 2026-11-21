@@ -2,13 +2,13 @@
 
 Run from the repo root:
 
-    uv run python code/analysis/updates/fuel_cut_both_sides_table.py
+    uv run python code/analysis/updates/tables/table_rr_o_fuel_cut_both_sides_table.py
 
-Writes output/tables/table_g_fuel_shock_both_sides.tex. Each Table G group
+Writes output/tables/table_rr_o_fuel_cut_both_sides_table.tex. Each Table G group
 gets two adjacent columns: the full IFLS5 sample and only kecamatans with at
 least one IFLS5 interview before and one after the Nov 18, 2014 fuel subsidy
 cut (any respondent, not only urban vehicle owners; see
-fuel_cut_share_map.py). About a third of IFLS5 respondents and 91% of
+one-off/fuel_cut_share_map.py). About a third of IFLS5 respondents and 91% of
 pre-cut respondents are in these kecamatans.
 
 With kecamatan fixed effects, the group x post x heat term can only be
@@ -131,7 +131,7 @@ def main() -> None:
     models = run_models(specs)
 
     TABLE_OUTPUT.mkdir(parents=True, exist_ok=True)
-    (TABLE_OUTPUT / "table_g_fuel_shock_both_sides.tex").write_text(
+    (TABLE_OUTPUT / "table_rr_o_fuel_cut_both_sides_table.tex").write_text(
         build_table(specs, models), encoding="utf-8"
     )
 

@@ -15,6 +15,7 @@ dependencies = [
     "pyarrow>=24.0.0",
     "pyfixest>=0.50.1",
     "scipy>=1.17.1",
+    "sharp-q-values>=0.1.1",
     "tableone>=0.9.6",
     "tqdm>=4.67.3",
 ]
