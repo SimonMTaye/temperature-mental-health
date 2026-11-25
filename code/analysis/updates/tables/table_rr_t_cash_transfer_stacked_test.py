@@ -28,7 +28,11 @@ Stacked regression (the fixed-effects version of Stata's `suest`):
     2. Give each copy its own version of every regressor (x_eq0 = x in copy 0
        and 0 in copy 1; x_eq1 the reverse) and interact every fixed effect with
        the copy indicator. Nothing is shared across copies, so OLS on the
-       stacked data reproduces columns 5 and 6 exactly.
+       stacked data reproduces columns 5 and 6 exactly, including N.
+       Categorical controls (ethnicity, religion) enter as copy-specific
+       dummies, as Table B's formula enters them. Absorbing them as fixed
+       effects would give the same coefficients but drop respondents in a
+       category of their own as singletons, which Table B keeps.
     3. Cluster by kabupaten. Each respondent appears in both copies within the
        same cluster, so the cluster-robust covariance matrix also estimates
        Cov(b5, b6).
@@ -131,12 +135,18 @@ def numeric_controls() -> list[str]:
 
 
 def categorical_controls() -> list[str]:
-    """Categorical controls enter as copy-specific fixed effects (same fit as dummies)."""
     return [c for c in CONTROL_COLUMNS if c not in numeric_controls()]
 
 
+def categorical_dummies() -> pd.DataFrame:
+    """One dummy per non-reference level of each categorical control, as in Table B."""
+    return pd.get_dummies(
+        wave5_df[categorical_controls()], drop_first=True, dtype="float64"
+    )
+
+
 def stacked_regressors() -> list[str]:
-    return TRIPLE_DIFF_TERMS + numeric_controls()
+    return TRIPLE_DIFF_TERMS + numeric_controls() + list(categorical_dummies().columns)
 
 
 def stack_columns_5_and_6(heat: str) -> pd.DataFrame:
@@ -155,6 +165,7 @@ def stack_columns_5_and_6(heat: str) -> pd.DataFrame:
                 **{control: wave5_df[control] for control in numeric_controls()},
             }
         ).astype("float64")
+        values = values.join(categorical_dummies())
         values["group_post"] = values["group"] * values["post"]
         values["group_heat"] = values["group"] * values["heat"]
         values["post_heat"] = values["post"] * values["heat"]
@@ -162,7 +173,6 @@ def stack_columns_5_and_6(heat: str) -> pd.DataFrame:
 
         copy = wave5_df[
             ["cesd_z", "month", "year", "gadm_fullcode", KABUPATEN_CLUSTER]
-            + categorical_controls()
         ].copy()
         copy["equation"] = equation
         for name in stacked_regressors():
@@ -176,9 +186,7 @@ def fit_stacked_regression(heat: str):
     regressors = [f"{name}_eq{k}" for k in (0, 1) for name in stacked_regressors()]
     # Table B's fixed effects (kecamatan, month-by-year), each interacted with
     # the copy indicator so the two equations share nothing.
-    fixed_effects = ["month^year^equation", "gadm_fullcode^equation"] + [
-        f"{control}^equation" for control in categorical_controls()
-    ]
+    fixed_effects = ["month^year^equation", "gadm_fullcode^equation"]
     formula = f"cesd_z ~ {' + '.join(regressors)} | {' + '.join(fixed_effects)}"
     return pf.feols(
         formula,
