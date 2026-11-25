@@ -4,7 +4,15 @@ Run from the repo root:
 
     uv run python code/analysis/updates/tables/table_rr_t_cash_transfer_stacked_test.py
 
-Writes output/tables/table_rr_t_cash_transfer_stacked_test.tex.
+Writes output/tables/table_rr_t_cash_transfer_stacked_test.tex, and each
+displayed number to output/stats/table_rr_t/ (see library/table_stats.py).
+Stats rows follow the display order, skipping SE lines and the bracketed
+p-value line (that p-value is the pval of column 3 in the differential row):
+    r1 temperature differential, r2 temperature correlation,
+    r3 wet-bulb differential,    r4 wet-bulb correlation,
+    r5 observations.
+Columns 1-2 hold coeff / se / pval of Table B columns 5 and 6; column 3 holds
+the difference with its se and Wald p-value, and the correlation rows.
 
 Table B columns 5 and 6 are two separate IFLS5 regressions,
 
@@ -50,6 +58,12 @@ from scipy import stats
 from library.config import TABLE_OUTPUT
 from library.specs import CONTROLS, MAIN_TEMP_MEASURE, wave5_df
 from library.table_builder import make_row, stars
+from library.table_stats import (
+    StatsGrid,
+    bottom_row,
+    regression_cell,
+    write_table_stats,
+)
 
 TABLE_FILE = TABLE_OUTPUT / "table_rr_t_cash_transfer_stacked_test.tex"
 POST = "post_subsidy"
@@ -103,6 +117,12 @@ def main() -> None:
     )
     TABLE_FILE.parent.mkdir(parents=True, exist_ok=True)
     TABLE_FILE.write_text(table, encoding="utf-8")
+    write_table_stats(
+        "rr_t",
+        panel_stats(temperature_model)
+        + panel_stats(wetbulb_model)
+        + [bottom_row(observation_counts(temperature_model))],
+    )
     print_summary({"tmean_7d": temperature_model, "wetbulb_7d": wetbulb_model})
 
 
@@ -232,10 +252,27 @@ def panel_rows(label: str, model) -> str:
     )
 
 
-def observations_row(model) -> str:
-    """Observations per equation, i.e. per original Table B column."""
+def panel_stats(model) -> StatsGrid:
+    """Differential and correlation rows of one panel, matching panel_rows."""
+    test = equality_test(model)
+    differential_row = [
+        regression_cell(test["b5"], test["se5"], test["p5"]),
+        regression_cell(test["b6"], test["se6"], test["p6"]),
+        regression_cell(test["difference"], test["se_difference"], test["p_difference"]),
+    ]
+    correlation_row = bottom_row([None, None, test["correlation"]])
+    return [differential_row, correlation_row]
+
+
+def observation_counts(model) -> list[int | None]:
+    """Observations per equation, i.e. per original Table B column; none for column 3."""
     per_equation = model._data["equation"].value_counts().sort_index()
-    return make_row("Observations", [f"{n:,}" for n in per_equation] + [""])
+    return [int(n) for n in per_equation] + [None]
+
+
+def observations_row(model) -> str:
+    counts = observation_counts(model)
+    return make_row("Observations", [f"{n:,}" if n is not None else "" for n in counts])
 
 
 def print_summary(models: dict) -> None:
