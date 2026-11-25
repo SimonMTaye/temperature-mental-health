@@ -8,8 +8,9 @@ import maketables as mt
 import numpy as np
 import pandas as pd
 
-from library.caching import run_regression_with_caching
+from library.caching import DEFAULT_MODEL_STATS, run_regression_with_caching
 from library.dictionary import VARIABLE_LABELS
+from library.table_stats import StatsGrid, bottom_row, regression_cell
 
 mt.MTable.DEFAULT_TEX_STYLE.update(
     {
@@ -36,6 +37,12 @@ class RegressionSpec:
     df: pd.DataFrame | str = field(compare=False, hash=False)
     tags: frozenset[str]
     show_terms: frozenset[str] | None
+
+
+class StatsETable(mt.ETable):
+    """ETable that also keeps the raw b/se/p behind each displayed coefficient cell."""
+
+    coefficient_stats: StatsGrid
 
 
 def search_replace_term(text: str, old_term: str, new_term: str) -> tuple[str, bool]:
@@ -86,7 +93,7 @@ def make_regression_table(
     keep: list[str] | None = None,
     order: list[str] | None = None,
     **etable_kwargs,
-) -> mt.ETable:
+) -> StatsETable:
     """Run a set of regression specifications and combine results into a table."""
 
     renames = _renames_by_spec(rename, specs)
@@ -117,7 +124,66 @@ def make_regression_table(
         "felabels": VARIABLE_LABELS,
         "notes": None,
     }
-    return mt.ETable(models, **{**default_etable_kwargs, **etable_kwargs})  # ty:ignore[invalid-argument-type]
+    etable_kwargs = {**default_etable_kwargs, **etable_kwargs}
+    table = StatsETable(models, **etable_kwargs)  # ty:ignore[invalid-argument-type]
+    table.coefficient_stats = displayed_coefficient_stats(
+        models,
+        keep=etable_kwargs["keep"],
+        order=etable_kwargs["order"],
+        exact_match=etable_kwargs["exact_match"],
+    ) + displayed_bottom_stats(
+        models,
+        custom_model_stats=etable_kwargs.get("custom_model_stats"),
+        model_stats=etable_kwargs.get("model_stats"),
+    )
+    return table
+
+
+def displayed_bottom_stats(
+    models: list,
+    *,
+    custom_model_stats: dict[str, list] | None,
+    model_stats: list[str] | None,
+) -> StatsGrid:
+    """Return the bottom-of-table rows in ETable order: custom rows, then model stats."""
+    custom_rows = [list(values) for values in (custom_model_stats or {}).values()]
+    stat_keys = model_stats if model_stats is not None else DEFAULT_MODEL_STATS
+    model_stat_rows = [[model.stats.get(key) for model in models] for key in stat_keys]
+    return [bottom_row(values) for values in custom_rows + model_stat_rows]
+
+
+def displayed_coefficient_stats(
+    models: list,
+    *,
+    keep: list[str] | None,
+    order: list[str] | None,
+    exact_match: bool,
+) -> StatsGrid:
+    """Return b/se/p for each coefficient row, in the order the ETable displays them."""
+    # An unlabelled ETable with the same keep/order rules exposes the raw term
+    # names of the displayed rows, in display order.
+    unlabelled = mt.ETable(
+        models,
+        keep=keep,
+        order=order,
+        exact_match=exact_match,
+        labels={},
+        cat_template="",
+    )
+    displayed_terms = unlabelled.df.loc["coef"].index.tolist()
+    return [
+        [
+            regression_cell(
+                float(model.coef_table.loc[term, "b"]),
+                float(model.coef_table.loc[term, "se"]),
+                float(model.coef_table.loc[term, "p"]),
+            )
+            if term in model.coef_table.index
+            else {}
+            for model in models
+        ]
+        for term in displayed_terms
+    ]
 
 
 def make_shock_regression_table(
@@ -127,7 +193,7 @@ def make_shock_regression_table(
     post: str | Sequence[str | None],
     temperature: str | Sequence[str],
     **etable_kwargs,
-) -> mt.ETable:
+) -> StatsETable:
     """Run shock regressions and align group/post/heat terms across models."""
 
     def _rename_to(
@@ -201,7 +267,7 @@ def make_shock_regression_table_trimmed(
     post: str | Sequence[str | None],
     temperature: str | Sequence[str],
     **etable_kwargs,
-) -> mt.ETable:
+) -> StatsETable:
     """Run shock regressions and align group/post/heat terms across models."""
 
     def _rename_to(

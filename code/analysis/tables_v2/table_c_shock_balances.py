@@ -10,6 +10,7 @@ from library.specs import (
 from library.dictionary import VARIABLE_LABELS
 from library.render import RegressionSpec
 from library.table_builder import coefficient_rows, make_row
+from library.table_stats import bottom_row, regression_cell, write_table_stats
 
 balance_variables = [
     "age",
@@ -111,6 +112,17 @@ def make_table() -> None:
     )
     with open(TABLE_OUTPUT / "table_c_shock_balances.tex", "w") as f:
         f.write(table)
+
+    # Column 1 is the sample mean (SD); columns 2-4 are balance regressions.
+    stats_grid = [
+        [
+            {"mean": mean, "sd": standard_deviation},
+            *(regression_cell(*stats) for stats in regression_stats),
+        ]
+        for (mean, standard_deviation, _), *regression_stats in rows.values()
+    ]
+    stats_grid.append(bottom_row(observation_row[: len(tests) + 1]))
+    write_table_stats("c", stats_grid)
 
 
 if __name__ == "__main__":

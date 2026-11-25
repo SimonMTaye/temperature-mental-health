@@ -21,6 +21,12 @@ from library.specs import (
     update_formula_search_replace,
 )
 from library.table_builder import make_row, coefficient_rows
+from library.table_stats import (
+    StatsGrid,
+    bottom_row,
+    regression_cell,
+    write_table_stats,
+)
 
 TABLE_FILE = TABLE_OUTPUT / "table_b_temperature_and_shock_effects.tex"
 KABUPATEN_CLUSTER = "kabupaten_full_code"
@@ -231,7 +237,8 @@ def wetbulb_specs(
     return specs
 
 
-def panel_rows(label: str, models, q_values: list[str]) -> str:
+def panel_rows(label: str, models, q_values: list[str] | None = None) -> str:
+    """Panel rows; the [q] row is shown only when q-values are given (Table B)."""
     differential_coefs, differential_ses = coefficient_rows(
         "Differential Impact of Heat", differential_impact_stats(models)
     )
@@ -244,26 +251,46 @@ def panel_rows(label: str, models, q_values: list[str]) -> str:
             r"\midrule",
             differential_coefs,
             differential_ses,
-            make_row("", q_values),
+            *([make_row("", q_values)] if q_values is not None else []),
             heat_coefs,
             heat_ses,
         ]
     )
 
 
+def panel_stats(models) -> StatsGrid:
+    """Differential-impact and heat rows of one panel, matching panel_rows."""
+    differential_row = [
+        regression_cell(*stats) for stats in differential_impact_stats(models)
+    ]
+    heat_row = [regression_cell(*coefficient_stats(model, "heat")) for model in models]
+    return [differential_row, heat_row]
+
+
+def stressed_group_proportions(specs: list[dict]) -> list[float]:
+    return [spec_data["spec"].df[spec_data["group"]].mean() for spec_data in specs]
+
+
 def stressed_group_proportion_row(specs: list[dict]) -> str:
     return make_row(
         "Stressed Group Proportion",
-        [
-            f"{spec_data['spec'].df[spec_data['group']].mean():.3f}"
-            for spec_data in specs
-        ],
+        [f"{proportion:.3f}" for proportion in stressed_group_proportions(specs)],
     )
 
 
-def build_table() -> str:
-    temperature_models = regression_runner(TABLE_SPECS)
-    wetbulb_models = regression_runner(wetbulb_specs())
+def observation_counts(models) -> list[int]:
+    return [int(model.stats["N"]) for model in models]
+
+
+def bottom_stats(specs: list[dict], models) -> StatsGrid:
+    """Observations and Stressed Group Proportion rows, matching the table bottom."""
+    return [
+        bottom_row(observation_counts(models)),
+        bottom_row(stressed_group_proportions(specs)),
+    ]
+
+
+def build_table(temperature_models, wetbulb_models) -> str:
     temperature_q_values, wetbulb_q_values = sharpened_q_values(
         temperature_models, wetbulb_models
     )
@@ -287,8 +314,18 @@ def build_table() -> str:
 
 
 def make_table() -> None:
+    temperature_models = regression_runner(TABLE_SPECS)
+    wetbulb_models = regression_runner(wetbulb_specs())
     TABLE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TABLE_FILE.write_text(build_table(), encoding="utf-8")
+    TABLE_FILE.write_text(
+        build_table(temperature_models, wetbulb_models), encoding="utf-8"
+    )
+    write_table_stats(
+        "b",
+        panel_stats(temperature_models)
+        + panel_stats(wetbulb_models)
+        + bottom_stats(TABLE_SPECS, temperature_models),
+    )
 
 
 if __name__ == "__main__":

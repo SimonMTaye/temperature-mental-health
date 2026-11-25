@@ -1,4 +1,5 @@
 from library.config import TABLE_OUTPUT
+from library.table_stats import write_table_stats
 from library.specs import (
     jobloss,
     JOB_LOSS_MAIN,
@@ -74,6 +75,7 @@ def make_table() -> None:
         table,
         TABLE_OUTPUT / "table_k_jobloss_voluntary.tex",
     )
+    write_table_stats("k", table.coefficient_stats)
 
 
 if __name__ == "__main__":

@@ -2,9 +2,12 @@ from library.render import RegressionSpec
 from library.specs import update_formula_search_replace
 from library.config import TABLE_OUTPUT
 from copy import deepcopy
+from library.table_stats import write_table_stats
 from analysis.tables_v2.table_b_temperature_and_shock_effects import (
     TABLE_SPECS,
+    bottom_stats,
     panel_rows,
+    panel_stats,
     regression_runner,
     make_row,
     stressed_group_proportion_row,
@@ -39,7 +42,7 @@ Individual & - & x & - & - & - & - & - \\
 # "somatic_z",
 # "depraffect_z"
 # "posaffect_z"
-def build_table() -> str:
+def run_models():
     depression_specs = deepcopy(TABLE_SPECS)
     for spec in depression_specs:
         assert isinstance(spec["spec"], RegressionSpec)
@@ -61,7 +64,10 @@ def build_table() -> str:
     depression_models = regression_runner(depression_specs)
     somatic_models = regression_runner(somatic_specs)
     positive_models = regression_runner(positive_specs)
+    return depression_models, somatic_models, positive_models
 
+
+def build_table(depression_models, somatic_models, positive_models) -> str:
     observations_rows = make_row(
         "Observations", [f"{int(model.stats['N']):,}" for model in depression_models]
     )
@@ -87,7 +93,18 @@ TABLE_FILE = TABLE_OUTPUT / "table_l_temperature_shock_cesd_breakdown.tex"
 
 
 def make_table() -> None:
-    TABLE_FILE.write_text(build_table())
+    depression_models, somatic_models, positive_models = run_models()
+    TABLE_FILE.write_text(
+        build_table(depression_models, somatic_models, positive_models)
+    )
+    # Row order follows the displayed panels: somatic, depressed affect, positive affect.
+    write_table_stats(
+        "l",
+        panel_stats(somatic_models)
+        + panel_stats(depression_models)
+        + panel_stats(positive_models)
+        + bottom_stats(TABLE_SPECS, depression_models),
+    )
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 from library.config import TABLE_OUTPUT
+from library.table_stats import write_table_stats
 from library.specs import (
     palm_shock,
     build_palm_df,
@@ -39,6 +40,7 @@ def make_table() -> None:
     render_table_to_latex(
         table, TABLE_OUTPUT / "table_d_palm_farmer_alt_definition.tex"
     )
+    write_table_stats("d", table.coefficient_stats)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 from library.config import TABLE_OUTPUT
+from library.table_stats import write_table_stats
 from library.specs import (
     palm_shock,
     analysis_df,
@@ -56,6 +57,7 @@ def make_table() -> None:
         custom_model_stats={"Palm Farmer Count": treated},
     )
     render_table_to_latex(table, TABLE_OUTPUT / "table_j_palm_farmer_selfemp.tex")
+    write_table_stats("j", table.coefficient_stats)
 
 
 if __name__ == "__main__":

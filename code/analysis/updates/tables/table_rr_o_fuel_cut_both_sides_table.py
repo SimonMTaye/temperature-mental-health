@@ -4,7 +4,8 @@ Run from the repo root:
 
     uv run python code/analysis/updates/tables/table_rr_o_fuel_cut_both_sides_table.py
 
-Writes output/tables/table_rr_o_fuel_cut_both_sides_table.tex. Each Table G group
+Writes output/tables/table_rr_o_fuel_cut_both_sides_table.tex (cell values in
+output/stats/table_rr_o/). Each Table G group
 gets two adjacent columns: the full IFLS5 sample and only kecamatans with at
 least one IFLS5 interview before and one after the Nov 18, 2014 fuel subsidy
 cut (any respondent, not only urban vehicle owners; see
@@ -24,6 +25,7 @@ from dataclasses import replace
 
 import pandas as pd
 from analysis.tables_v2.table_b_temperature_and_shock_effects import (
+    bottom_stats,
     coefficient_stats,
     standardize_model_terms,
 )
@@ -36,6 +38,7 @@ from library.specs import (
     wave5_df,
 )
 from library.table_builder import coefficient_rows, make_row
+from library.table_stats import StatsGrid, regression_cell, write_table_stats
 
 GROUPS = [
     ("Urban Vehicle Owners", "urban_vehicle_hh_ifls4"),
@@ -126,6 +129,18 @@ def build_table(specs: list[dict], models: list) -> str:
     )
 
 
+def table_stats(specs: list[dict], models: list) -> StatsGrid:
+    """Differential, Heat, Observations and Stressed Group Proportion rows."""
+    return [
+        [
+            regression_cell(*coefficient_stats(model, "group:post:heat"))
+            for model in models
+        ],
+        [regression_cell(*coefficient_stats(model, "heat")) for model in models],
+        *bottom_stats(specs, models),
+    ]
+
+
 def main() -> None:
     specs = interleaved_specs(wave5_df, keep_kecamatans_on_both_sides(wave5_df))
     models = run_models(specs)
@@ -134,6 +149,7 @@ def main() -> None:
     (TABLE_OUTPUT / "table_rr_o_fuel_cut_both_sides_table.tex").write_text(
         build_table(specs, models), encoding="utf-8"
     )
+    write_table_stats("rr_o", table_stats(specs, models))
 
 
 if __name__ == "__main__":
