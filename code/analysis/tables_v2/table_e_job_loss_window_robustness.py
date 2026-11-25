@@ -1,4 +1,5 @@
 from library.config import TABLE_OUTPUT
+from library.table_stats import write_table_stats
 from library.specs import (
     update_formula_search_replace,
     jobloss,
@@ -63,6 +64,7 @@ def make_table() -> None:
         table,
         TABLE_OUTPUT / "table_e_job_loss_window_robustness.tex",
     )
+    write_table_stats("e", table.coefficient_stats)
 
 
 if __name__ == "__main__":

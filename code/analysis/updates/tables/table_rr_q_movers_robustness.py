@@ -4,7 +4,9 @@ Run from the repo root:
 
     uv run python code/analysis/updates/tables/table_rr_q_movers_robustness.py
 
-Writes output/tables/table_rr_q_movers_robustness.tex. Columns are the seven
+Writes output/tables/table_rr_q_movers_robustness.tex (cell values in
+output/stats/table_rr_q/; rows follow the display order, panel by panel:
+Differential, Heat, Observations). Columns are the seven
 Table B specifications (7-day mean temperature only). Each panel re-runs them
 on a different version of the data:
 
@@ -42,6 +44,12 @@ from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
 from library.specs import analysis_df, update_formula_search_replace
 from library.table_builder import make_row, stars
+from library.table_stats import (
+    StatsGrid,
+    bottom_row,
+    regression_cell,
+    write_table_stats,
+)
 
 TABLE_FILE = TABLE_OUTPUT / "table_rr_q_movers_robustness.tex"
 KECAMATAN_FE = "gadm_fullcode"
@@ -223,6 +231,21 @@ def panel_rows(label: str, results: list[dict | None]) -> str:
     )
 
 
+def panel_stats(results: list[dict | None]) -> StatsGrid:
+    """Differential, Heat and Observations rows of one panel, matching panel_rows."""
+
+    def cell(r: dict | None, term: str) -> dict:
+        if r is None:
+            return {}
+        return regression_cell(*coefficient_stats(r["model"], term))
+
+    return [
+        [cell(r, r["term"] if r else "") for r in results],
+        [cell(r, "heat") for r in results],
+        bottom_row([int(r["model"].stats["N"]) if r else None for r in results]),
+    ]
+
+
 def summary_frame(label: str, results: list[dict | None]) -> pd.DataFrame:
     rows = []
     for spec_data, r in zip(TABLE_SPECS, results):
@@ -247,16 +270,18 @@ def summary_frame(label: str, results: list[dict | None]) -> pd.DataFrame:
 
 def main() -> None:
     print(f"Cross-wave movers (kecamatan changed): {len(MOVERS):,} people")
-    panel_texts, summaries = [], []
+    panel_texts, summaries, stats_grid = [], [], []
     for label, specs, cluster in PANELS:
         results = run_panel(specs, cluster)
         panel_texts.append(panel_rows(label, results))
         summaries.append(summary_frame(label, results))
+        stats_grid.extend(panel_stats(results))
 
     TABLE_FILE.parent.mkdir(parents=True, exist_ok=True)
     TABLE_FILE.write_text(
         TABLE_TEMPLATE.replace("{panels}", "\n".join(panel_texts)), encoding="utf-8"
     )
+    write_table_stats("rr_q", stats_grid)
     with pd.option_context("display.width", 200, "display.precision", 4):
         print("Differential impact of heat (tmean_7d):")
         print(pd.concat(summaries, ignore_index=True).to_string(index=False))

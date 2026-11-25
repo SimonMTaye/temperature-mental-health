@@ -9,6 +9,7 @@ from library.specs import (
     update_formula_search_replace,
 )
 from library.render import make_regression_table, render_table_to_latex
+from library.table_stats import write_table_stats
 
 OVERALL_HEAT_COLUMNS = [
     (r"\shortstack{7-day mean\\Temperature}", "tmean_7d"),
@@ -42,6 +43,7 @@ def make_temp_table(
     outcome="cesd_z",
     filename="table_a_temperature_effects.tex",
     show_q_values=True,
+    stats_name="a",
 ) -> None:
     specs = []
     for label, term in OVERALL_HEAT_COLUMNS:
@@ -67,6 +69,7 @@ def make_temp_table(
         **q_value_kwargs,
     )
     render_table_to_latex(table, TABLE_OUTPUT / filename)
+    write_table_stats(stats_name, table.coefficient_stats)
 
 
 def make_table():
@@ -75,6 +78,7 @@ def make_table():
         outcome="sleep_dur_h",
         filename="table_a2_temperature_effects_sleep.tex",
         show_q_values=False,
+        stats_name="a2",
     )
 
 

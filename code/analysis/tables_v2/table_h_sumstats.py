@@ -3,6 +3,7 @@
 from __future__ import annotations
 from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
 from library.config import TABLE_OUTPUT
+from library.table_stats import bottom_row, write_table_stats
 from library.specs import analysis_df, JOB_LOSS_MAIN
 
 import pandas as pd
@@ -98,13 +99,16 @@ def make_table() -> None:
                 rf"\quad {label} & {row['mean']:.{digits}f} & {row['sd']:.{digits}f} \\"
             )
         body.append(r"\midrule \addlinespace[1ex]")
+    sample_counts = {
+        "Kabupaten clusters": analysis_df["kabupaten_full_code"].nunique(),
+        "Kecamatan fixed-effect units": analysis_df["kecamatan_full_code"].nunique(),
+        "Observations": len(analysis_df),
+        r"\quad IFLS4": len(analysis_df[~analysis_df["ifls5"]]),
+        r"\quad IFLS5": len(analysis_df[analysis_df["ifls5"]]),
+    }
     body.extend(
         [
-            rf"Kabupaten clusters & & {analysis_df['kabupaten_full_code'].nunique():,}  \\",
-            rf"Kecamatan fixed-effect units & & {analysis_df['kecamatan_full_code'].nunique():,}  \\",
-            rf"Observations & & {len(analysis_df):,} \\",
-            rf"\quad IFLS4 & & {len(analysis_df[~analysis_df['ifls5']]):,}  \\",
-            rf"\quad IFLS5 & & {len(analysis_df[analysis_df['ifls5']]):,}  \\",
+            *(rf"{label} & & {count:,} \\" for label, count in sample_counts.items()),
             r"\bottomrule",
             r"\end{tabular}",
             # r"\end{adjustbox}",
@@ -114,6 +118,12 @@ def make_table() -> None:
     body_text = "\n".join(body) + "\n"
     output_path = TABLE_OUTPUT / "table_h_sumstats.tex"
     output_path.write_text(body_text, encoding="utf-8")
+    # Sample counts sit in the SD column (c2), below the variable rows.
+    write_table_stats(
+        "h",
+        [[{"mean": row["mean"]}, {"sd": row["sd"]}] for row in rows]
+        + [bottom_row([None, count]) for count in sample_counts.values()],
+    )
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ Run from the repo root:
 Writes:
     output/tables/table_rr_s_quadratic_temperature.tex        (CES-D z-score)
     output/tables/table_rr_s2_quadratic_temperature_sleep.tex (sleep hours)
+    (cell values in output/stats/table_rr_s/ and output/stats/table_rr_s2/)
 and prints the linear and squared coefficients for a quick read.
 
 Columns are the six Table A heat measures. Each column regresses the outcome on
@@ -40,6 +41,7 @@ from library.render import (
     render_table_to_latex,
 )
 from library.specs import CONTROLS, FE_NO_WAVE, analysis_df
+from library.table_stats import write_table_stats
 
 LABELS = {
     **VARIABLE_LABELS,
@@ -99,7 +101,9 @@ def centering_point_row(terms) -> list[str]:
     return [f"{quadratic_df[term].mean():.2f}" for term in terms]
 
 
-def make_quadratic_table(outcome: str, filename: str, show_q_values: bool) -> None:
+def make_quadratic_table(
+    outcome: str, filename: str, stats_name: str, show_q_values: bool
+) -> None:
     terms = [term for _, term in OVERALL_HEAT_COLUMNS]
     specs = [quadratic_spec(outcome, term) for term in terms]
 
@@ -123,6 +127,7 @@ def make_quadratic_table(outcome: str, filename: str, show_q_values: bool) -> No
         **q_value_kwargs,
     )
     render_table_to_latex(table, TABLE_OUTPUT / filename)
+    write_table_stats(stats_name, table.coefficient_stats)
 
 
 def print_summary(outcome: str) -> None:
@@ -144,11 +149,13 @@ def main() -> None:
     make_quadratic_table(
         outcome="cesd_z",
         filename="table_rr_s_quadratic_temperature.tex",
+        stats_name="rr_s",
         show_q_values=True,
     )
     make_quadratic_table(
         outcome="sleep_dur_h",
         filename="table_rr_s2_quadratic_temperature_sleep.tex",
+        stats_name="rr_s2",
         show_q_values=False,
     )
     print_summary("cesd_z")
