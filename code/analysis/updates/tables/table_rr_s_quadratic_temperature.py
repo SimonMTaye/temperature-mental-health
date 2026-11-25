@@ -97,10 +97,6 @@ def sharpened_q_values(specs, terms) -> list[list[float]]:
     ]
 
 
-def centering_point_row(terms) -> list[str]:
-    return [f"{quadratic_df[term].mean():.2f}" for term in terms]
-
-
 def make_quadratic_table(
     outcome: str, filename: str, stats_name: str, show_q_values: bool
 ) -> None:
@@ -123,7 +119,6 @@ def make_quadratic_table(
         order=["heat", "heat_sq"],
         exact_match=True,
         labels=LABELS,
-        custom_model_stats={"Heat centered at": centering_point_row(terms)},
         **q_value_kwargs,
     )
     render_table_to_latex(table, TABLE_OUTPUT / filename)
