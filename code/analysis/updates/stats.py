@@ -16,7 +16,8 @@ Assumptions:
   layout changes, the matching functions here must change too.
 - Two inputs are not in any table and are set as constants below.
 
-Each function computes one statistic. Its name is the output file name:
+Each function listed in DERIVED_STATS computes one statistic. Its name is
+the output file name:
 output/stats/derived/<function name>.tex. Names follow
 table_<letter>_<operation>_<subject>, where <operation> is one of ci95_lower,
 ci95_upper, count, min, max, percent, percent_of_mean, percent_difference,
@@ -45,6 +46,11 @@ TABLE_B_STRESSED_PROPORTION_ROW = 6
 TABLE_B_PALM_COLUMN = 1
 
 
+# ---------------------------------------------------------------------------
+# Helpers (not written to output/stats/derived)
+# ---------------------------------------------------------------------------
+
+
 def stat(table: str, name: str, column: int, row: int) -> float:
     path = (
         STATS_OUTPUT / f"table_{table}" / f"table_{table}_{name}_c{column}_r{row}.tex"
@@ -52,7 +58,9 @@ def stat(table: str, name: str, column: int, row: int) -> float:
     return float(path.read_text(encoding="utf-8").rstrip("%"))
 
 
-def table_b_differentials_excluding_cash_transfer() -> list[tuple[float, float]]:
+def _helper_table_b_differentials_excluding_cash_transfer() -> list[
+    tuple[float, float]
+]:
     """(coefficient, p-value) for both differential rows, all columns but cash transfer."""
     return [
         (stat("b", "coeff", column, row), stat("b", "pval", column, row))
@@ -65,7 +73,7 @@ def table_b_differentials_excluding_cash_transfer() -> list[tuple[float, float]]
     ]
 
 
-def table_b_binary_shock_differentials(row: int) -> list[float]:
+def _helper_table_b_binary_shock_differentials(row: int) -> list[float]:
     return [stat("b", "coeff", column, row) for column in TABLE_B_BINARY_SHOCK_COLUMNS]
 
 
@@ -101,34 +109,45 @@ def table_a_count_insignificant_heat_measures() -> int:
 
 
 def table_b_count_differentials_excluding_cash_transfer() -> int:
-    return len(table_b_differentials_excluding_cash_transfer())
+    return len(_helper_table_b_differentials_excluding_cash_transfer())
 
 
 def table_b_count_differentials_significant_5pct_excluding_cash_transfer() -> int:
-    return sum(p < 0.05 for _, p in table_b_differentials_excluding_cash_transfer())
+    return sum(
+        p < 0.05 for _, p in _helper_table_b_differentials_excluding_cash_transfer()
+    )
 
 
 def table_b_count_differentials_significant_10pct_only_excluding_cash_transfer() -> int:
     """Significant at 10% but not at 5%."""
     return sum(
-        0.05 <= p < 0.10 for _, p in table_b_differentials_excluding_cash_transfer()
+        0.05 <= p < 0.10
+        for _, p in _helper_table_b_differentials_excluding_cash_transfer()
     )
 
 
 def table_b_min_differential_temperature_binary_shocks() -> float:
-    return min(table_b_binary_shock_differentials(TABLE_B_TEMPERATURE_DIFFERENTIAL_ROW))
+    return min(
+        _helper_table_b_binary_shock_differentials(TABLE_B_TEMPERATURE_DIFFERENTIAL_ROW)
+    )
 
 
 def table_b_max_differential_temperature_binary_shocks() -> float:
-    return max(table_b_binary_shock_differentials(TABLE_B_TEMPERATURE_DIFFERENTIAL_ROW))
+    return max(
+        _helper_table_b_binary_shock_differentials(TABLE_B_TEMPERATURE_DIFFERENTIAL_ROW)
+    )
 
 
 def table_b_min_differential_wetbulb_binary_shocks() -> float:
-    return min(table_b_binary_shock_differentials(TABLE_B_WETBULB_DIFFERENTIAL_ROW))
+    return min(
+        _helper_table_b_binary_shock_differentials(TABLE_B_WETBULB_DIFFERENTIAL_ROW)
+    )
 
 
 def table_b_max_differential_wetbulb_binary_shocks() -> float:
-    return max(table_b_binary_shock_differentials(TABLE_B_WETBULB_DIFFERENTIAL_ROW))
+    return max(
+        _helper_table_b_binary_shock_differentials(TABLE_B_WETBULB_DIFFERENTIAL_ROW)
+    )
 
 
 def table_b_min_warm_week_effect_binary_shocks() -> float:
