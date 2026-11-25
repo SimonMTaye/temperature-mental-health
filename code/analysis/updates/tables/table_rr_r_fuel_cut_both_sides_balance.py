@@ -15,22 +15,20 @@ cut (about 2% of IFLS5 respondents) are left out.
 
 Rows follow Table C (table_c_shock_balances.py): demographics, cash-transfer
 receipt and the winsorized economic outcomes, plus the urban-vehicle share and
-7-day mean temperature. Columns (1)-(2) are group means (SD). Columns (3)-(4)
-regress each variable on a both-sides indicator, for all IFLS5 respondents and
-for IFLS4 urban-vehicle households only (the fuel-shock group). There are no
-fixed effects: both-sides status is fixed within a kecamatan, so kecamatan
-fixed effects would absorb it. Standard errors are clustered by kabupaten.
-These are descriptive differences, not tests of the identifying assumption,
-which conditions on kecamatan and month-by-year fixed effects.
+7-day mean temperature. Columns (1)-(2) are group means (SD). Column (3) is the
+difference in means, both sides minus after only. With about 30,000
+respondents, small imbalances are statistically significant, so the table
+reports magnitudes rather than tests. There are no fixed effects: both-sides status is fixed within a kecamatan, so kecamatan fixed
+effects would absorb it. These are descriptive differences, not tests of the
+identifying assumption, which conditions on kecamatan and month-by-year fixed
+effects.
 """
 
 import pandas as pd
 from analysis.tables_v2.table_c_shock_balances import balance_variables
 from analysis.tables_v2.table_i_economics import ECONOMIC_OUTCOMES, winsorized
-from library.caching import run_regression_with_caching
 from library.config import TABLE_OUTPUT
 from library.dictionary import VARIABLE_LABELS
-from library.render import RegressionSpec
 from library.specs import MAIN_TEMP_MEASURE, wave5_df
 from library.table_builder import coefficient_rows, make_row
 
@@ -40,16 +38,17 @@ ROW_VARIABLES = [*balance_variables, URBAN_VEHICLE, MAIN_TEMP_MEASURE]
 ROW_LABELS = {
     **VARIABLE_LABELS,
     URBAN_VEHICLE: "Urban vehicle owner",
+    "expenditure_transport_fuel_total_mo_real_usd": "Transport Spending (2010 USD)",
     MAIN_TEMP_MEASURE: "7-day mean temperature (°C)",
 }
 
 TABLE_TEMPLATE = r"""
-\begin{tabular}{@{}lcccc}
+\begin{tabular}{@{}lccc}
 \toprule
- & \multicolumn{2}{c}{Mean (SD)} & \multicolumn{2}{c}{Difference: Both Sides $-$ After Only} \\
-\cmidrule(lr){2-3} \cmidrule(lr){4-5}
- & Both Sides & After Only & All Respondents & \shortstack{Urban Vehicle\\Owners} \\
- & (1) & (2) & (3) & (4) \\
+ & \multicolumn{2}{c}{Kecamatans Surveyed -- IFLS5} & \\
+\cmidrule(lr){2-3}
+ & \shortstack{Before and After\\Subsidy Cut} & \shortstack{After Subsidy\\Cut Only} & Difference \\
+ & (1) & (2) & (3) \\
 \midrule\addlinespace[2.5pt]
 {coefficient_rows}
 \midrule\addlinespace[2.5pt]
@@ -73,57 +72,38 @@ def both_sides_or_after_only(wave5: pd.DataFrame) -> pd.DataFrame:
 
 
 def mean_sd(series: pd.Series) -> tuple[float, float, float]:
-    # p-value 0 suppresses stars, as in Table C.
-    return (series.mean(), series.std(), 0)
-
-
-def difference(variable: str, df: pd.DataFrame) -> tuple[float, float, float]:
-    spec = RegressionSpec(
-        title=f"{variable} balance on {GROUP}",
-        formula=f"{variable} ~ {GROUP}",
-        df=df,
-        tags=frozenset(),
-        show_terms=frozenset([GROUP]),
-    )
-    result = run_regression_with_caching(spec)
-    return tuple(float(result.coef_table.loc[GROUP, stat]) for stat in ["b", "se", "p"])
+    # The table reports no tests, so a NaN p-value suppresses stars.
+    return (series.mean(), series.std(), float("nan"))
 
 
 def balance_rows(sample: pd.DataFrame) -> list[str]:
     both_sides = sample.loc[sample[GROUP].eq(1)]
     after_only = sample.loc[sample[GROUP].eq(0)]
-    urban_vehicle_owners = sample.loc[sample[URBAN_VEHICLE].eq(1)]
 
     rows = []
     for variable in ROW_VARIABLES:
-        stats = [
-            mean_sd(both_sides[variable]),
-            mean_sd(after_only[variable]),
-            difference(variable, sample),
-        ]
-        coefficient_row, standard_error_row = coefficient_rows(ROW_LABELS[variable], stats)
-        if variable == URBAN_VEHICLE:
-            # Constant within urban-vehicle owners, so column (4) is left blank.
-            coefficient_row = coefficient_row.replace(r" \\", r" & \\")
-            standard_error_row = standard_error_row.replace(r" \\", r" & \\")
-        else:
-            stats.append(difference(variable, urban_vehicle_owners))
-            coefficient_row, standard_error_row = coefficient_rows(
-                ROW_LABELS[variable], stats
-            )
-        rows.extend([coefficient_row, standard_error_row])
+        mean_row, sd_row = coefficient_rows(
+            ROW_LABELS[variable],
+            [mean_sd(both_sides[variable]), mean_sd(after_only[variable])],
+        )
+        difference = both_sides[variable].mean() - after_only[variable].mean()
+        # Column (3) has only the difference in means; its SD row is left blank.
+        rows.extend(
+            [
+                mean_row.removesuffix(r" \\") + f" & {difference:.3f} \\\\",
+                sd_row.removesuffix(r" \\") + r" & \\",
+            ]
+        )
     return rows
 
 
 def count_row(label: str, sample: pd.DataFrame, count) -> str:
-    urban_vehicle_owners = sample.loc[sample[URBAN_VEHICLE].eq(1)]
     return make_row(
         label,
         [
             count(sample.loc[sample[GROUP].eq(1)]),
             count(sample.loc[sample[GROUP].eq(0)]),
             count(sample),
-            count(urban_vehicle_owners),
         ],
     )
 
