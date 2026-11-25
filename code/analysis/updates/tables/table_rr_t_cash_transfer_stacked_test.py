@@ -6,13 +6,11 @@ Run from the repo root:
 
 Writes output/tables/table_rr_t_cash_transfer_stacked_test.tex, and each
 displayed number to output/stats/table_rr_t/ (see library/table_stats.py).
-Stats rows follow the display order, skipping SE lines and the bracketed
-p-value line (that p-value is the pval of column 3 in the differential row):
-    r1 temperature differential, r2 temperature correlation,
-    r3 wet-bulb differential,    r4 wet-bulb correlation,
-    r5 observations.
+Stats rows follow the display order, skipping SE lines:
+    r1 temperature differential, r2 wet-bulb differential, r3 observations.
 Columns 1-2 hold coeff / se / pval of Table B columns 5 and 6; column 3 holds
-the difference with its se and Wald p-value, and the correlation rows.
+the difference with its se and Wald p-value (shown in the table only as
+stars). The correlation of the two estimates is printed to the console.
 
 Table B columns 5 and 6 are two separate IFLS5 regressions,
 
@@ -94,9 +92,6 @@ TABLE_TEMPLATE = r"""
 {temperature_panel}
 \midrule\addlinespace[2.5pt]
 {wetbulb_panel}
-\midrule\addlinespace[2.5pt]
-Kecamatan & x & x & \\
-Month-Year & x & x & \\
 \midrule\addlinespace[2.5pt]
 {observations_row}
 \bottomrule
@@ -246,22 +241,19 @@ def panel_rows(label: str, model) -> str:
                     f"({test['se_difference']:.3f})",
                 ],
             ),
-            make_row(r"p-value, $H_0$: (1) = (2)", ["", "", f"[{test['p_difference']:.3f}]"]),
-            make_row("Correlation of (1) and (2)", ["", "", f"{test['correlation']:.3f}"]),
         ]
     )
 
 
 def panel_stats(model) -> StatsGrid:
-    """Differential and correlation rows of one panel, matching panel_rows."""
+    """Differential row of one panel, matching panel_rows."""
     test = equality_test(model)
     differential_row = [
         regression_cell(test["b5"], test["se5"], test["p5"]),
         regression_cell(test["b6"], test["se6"], test["p6"]),
         regression_cell(test["difference"], test["se_difference"], test["p_difference"]),
     ]
-    correlation_row = bottom_row([None, None, test["correlation"]])
-    return [differential_row, correlation_row]
+    return [differential_row]
 
 
 def observation_counts(model) -> list[int | None]:
