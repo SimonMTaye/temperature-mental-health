@@ -11,10 +11,10 @@ fixed-effect indicator rows (x / -) are not counted.
 Stat names: coeff / se / pval for regression cells, mean / sd for summary
 cells, and stat for a bottom-of-table number.
 
-Integers (observations, counts) are written in full with thousands
-separators; other values are rounded to STATS_DECIMALS (library/config.py).
-Each file ends in "%" so that \\input does not add a trailing space after the
-number.
+Integers (observations, counts) are written in full without separators;
+other values are rounded to STATS_DECIMALS (library/config.py). The paper
+formats and rounds each number with \\inputstat. Each file ends in "%" so
+that a plain \\input does not add a trailing space after the number.
 """
 
 import math
@@ -61,7 +61,7 @@ def parse_number(text: str) -> float | int | None:
 
 def format_stat(value: float, decimals: int = STATS_DECIMALS) -> str:
     if isinstance(value, numbers.Integral):
-        return f"{value:,}%"
+        return f"{value}%"
     text = f"{value:.{decimals}f}"
     if float(text) == 0:
         text = f"{0:.{decimals}f}"  # avoid "-0.00"
