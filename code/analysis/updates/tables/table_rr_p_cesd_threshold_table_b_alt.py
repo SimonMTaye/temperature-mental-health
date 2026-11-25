@@ -4,8 +4,8 @@ Run from the repo root:
 
     uv run python code/analysis/updates/tables/table_rr_p_cesd_threshold_table_b_alt.py
 
-Writes one table per cutoff to output/tables/table_rr_p_cesd_threshold_table_b_alt_ge{cutoff}.tex and
-prints the differential-heat coefficients for a quick read.
+Writes one table per cutoff to output/tables/table_rr_p_cesd_threshold_table_b_alt_ge{cutoff}.tex
+(cell values in output/stats/table_rr_p_ge{cutoff}/) and prints the differential-heat coefficients for a quick read.
 
 Cutoffs (IFLS uses the 10-item Andresen CES-D, raw score 0-30):
     >= 10  Andresen et al. (1994) screening cutoff; the standard in IFLS5 papers
@@ -30,8 +30,10 @@ import pandas as pd
 from analysis.tables_v2.table_b_temperature_and_shock_effects import (
     TABLE_SPECS,
     TABLE_TEMPLATE,
+    bottom_stats,
     coefficient_stats,
     panel_rows,
+    panel_stats,
     regression_runner,
     stressed_group_proportion_row,
     wetbulb_specs,
@@ -39,6 +41,7 @@ from analysis.tables_v2.table_b_temperature_and_shock_effects import (
 from library.config import TABLE_OUTPUT
 from library.specs import update_formula_search_replace
 from library.table_builder import make_row
+from library.table_stats import bottom_row, write_table_stats
 
 CUTOFFS = [8, 10, 12]
 
@@ -54,17 +57,20 @@ def cutoff_specs(specs: list[dict], cutoff: int) -> list[dict]:
     return updated_specs
 
 
+def outcome_means(specs: list[dict], cutoff: int) -> list[float]:
+    return [spec_data["spec"].df[f"cesd_ge{cutoff}"].mean() for spec_data in specs]
+
+
 def outcome_mean_row(specs: list[dict], cutoff: int) -> str:
     return make_row(
         "Outcome Mean",
-        [f"{spec_data['spec'].df[f'cesd_ge{cutoff}'].mean():.3f}" for spec_data in specs],
+        [f"{outcome_mean:.3f}" for outcome_mean in outcome_means(specs, cutoff)],
     )
 
 
-def build_table(cutoff: int) -> tuple[str, list, list]:
-    temperature_specs = cutoff_specs(TABLE_SPECS, cutoff)
-    temperature_models = regression_runner(temperature_specs)
-    wetbulb_models = regression_runner(wetbulb_specs(temperature_specs))
+def build_table(
+    cutoff: int, temperature_specs: list[dict], temperature_models, wetbulb_models
+) -> str:
     observations_row = make_row(
         "Observations", [f"{int(model.stats['N']):,}" for model in temperature_models]
     )
@@ -83,7 +89,7 @@ def build_table(cutoff: int) -> tuple[str, list, list]:
             + outcome_mean_row(temperature_specs, cutoff),
         )
     )
-    return table, temperature_models, wetbulb_models
+    return table
 
 
 def differential_summary(cutoff: int, heat: str, models: list) -> pd.DataFrame:
@@ -111,9 +117,19 @@ def main() -> None:
     TABLE_OUTPUT.mkdir(parents=True, exist_ok=True)
     summaries = []
     for cutoff in CUTOFFS:
-        table, temperature_models, wetbulb_models = build_table(cutoff)
+        temperature_specs = cutoff_specs(TABLE_SPECS, cutoff)
+        temperature_models = regression_runner(temperature_specs)
+        wetbulb_models = regression_runner(wetbulb_specs(temperature_specs))
+        table = build_table(cutoff, temperature_specs, temperature_models, wetbulb_models)
         (TABLE_OUTPUT / f"table_rr_p_cesd_threshold_table_b_alt_ge{cutoff}.tex").write_text(
             table, encoding="utf-8"
+        )
+        write_table_stats(
+            f"rr_p_ge{cutoff}",
+            panel_stats(temperature_models)
+            + panel_stats(wetbulb_models)
+            + bottom_stats(temperature_specs, temperature_models)
+            + [bottom_row(outcome_means(temperature_specs, cutoff))],
         )
         summaries.append(differential_summary(cutoff, "tmean_7d", temperature_models))
         summaries.append(differential_summary(cutoff, "wetbulb_7d", wetbulb_models))

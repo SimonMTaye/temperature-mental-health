@@ -1,5 +1,6 @@
 from dataclasses import replace
 from library.config import TABLE_OUTPUT
+from library.table_stats import write_table_stats
 from library.specs import (
     fuel_shock_urban_vehicle,
     MAIN_TEMP_MEASURE,
@@ -53,6 +54,7 @@ def make_table() -> None:
         titles=[label for label, _ in groups],
     )
     render_table_to_latex(table, TABLE_OUTPUT / "table_g_fuel_shock_alt_definition.tex")
+    write_table_stats("g", table.coefficient_stats)
 
 
 if __name__ == "__main__":

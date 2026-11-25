@@ -18,6 +18,11 @@ from library.specs import (
     update_formula_search_replace,
 )
 from library.table_builder import make_row, coefficient_rows
+from library.table_stats import write_table_stats
+from analysis.tables_v2.table_b_temperature_and_shock_effects import (
+    bottom_stats,
+    panel_stats,
+)
 
 TABLE_FILE = TABLE_OUTPUT / "table_n_interaction_effects_sleep.tex"
 KABUPATEN_CLUSTER = "kabupaten_full_code"
@@ -177,8 +182,8 @@ def stressed_group_proportion_row(specs: list[dict]) -> str:
     )
 
 
-def build_table() -> str:
-    sleep_specs = [
+def make_sleep_specs() -> list[dict]:
+    return [
         {
             **spec_data,
             "spec": update_formula_search_replace(
@@ -189,7 +194,9 @@ def build_table() -> str:
         }
         for spec_data in SLEEP_TABLE_SPECS
     ]
-    sleep_models = regression_runner(sleep_specs)
+
+
+def build_table(sleep_specs: list[dict], sleep_models) -> str:
     observations_rows = make_row(
         "Observations", [f"{int(model.stats['N']):,}" for model in sleep_models]
     )
@@ -204,8 +211,13 @@ def build_table() -> str:
 
 
 def make_table() -> None:
+    sleep_specs = make_sleep_specs()
+    sleep_models = regression_runner(sleep_specs)
     TABLE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TABLE_FILE.write_text(build_table(), encoding="utf-8")
+    TABLE_FILE.write_text(build_table(sleep_specs, sleep_models), encoding="utf-8")
+    write_table_stats(
+        "n", panel_stats(sleep_models) + bottom_stats(sleep_specs, sleep_models)
+    )
 
 
 if __name__ == "__main__":

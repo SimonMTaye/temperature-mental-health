@@ -4,7 +4,8 @@ Run from the repo root:
 
     uv run python code/analysis/updates/tables/table_rr_r_fuel_cut_both_sides_balance.py
 
-Writes output/tables/table_rr_r_fuel_cut_both_sides_balance.tex.
+Writes output/tables/table_rr_r_fuel_cut_both_sides_balance.tex (cell values in
+output/stats/table_rr_r/).
 
 Companion to table_rr_o_fuel_cut_both_sides_table.py. With kecamatan fixed
 effects, the fuel-shock term is identified only from kecamatans with IFLS5
@@ -31,6 +32,7 @@ from library.config import TABLE_OUTPUT
 from library.dictionary import VARIABLE_LABELS
 from library.specs import MAIN_TEMP_MEASURE, wave5_df
 from library.table_builder import coefficient_rows, make_row
+from library.table_stats import StatsGrid, bottom_row, write_table_stats
 
 GROUP = "both_sides_kecamatan"
 URBAN_VEHICLE = "urban_vehicle_hh_ifls4"
@@ -76,56 +78,90 @@ def mean_sd(series: pd.Series) -> tuple[float, float, float]:
     return (series.mean(), series.std(), float("nan"))
 
 
-def balance_rows(sample: pd.DataFrame) -> list[str]:
+def balance_stats(sample: pd.DataFrame) -> dict[str, list[tuple[float, float, float]]]:
+    """Per row variable: both-sides mean (SD), after-only mean (SD), difference in means."""
     both_sides = sample.loc[sample[GROUP].eq(1)]
     after_only = sample.loc[sample[GROUP].eq(0)]
 
-    rows = []
+    stats_by_variable = {}
     for variable in ROW_VARIABLES:
-        mean_row, sd_row = coefficient_rows(
-            ROW_LABELS[variable],
-            [mean_sd(both_sides[variable]), mean_sd(after_only[variable])],
-        )
         difference = both_sides[variable].mean() - after_only[variable].mean()
+        stats_by_variable[variable] = [
+            mean_sd(both_sides[variable]),
+            mean_sd(after_only[variable]),
+            (difference, float("nan"), float("nan")),
+        ]
+    return stats_by_variable
+
+
+def balance_rows(stats_by_variable: dict[str, list]) -> list[str]:
+    rows = []
+    for variable, (both_sides, after_only, difference) in stats_by_variable.items():
+        mean_row, sd_row = coefficient_rows(ROW_LABELS[variable], [both_sides, after_only])
         # Column (3) has only the difference in means; its SD row is left blank.
         rows.extend(
             [
-                mean_row.removesuffix(r" \\") + f" & {difference:.3f} \\\\",
+                mean_row.removesuffix(r" \\") + f" & {difference[0]:.3f} \\\\",
                 sd_row.removesuffix(r" \\") + r" & \\",
             ]
         )
     return rows
 
 
-def count_row(label: str, sample: pd.DataFrame, count) -> str:
-    return make_row(
-        label,
-        [
-            count(sample.loc[sample[GROUP].eq(1)]),
-            count(sample.loc[sample[GROUP].eq(0)]),
-            count(sample),
-        ],
-    )
+def group_counts(sample: pd.DataFrame, count) -> list[int]:
+    """Counts for columns (1)-(3): both sides, after only, all."""
+    return [
+        int(count(sample.loc[sample[GROUP].eq(1)])),
+        int(count(sample.loc[sample[GROUP].eq(0)])),
+        int(count(sample)),
+    ]
 
 
-def build_table(sample: pd.DataFrame) -> str:
+def count_kecamatans(df: pd.DataFrame) -> int:
+    return df["gadm_fullcode"].nunique()
+
+
+def build_table(stats_by_variable: dict[str, list], sample: pd.DataFrame) -> str:
     return (
-        TABLE_TEMPLATE.replace("{coefficient_rows}", "\n".join(balance_rows(sample)))
-        .replace("{observations_row}", count_row("Observations", sample, len))
+        TABLE_TEMPLATE.replace(
+            "{coefficient_rows}", "\n".join(balance_rows(stats_by_variable))
+        )
+        .replace(
+            "{observations_row}", make_row("Observations", group_counts(sample, len))
+        )
         .replace(
             "{kecamatans_row}",
-            count_row("Kecamatans", sample, lambda df: df["gadm_fullcode"].nunique()),
+            make_row("Kecamatans", group_counts(sample, count_kecamatans)),
         )
     )
 
 
+def table_stats(stats_by_variable: dict[str, list], sample: pd.DataFrame) -> StatsGrid:
+    """Columns (1)-(2) are mean (SD); (3) is the difference in means (as coeff); then the count rows."""
+    grid: StatsGrid = [
+        [
+            {"mean": both_mean, "sd": both_sd},
+            {"mean": after_mean, "sd": after_sd},
+            {"coeff": difference},
+        ]
+        for (both_mean, both_sd, _), (after_mean, after_sd, _), (difference, _, _) in (
+            stats_by_variable.values()
+        )
+    ]
+    grid.append(bottom_row(group_counts(sample, len)))
+    grid.append(bottom_row(group_counts(sample, count_kecamatans)))
+    return grid
+
+
 def main() -> None:
     sample = both_sides_or_after_only(wave5_df)
+    stats_by_variable = balance_stats(sample)
 
     TABLE_OUTPUT.mkdir(parents=True, exist_ok=True)
     (TABLE_OUTPUT / "table_rr_r_fuel_cut_both_sides_balance.tex").write_text(
-        build_table(sample), encoding="utf-8"
+        build_table(stats_by_variable, sample), encoding="utf-8"
     )
+    write_table_stats("rr_r", table_stats(stats_by_variable, sample))
 
 
 if __name__ == "__main__":

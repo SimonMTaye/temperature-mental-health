@@ -9,6 +9,7 @@ from library.specs import (
     FE_NO_WAVE,
 )
 from library.config import TABLE_OUTPUT
+from library.table_stats import write_table_stats
 from analysis.tables_v2.table_b_temperature_and_shock_effects import TABLE_SPECS
 
 # Should contain vehicle fuel price for urban vehicle groups or household earnings for palm shock / job loss groups.
@@ -85,6 +86,7 @@ def make_table():
         custom_model_stats={"DV mean": [dv_mean for _, _, _, dv_mean in specs]},
     )
     render_table_to_latex(table, TABLE_OUTPUT / "table_i_economics.tex")
+    write_table_stats("i", table.coefficient_stats)
 
 
 if __name__ == "__main__":
